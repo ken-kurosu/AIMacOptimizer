@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Mac Optimizer - macOS メニューバーユーティリティ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #007AFF;
+            --primary-light: #0A84FF;
+            --accent: #AF52DE;
+            --bg-dark: #0A0E27;
+            --bg-card: #1a1f3a;
+            --text-primary: #FFFFFF;
+            --text-secondary: #a8aec4;
+            --border: #2d3748;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #0A0E27 0%, #1a1427 50%, #0d0a2b 100%);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Header & Navigation */
+        header {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            background: rgba(10, 14, 39, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(45, 55, 72, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        nav .cta {
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+        }
+
+        nav .cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 122, 255, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding-top: 140px;
+            padding-bottom: 80px;
+            text-align: center;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 8vw, 4rem);
+            margin-bottom: 1rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+
+        .hero-gradient {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 2.5rem;
+            animation: fadeInUp 0.8s ease 0.4s both;
+            line-height: 1.5;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease 0.6s both;
+        }
+
+        .btn-primary {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 32px rgba(0, 122, 255, 0.4);
+        }
+
+        .btn-secondary {
+            padding: 1rem 2.5rem;
+            border-radius: 12px;
+            background: transparent;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border: 2px solid rgba(175, 82, 222, 0.5);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(175, 82, 222, 0.1);
+            border-color: var(--accent);
+            transform: translateY(-3px);
+        }
+
+        /* Features Grid */
+        .features-section {
+            padding: 6rem 2rem;
+            background: linear-gradient(180deg, transparent, rgba(175, 82, 222, 0.05));
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 4rem;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .feature-card {
+            background: rgba(26, 31, 58, 0.6);
+            border: 1px solid rgba(45, 55, 72, 0.6);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .feature-card:hover {
+            background: rgba(26, 31, 58, 0.9);
+            border-color: rgba(0, 122, 255, 0.3);
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 122, 255, 0.1);
+        }
+
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin-bottom: 0.8rem;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Pricing Section */
+        .pricing-section {
+            padding: 6rem 2rem;
+            background: linear-gradient(180deg, rgba(175, 82, 222, 0.05), transparent);
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .pricing-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .pricing-card {
+            background: rgba(26, 31, 58, 0.6);
+            border: 2px solid rgba(45, 55, 72, 0.6);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .pricing-card.featured {
+            background: rgba(0, 122, 255, 0.1);
+            border-color: var(--primary);
+            transform: scale(1.05);
+        }
+
+        .pricing-card:hover {
+            border-color: rgba(0, 122, 255, 0.5);
+            background: rgba(26, 31, 58, 0.9);
+        }
+
+        .pricing-card.featured:hover {
+            transform: scale(1.05) translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 122, 255, 0.2);
+        }
+
+        .badge {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .pricing-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .price {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 1.5rem 0;
+        }
+
+        .price-period {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .pricing-features {
+            list-style: none;
+            margin: 2rem 0;
+        }
+
+        .pricing-features li {
+            padding: 0.8rem 0;
+            color: var(--text-secondary);
+            border-bottom: 1px solid rgba(45, 55, 72, 0.3);
+            display: flex;
+            align-items: center;
+        }
+
+        .pricing-features li:before {
+            content: "✓";
+            color: var(--primary);
+            font-weight: 700;
+            margin-right: 0.8rem;
+            font-size: 1.1rem;
+        }
+
+        .pricing-features li.disabled {
+            opacity: 0.5;
+        }
+
+        .pricing-features li.disabled:before {
+            content: "−";
+            color: var(--text-secondary);
+        }
+
+        .pricing-card .btn-primary {
+            width: 100%;
+            margin-top: 2rem;
+        }
+
+        /* Download Section */
+        .download-section {
+            padding: 6rem 2rem;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(0, 122, 255, 0.05), rgba(175, 82, 222, 0.05));
+        }
+
+        .download-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .download-section h2 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .download-section p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+        }
+
+        .download-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1.2rem 2rem;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: white;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+        }
+
+        .download-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 32px rgba(0, 122, 255, 0.4);
+        }
+
+        .system-requirement {
+            margin-top: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid rgba(45, 55, 72, 0.3);
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-secondary);
+            background: rgba(10, 14, 39, 0.5);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 1rem 1.5rem;
+            }
+
+            .hero {
+                padding-top: 120px;
+                padding-bottom: 50px;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .hero p {
+                font-size: 1.1rem;
+            }
+
+            .hero-buttons {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .btn-primary, .btn-secondary {
+                width: 100%;
+            }
+
+            .pricing-card.featured {
+                transform: scale(1);
+            }
+
+            .pricing-card.featured:hover {
+                transform: translateY(-8px);
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .section-title {
+                font-size: 1.8rem;
+            }
+
+            .pricing-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <div class="logo">AI Mac Optimizer</div>
+            <button class="cta" onclick="document.getElementById('download').scrollIntoView()">ダウンロード</button>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>あなたのMacを <span class="hero-gradient">AI の力で最適化</span></h1>
+        <p>リアルタイムメモリ監視・深い診断・ワンクリック修復。AI チャットでプロのアドバイスを常に相談できます。</p>
+        <div class="hero-buttons">
+            <button class="btn-primary" onclick="document.getElementById('download').scrollIntoView()">今すぐダウンロード</button>
+            <button class="btn-secondary" onclick="document.getElementById('features').scrollIntoView()">機能を見る</button>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features-section">
+        <h2 class="section-title">6つのメイン機能</h2>
+        <p class="section-subtitle">Mac の性能を最大限に引き出します</p>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>リアルタイム監視</h3>
+                <p>メニューバーでメモリ使用量をリアルタイム表示。CPU、ディスク、バッテリーの状態も一目で確認できます。</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3>ディープ診断</h3>
+                <p>8つの診断エンジン（CPU、メモリ、ディスク、iCloud同期、セキュリティソフト、開発ツール、ブラウザ・アプリ、ログイン項目）で詳細な分析。</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">⚡</div>
+                <h3>ワンクリック修復</h3>
+                <p>診断結果から自動修復。手動操作は不要です。AI が最適な最適化を提案・実行します。</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h3>AI チャット相談</h3>
+                <p>OpenAI/Anthropic API対応。自分のAPIキーを入力すれば、プロのアドバイスを24/7受け取れます。</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🗑️</div>
+                <h3>ストレージ最適化</h3>
+                <p>キャッシュクリーンアップ＆アプリアンインストーラー。残されたファイルも自動検出・削除します。</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-icon">🔋</div>
+                <h3>バッテリー保護</h3>
+                <p>バッテリーヘルス監視と最適化提案。高メモリ/低ディスク時は macOS通知でアラート。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing-section">
+        <h2 class="section-title">シンプルで透明な料金体系</h2>
+        <p class="section-subtitle">あなたのニーズに合ったプランを選択</p>
+
+        <div class="pricing-cards">
+            <div class="pricing-card">
+                <h3>フリー</h3>
+                <div class="price">無料</div>
+                <p class="price-period">基本機能</p>
+                <ul class="pricing-features">
+                    <li>メニューバー表示</li>
+                    <li>基本診断（4つのエンジン）</li>
+                    <li class="disabled">ワンクリック修復</li>
+                    <li class="disabled">AI チャット</li>
+                    <li class="disabled">高度なクリーンアップ</li>
+                    <li class="disabled">優先サポート</li>
+                </ul>
+                <button class="btn-primary">今すぐ開始</button>
+            </div>
+
+            <div class="pricing-card featured">
+                <div class="badge">最もおすすめ</div>
+                <h3>Pro</h3>
+                <div class="price">¥480<span style="font-size: 0.5em;">/月</span></div>
+                <p class="price-period">すべての機能が使用可能</p>
+                <ul class="pricing-features">
+                    <li>メニューバー表示</li>
+                    <li>フルディープ診断（8つのエンジン）</li>
+                    <li>ワンクリック修復</li>
+                    <li>AI チャット相談</li>
+                    <li>フル ストレージ最適化</li>
+                    <li>優先サポート</li>
+                </ul>
+                <button class="btn-primary">Pro を試す</button>
+            </div>
+
+            <div class="pricing-card">
+                <h3>Pro ライフタイム</h3>
+                <div class="price">¥4,980<span style="font-size: 0.5em;">一度のみ</span></div>
+                <p class="price-period">永久ライセンス</p>
+                <ul class="pricing-features">
+                    <li>すべての Pro 機能</li>
+                    <li>生涯アップデート</li>
+                    <li>優先サポート</li>
+                    <li>AI チャット無制限</li>
+                    <li>新機能の先行アクセス</li>
+                    <li>VIP コミュニティ</li>
+                </ul>
+                <button class="btn-primary">ライフタイムを購入</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download-section">
+        <div class="download-container">
+            <h2>今すぐ AI Mac Optimizer をダウンロード</h2>
+            <p>macOS 10.15以上で動作。インストールは30秒で完了します。</p>
+            <a href="https://example.com/download/AIMacOptimizer.dmg" class="download-button">
+                <span>DMG をダウンロード</span>
+                <span>↓</span>
+            </a>
+            <div class="system-requirement">
+                <strong>必要な環境:</strong> macOS 10.15 Catalina 以上
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <!-- 特定商取引法に基づく表記 -->
+    <section id="tokushoho" style="padding: 60px 20px; background: #0a0e27; color: #ccc;">
+        <div style="max-width: 800px; margin: 0 auto;">
+            <h2 style="text-align: center; color: #fff; margin-bottom: 30px; font-size: 1.5rem;">特定商取引法に基づく表記</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; width: 30%; font-weight: bold; color: #aaa;">販売事業者</td>
+                    <td style="padding: 12px;">KEN KUROSU</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">運営責任者</td>
+                    <td style="padding: 12px;">KEN KUROSU</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">所在地</td>
+                    <td style="padding: 12px;">請求があった場合に遅滞なく開示いたします</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">連絡先</td>
+                    <td style="padding: 12px;">kurosu@i-kasa.com<br>請求があった場合に電話番号を遅滞なく開示いたします</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">販売価格</td>
+                    <td style="padding: 12px;">Pro（月額）: ¥480/月（税込）<br>Pro Lifetime（買い切り）: ¥4,980（税込）</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">支払方法</td>
+                    <td style="padding: 12px;">クレジットカード（Stripe決済）</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">支払時期</td>
+                    <td style="padding: 12px;">月額プラン：毎月自動決済<br>買い切りプラン：購入時に一括決済</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">商品引渡時期</td>
+                    <td style="padding: 12px;">決済完了後、24時間以内にライセンスキーをメールにてお届け</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">返品・キャンセル</td>
+                    <td style="padding: 12px;">デジタル商品の性質上、購入後の返品・返金はお受けしておりません。<br>月額プランはいつでもキャンセル可能で、次回更新日以降の課金は発生しません。</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #333;">
+                    <td style="padding: 12px; font-weight: bold; color: #aaa;">動作環境</td>
+                    <td style="padding: 12px;">macOS 13 (Ventura) 以降</td>
+                </tr>
+            </table>
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 AI Mac Optimizer. All rights reserved. | <a href="#tokushoho" style="color: #7c8aff; text-decoration: none;">特定商取引法に基づく表記</a> | プライバシーポリシー | 利用規約</p>
+    </footer>
+
+    <script>
+        // Smooth scroll for navigation
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+
+        // Header background on scroll
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 50) {
+                header.style.background = 'rgba(10, 14, 39, 0.95)';
+            } else {
+                header.style.background = 'rgba(10, 14, 39, 0.8)';
+            }
+        });
+
+        // Intersection Observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.feature-card, .pricing-card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(card);
+        });
+    </script>
+</body>
+</html>

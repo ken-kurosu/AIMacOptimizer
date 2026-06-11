@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { useEditor } from "@/lib/store";
+import { Slide } from "@/lib/types";
 import { ScaledSlide } from "./SlideRenderer";
 
 export function SlideList() {
@@ -9,9 +10,43 @@ export function SlideList() {
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
   const select = useEditor((s) => s.select);
   const addSlide = useEditor((s) => s.addSlide);
+  const replaceSlide = useEditor((s) => s.replaceSlide);
   const duplicateSlide = useEditor((s) => s.duplicateSlide);
   const deleteSlide = useEditor((s) => s.deleteSlide);
   const moveSlide = useEditor((s) => s.moveSlide);
+  const [regenId, setRegenId] = useState<string | null>(null);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  // このページだけimage2エンジンで再デザイン(テキストとテーマは維持)
+  const regenerate = async (slide: Slide) => {
+    if (regenId) return;
+    setRegenId(slide.id);
+    setRegenError(null);
+    try {
+      const texts = slide.elements
+        .filter((e) => e.type === "text")
+        .map((e) => ({
+          role: e.name ?? (e.fontSize >= 40 ? "title" : e.fontSize <= 16 ? "kicker" : "body"),
+          text: e.text,
+        }));
+      const res = await fetch("/api/generate/slide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: deck.title,
+          theme: deck.theme,
+          page: { name: slide.name, texts },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `再生成に失敗しました (${res.status})`);
+      replaceSlide(slide.id, data.slide as Slide);
+    } catch (e) {
+      setRegenError(e instanceof Error ? e.message : "再生成に失敗しました");
+    } finally {
+      setRegenId(null);
+    }
+  };
 
   return (
     <div className="flex h-full w-56 shrink-0 flex-col border-r border-neutral-200 bg-white">
@@ -24,18 +59,28 @@ export function SlideList() {
           + 追加
         </button>
       </div>
+      {regenError && (
+        <div className="border-b border-red-100 bg-red-50 px-3 py-2 text-[11px] text-red-600">
+          {regenError}
+        </div>
+      )}
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {deck.slides.map((slide, i) => (
           <div key={slide.id} className="group">
             <div
               onClick={() => select(slide.id)}
-              className={`cursor-pointer overflow-hidden rounded-lg border-2 transition ${
+              className={`relative cursor-pointer overflow-hidden rounded-lg border-2 transition ${
                 slide.id === selectedSlideId
                   ? "border-blue-500 shadow-md"
                   : "border-neutral-200 hover:border-neutral-400"
               }`}
             >
               <ScaledSlide slide={slide} theme={deck.theme} width={192} />
+              {regenId === slide.id && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[11px] font-medium text-neutral-600">
+                  <span className="animate-pulse">再デザイン中…</span>
+                </div>
+              )}
             </div>
             <div className="mt-1 flex items-center justify-between px-0.5">
               <span className="max-w-[100px] truncate text-[11px] text-neutral-500">
@@ -44,6 +89,12 @@ export function SlideList() {
               <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
                 <MiniBtn title="上へ" onClick={() => moveSlide(slide.id, -1)}>↑</MiniBtn>
                 <MiniBtn title="下へ" onClick={() => moveSlide(slide.id, 1)}>↓</MiniBtn>
+                <MiniBtn
+                  title="このページをAIで再デザイン(テキストは維持)"
+                  onClick={() => regenerate(slide)}
+                >
+                  ✦
+                </MiniBtn>
                 <MiniBtn title="複製" onClick={() => duplicateSlide(slide.id)}>⧉</MiniBtn>
                 <MiniBtn title="削除" onClick={() => deleteSlide(slide.id)}>✕</MiniBtn>
               </div>

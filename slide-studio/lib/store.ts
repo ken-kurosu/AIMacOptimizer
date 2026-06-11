@@ -29,6 +29,8 @@ interface EditorState {
 
   setDeck: (deck: Deck) => void;
   addSlide: (slide?: Slide, afterId?: string) => void;
+  // AI再生成などでスライドの中身を丸ごと差し替える(idと位置は維持)
+  replaceSlide: (id: string, slide: Slide) => void;
   duplicateSlide: (id: string) => void;
   deleteSlide: (id: string) => void;
   moveSlide: (id: string, dir: -1 | 1) => void;
@@ -140,6 +142,14 @@ export const useEditor = create<EditorState>()(
           else deck.slides.push(s);
         });
         set({ selectedSlideId: s.id, selectedElementId: null });
+      },
+
+      replaceSlide: (id, slide) => {
+        get().commit((deck) => {
+          const i = deck.slides.findIndex((s) => s.id === id);
+          if (i >= 0) deck.slides[i] = { ...slide, id };
+        });
+        set({ selectedElementId: null, editingElementId: null });
       },
 
       duplicateSlide: (id) => {

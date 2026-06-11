@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { useEditor } from "@/lib/store";
 import { TopBar } from "./TopBar";
 import { SlideList } from "./SlideList";
@@ -8,11 +8,13 @@ import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { ThemePanel } from "./ThemePanel";
 
+const emptySubscribe = () => () => {};
+
 export function Editor() {
   // localStorageからの復元とSSRの不一致を避けるため、マウント後に描画
-  const [mounted, setMounted] = useState(false);
+  // (effect内setStateを避けるため、ハイドレーション判定はuseSyncExternalStoreで行う)
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
   useEffect(() => {
-    setMounted(true);
     // persistは状態変更時にしか書き込まないため、初期デッキも印刷ビューから
     // 参照できるようマウント時に一度保存をトリガーする
     useEditor.setState((s) => ({ deck: s.deck }));

@@ -1,27 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/types";
 import { normalizeDeck } from "@/lib/normalize";
 import { STORAGE_KEY } from "@/lib/store";
 import { SlideRenderer } from "@/components/SlideRenderer";
 
+// localStorageのデッキをuseSyncExternalStoreで読む(effect内setStateを避ける)。
+// スナップショットは同一性が要求されるため、raw文字列単位でキャッシュする
+const subscribeStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+let deckCache: { raw: string | null; deck: Deck | null } | null = null;
+function readDeckSnapshot(): Deck | null {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (deckCache && deckCache.raw === raw) return deckCache.deck;
+  let deck: Deck | null = null;
+  if (raw) {
+    try {
+      deck = normalizeDeck(JSON.parse(raw)?.state?.deck);
+    } catch {
+      deck = null;
+    }
+  }
+  deckCache = { raw, deck };
+  return deck;
+}
+
 // 印刷ビュー: 全スライドを1280x720の実寸ページとして縦に並べる。
 // ブラウザの「印刷 → PDFに保存」でリンク付き・ベクターテキストのPDFになる。
 export default function PrintPage() {
-  const [deck, setDeck] = useState<Deck | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) throw new Error("no deck");
-      const parsed = JSON.parse(raw);
-      setDeck(normalizeDeck(parsed?.state?.deck));
-    } catch {
-      setError(true);
-    }
-  }, []);
+  const deck = useSyncExternalStore(subscribeStorage, readDeckSnapshot, () => null);
+  const hydrated = useSyncExternalStore(subscribeStorage, () => true, () => false);
+  const error = hydrated && !deck;
 
   useEffect(() => {
     if (!deck) return;

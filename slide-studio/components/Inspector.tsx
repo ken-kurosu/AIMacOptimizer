@@ -7,7 +7,6 @@ import {
   ColorValue,
   ImageEl,
   ShapeEl,
-  SlideElement,
   TextEl,
   resolveColor,
 } from "@/lib/types";

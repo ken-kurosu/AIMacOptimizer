@@ -5,6 +5,7 @@ import { SLIDE_H, SLIDE_W, SlideElement, clamp } from "@/lib/types";
 import { useEditor, useSelectedSlide } from "@/lib/store";
 import { ElementContent, elementStyle } from "./SlideRenderer";
 import { PresetBackground } from "./PresetBackground";
+import { imageElementFor, uploadImageFile } from "@/lib/upload";
 
 type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -37,6 +38,7 @@ export function Canvas() {
   const beginTransient = useEditor((s) => s.beginTransient);
   const transient = useEditor((s) => s.transient);
   const commit = useEditor((s) => s.commit);
+  const addElement = useEditor((s) => s.addElement);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -183,14 +185,35 @@ export function Canvas() {
 
   const finishTextEdit = (el: SlideElement, node: HTMLElement) => {
     const value = node.innerText.replace(/\n$/, "");
+    // contentEditableはスケール済みコンテナ内にあるためscrollHeightはスライド座標系
+    const contentH = Math.ceil(node.scrollHeight);
     setEditing(null);
-    if (el.type === "text" && value !== el.text) {
+    if (el.type === "text" && (value !== el.text || contentH > el.h)) {
       commit((deck) => {
         const target = deck.slides
           .find((s) => s.id === selectedSlideId)
           ?.elements.find((x) => x.id === el.id);
-        if (target && target.type === "text") target.text = value;
+        if (target && target.type === "text") {
+          target.text = value;
+          // 文字が増えて箱からあふれたら高さを内容に合わせて伸ばす
+          if (contentH > target.h) target.h = contentH;
+        }
       });
+    }
+  };
+
+  // 画像ファイルのドラッグ&ドロップ配置
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const { url, width, height } = await uploadImageFile(files[i]);
+        addElement(imageElementFor(url, width, height, i));
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "アップロードに失敗しました");
     }
   };
 
@@ -203,6 +226,8 @@ export function Canvas() {
       ref={containerRef}
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-neutral-200"
       onPointerDown={() => select(selectedSlideId, null)}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
     >
       <div
         id="slide-stage"

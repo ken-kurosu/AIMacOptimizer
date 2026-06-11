@@ -4,7 +4,9 @@ import React, { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
 import { GenerateDialog } from "./GenerateDialog";
+import { GenerateImageDialog } from "./GenerateImageDialog";
 import { ShapeEl, TextEl, uid } from "@/lib/types";
+import { imageElementFor, uploadImageFile } from "@/lib/upload";
 
 export function TopBar() {
   const deck = useEditor((s) => s.deck);
@@ -16,7 +18,10 @@ export function TopBar() {
   const setDeck = useEditor((s) => s.setDeck);
   const addElement = useEditor((s) => s.addElement);
   const [showGenerate, setShowGenerate] = useState(false);
+  const [showGenImage, setShowGenImage] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
 
   const addText = (variant: "heading" | "body") => {
     const el: TextEl = {
@@ -53,20 +58,21 @@ export function TopBar() {
     addElement(el);
   };
 
-  const addImage = () => {
-    const src = window.prompt("画像URLを入力してください");
-    if (!src) return;
-    addElement({
-      id: uid(),
-      type: "image",
-      src,
-      x: 440,
-      y: 200,
-      w: 400,
-      h: 300,
-      fit: "cover",
-      radius: 12,
-    });
+  // 画像ファイルをアップロードしてスライドに配置(URL指定はInspectorのsrc欄で可能)
+  const uploadImages = async (files: FileList | File[]) => {
+    const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) return;
+    setUploading(true);
+    try {
+      for (let i = 0; i < images.length; i++) {
+        const { url, width, height } = await uploadImageFile(images[i]);
+        addElement(imageElementFor(url, width, height, i));
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const exportJson = () => {
@@ -108,7 +114,24 @@ export function TopBar() {
       <ToolButton onClick={() => addShape("rect")} label="□" title="四角形" />
       <ToolButton onClick={() => addShape("ellipse")} label="○" title="円" />
       <ToolButton onClick={() => addShape("line")} label="—" title="線" />
-      <ToolButton onClick={addImage} label="画像" />
+      <ToolButton
+        onClick={() => imageRef.current?.click()}
+        label={uploading ? "アップロード中…" : "画像"}
+        title="画像をアップロードして配置(キャンバスへのドラッグ&ドロップも可)"
+        disabled={uploading}
+      />
+      <input
+        ref={imageRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) uploadImages(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <ToolButton onClick={() => setShowGenImage(true)} label="✦画像" title="AIで画像パーツを生成して配置" />
 
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
@@ -148,6 +171,7 @@ export function TopBar() {
       </button>
 
       {showGenerate && <GenerateDialog onClose={() => setShowGenerate(false)} />}
+      {showGenImage && <GenerateImageDialog onClose={() => setShowGenImage(false)} />}
     </div>
   );
 }

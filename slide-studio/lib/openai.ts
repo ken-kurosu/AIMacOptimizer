@@ -35,6 +35,15 @@ export async function pickImageModel(): Promise<string> {
   return models[0];
 }
 
+// 透過背景対応モデルの候補(新しい順)。gpt-image-2は透過非対応のため、
+// 透過指定時はこちらへフォールバックする。miniは品質が落ちるので除外
+export async function pickTransparentImageModels(): Promise<string[]> {
+  return (await listModels())
+    .filter((id) => /^gpt-image-1(\.\d+)?$/.test(id))
+    .sort()
+    .reverse();
+}
+
 // テキスト/ビジョンモデル: OPENAI_TEXT_MODEL > gpt-5系 > gpt-4.1 > gpt-4o
 export async function pickTextModel(): Promise<string> {
   if (process.env.OPENAI_TEXT_MODEL) return process.env.OPENAI_TEXT_MODEL;
@@ -88,12 +97,18 @@ export async function chatJSON<T>(
   return JSON.parse(text.slice(start, end + 1)) as T;
 }
 
-// 画像生成。1536x1024(3:2)で生成し、呼び出し側で16:9に切り出す。
+export interface ImageGenOptions {
+  quality?: string;
+  size?: "1024x1024" | "1536x1024" | "1024x1536";
+  background?: "transparent" | "opaque";
+}
+
+// 画像生成。既定は1536x1024(3:2)で、スライド背景は呼び出し側で16:9に切り出す。
 // 背景デザインの品質が製品価値そのものなので、既定のqualityはhigh
 export async function generateImage(
   model: string,
   prompt: string,
-  quality?: string,
+  opts: ImageGenOptions = {},
 ): Promise<Buffer> {
   const res = await fetch(`${BASE}/images/generations`, {
     method: "POST",
@@ -101,8 +116,9 @@ export async function generateImage(
     body: JSON.stringify({
       model,
       prompt,
-      size: "1536x1024",
-      quality: quality ?? process.env.OPENAI_IMAGE_QUALITY ?? "high",
+      size: opts.size ?? "1536x1024",
+      quality: opts.quality ?? process.env.OPENAI_IMAGE_QUALITY ?? "high",
+      ...(opts.background ? { background: opts.background } : {}),
       n: 1,
     }),
   });

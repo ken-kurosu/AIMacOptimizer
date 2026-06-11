@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
+import { generateImage2Deck } from "@/lib/image2Pipeline";
+import { openaiAvailable } from "@/lib/openai";
 
 export const maxDuration = 300;
 
@@ -9,6 +11,15 @@ interface Brief {
   pages: number;
   audience?: string;
   tone?: string;
+  engine?: "image2" | "structured";
+}
+
+// エンジンの利用可否(ダイアログが起動時に問い合わせる)
+export async function GET() {
+  return Response.json({
+    openai: openaiAvailable(),
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
+  });
 }
 
 const SYSTEM_PROMPT = `あなたは一流のプレゼンテーションデザイナー兼アートディレクターです。
@@ -70,6 +81,27 @@ export async function POST(req: Request) {
     return Response.json({ error: "invalid request" }, { status: 400 });
   }
   const pages = Math.max(3, Math.min(brief.pages || 8, 20));
+
+  // image2(カンプ先行)エンジン: OpenAIで統一(計画→画像生成→ビジョン解析)
+  if (brief.engine === "image2") {
+    if (!openaiAvailable()) {
+      return Response.json({
+        mode: "demo",
+        warning: "OPENAI_API_KEY が未設定のため image2 生成は使えません",
+        deck: generateMockDeck({ ...brief, pages }),
+      });
+    }
+    try {
+      const deck = await generateImage2Deck({ ...brief, pages });
+      return Response.json({ mode: "image2", deck });
+    } catch (e) {
+      console.error("image2 pipeline failed:", e);
+      return Response.json(
+        { error: e instanceof Error ? e.message : "image2 generation failed" },
+        { status: 502 },
+      );
+    }
+  }
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return Response.json({ mode: "demo", deck: generateMockDeck({ ...brief, pages }) });

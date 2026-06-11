@@ -1,7 +1,7 @@
 // typesetZone の決定的検証(APIキー不要)。
 // 実行: npx tsx scripts/verify-typeset.ts
 
-import { DEFAULT_ZONE, sanitizeZone, typesetZone } from "../lib/image2Pipeline";
+import { DEFAULT_ZONE, sanitizeZone, typesetZone, zoneForSpace } from "../lib/image2Pipeline";
 
 const texts = [
   { role: "body", text: "毎日の定型作業をAIに任せて、考える時間を取り戻します" },
@@ -69,5 +69,28 @@ assert(
   "画面外の指定はスライド内に丸められる",
 );
 assert(DEFAULT_ZONE.w >= 360, "既定ゾーンが妥当");
+
+// 5. space別フォールバックゾーンが全てスライド内に収まる
+for (const s of ["left", "right", "top", "bottom", "center", undefined]) {
+  const z = zoneForSpace(s);
+  assert(
+    z.x >= 32 && z.y >= 32 && z.x + z.w <= 1280 - 32 && z.y + z.h <= 720 - 20 && z.w >= 360 && z.h >= 240,
+    `zoneForSpace(${s ?? "未指定"}) がスライド内の妥当な領域`,
+  );
+}
+// rightゾーンでは右カラムに左揃えで組まれる(中央揃え誤判定しない)
+const right = typesetZone(texts, zoneForSpace("right"));
+assert(right.every((p) => p.x >= 624), "rightゾーンは右カラムに組まれる");
+
+// 6. タイトルのみなしご行回避: 「…してい/る」と1文字落ちするテキストでサイズが1段下がる
+const orphanTexts = [{ role: "title", text: "情報と会話がチーム間で分断している" }];
+const op = typesetZone(orphanTexts, { x: 96, y: 100, w: 590, h: 520 })[0];
+const emPerLine = (s: number) => 590 / s;
+const em = orphanTexts[0].text.length * 1.05;
+const remAt = (s: number) => em % emPerLine(s);
+assert(
+  !(remAt(op.fontSizePx) > 0 && remAt(op.fontSizePx) <= 1.2 && em > emPerLine(op.fontSizePx)),
+  `タイトルの最終行が1文字にならないサイズが選ばれる (fs=${op.fontSizePx})`,
+);
 
 process.exit(failed ? 1 : 0);

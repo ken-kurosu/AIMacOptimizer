@@ -10,13 +10,17 @@ export const maxDuration = 180;
 
 const PROMPT_SYSTEM = `あなたは一流のプレゼンテーションアートディレクターです。スライド1ページ分の背景デザインについて、画像生成モデル(gpt-image)向けの英語プロンプトをJSONで出力します。
 
-出力(JSONのみ): { "imagePrompt": "(英語)" }
+出力(JSONのみ): { "motif": "(日本語)このページの内容を表す視覚モチーフ", "space": "left|right|top|bottom|center", "imagePrompt": "(英語)" }
+
+motifはページのテキスト(伝える内容)から比喩を起こし、imagePromptで必ず描く。spaceはテキスト一式を置く余白の位置で、motifはその反対側に置く。
 
 ${IMAGE_PROMPT_GUIDE}`;
 
 const NEW_PAGE_SYSTEM = `あなたは一流のプレゼンテーションアートディレクターです。既存のデッキに追加する1ページについて、ページ名・テキスト・背景画像プロンプトをJSONで出力します。
 
-出力(JSONのみ): { "name": "ページ名", "imagePrompt": "(英語)", "texts": [ { "role": "kicker|title|subtitle|body|stat|label", "text": "実際の文言" } ] }
+出力(JSONのみ): { "name": "ページ名", "motif": "(日本語)内容を表す視覚モチーフ", "space": "left|right|top|bottom|center", "imagePrompt": "(英語)", "texts": [ { "role": "kicker|title|subtitle|body|stat|label", "text": "実際の文言" } ] }
+
+motifはページの「伝える内容」から比喩を起こし、imagePromptで必ず描く。spaceはテキスト一式を置く余白の位置で、motifはその反対側に置く。
 
 ${IMAGE_PROMPT_GUIDE}
 
@@ -62,12 +66,14 @@ export async function POST(req: Request) {
     const [textModel, imageModel] = await Promise.all([pickTextModel(), pickImageModel()]);
     let name = brief.page.name ?? "";
     let imagePrompt = brief.page.imagePrompt;
+    let space: string | undefined;
 
     if (texts.length === 0) {
       // AIページ追加: 内容の説明からページ名・テキスト・画像プロンプトを起こす
       const planned = await chatJSON<{
         name?: string;
         imagePrompt: string;
+        space?: string;
         texts?: { role?: string; text?: string }[];
       }>(
         textModel,
@@ -88,10 +94,11 @@ export async function POST(req: Request) {
       if (texts.length === 0) throw new Error("no texts in plan response");
       name = planned.name || name;
       imagePrompt = planned.imagePrompt;
+      space = planned.space;
     }
 
     if (!imagePrompt) {
-      const result = await chatJSON<{ imagePrompt: string }>(
+      const result = await chatJSON<{ imagePrompt: string; space?: string }>(
         textModel,
         PROMPT_SYSTEM,
         [
@@ -105,10 +112,11 @@ export async function POST(req: Request) {
         8000,
       );
       imagePrompt = result.imagePrompt;
+      space = result.space;
       if (!imagePrompt) throw new Error("no imagePrompt in plan response");
     }
 
-    const page: PlanPage = { name, imagePrompt, texts };
+    const page: PlanPage = { name, imagePrompt, texts, space };
     const slide = await generateImage2Slide(page, theme, textModel, imageModel, 0, false);
     return Response.json({ slide });
   } catch (e) {

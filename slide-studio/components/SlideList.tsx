@@ -16,6 +16,7 @@ export function SlideList() {
   const moveSlide = useEditor((s) => s.moveSlide);
   const [regenId, setRegenId] = useState<string | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [aiAddOpen, setAiAddOpen] = useState(false);
 
   // このページだけimage2エンジンで再デザイン(テキストとテーマは維持)
   const regenerate = async (slide: Slide) => {
@@ -52,13 +53,33 @@ export function SlideList() {
     <div className="flex h-full w-56 shrink-0 flex-col border-r border-neutral-200 bg-white">
       <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
         <span className="text-xs font-bold text-neutral-500">ページ</span>
-        <button
-          onClick={() => addSlide(undefined, selectedSlideId)}
-          className="rounded bg-neutral-900 px-2 py-1 text-xs font-medium text-white hover:bg-neutral-700"
-        >
-          + 追加
-        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={() => setAiAddOpen(true)}
+            title="内容を書くと、デッキのテーマに合わせてAIがページを1枚生成します"
+            className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+          >
+            ✦ AI
+          </button>
+          <button
+            onClick={() => addSlide(undefined, selectedSlideId)}
+            className="rounded bg-neutral-900 px-2 py-1 text-xs font-medium text-white hover:bg-neutral-700"
+          >
+            + 追加
+          </button>
+        </div>
       </div>
+      {aiAddOpen && (
+        <AiAddDialog
+          topic={deck.title}
+          theme={deck.theme}
+          onClose={() => setAiAddOpen(false)}
+          onCreated={(slide) => {
+            addSlide(slide, selectedSlideId);
+            setAiAddOpen(false);
+          }}
+        />
+      )}
       {regenError && (
         <div className="border-b border-red-100 bg-red-50 px-3 py-2 text-[11px] text-red-600">
           {regenError}
@@ -101,6 +122,83 @@ export function SlideList() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// AIページ追加: 内容の説明だけ受け取り、テーマに合わせた1ページを生成して挿入する
+function AiAddDialog({
+  topic,
+  theme,
+  onClose,
+  onCreated,
+}: {
+  topic: string;
+  theme: unknown;
+  onClose: () => void;
+  onCreated: (slide: Slide) => void;
+}) {
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generate/slide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, theme, page: { description } }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
+      onCreated(data.slide as Slide);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "生成に失敗しました");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={loading ? undefined : onClose}
+    >
+      <div
+        className="w-[420px] rounded-2xl bg-white p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-1 text-base font-bold">AIでページを追加</h3>
+        <p className="mb-3 text-xs text-neutral-500">
+          デッキのテーマ(配色・トーン)に合わせて、背景デザイン込みの1ページを生成します。
+        </p>
+        <textarea
+          autoFocus
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          placeholder="例: 導入スケジュールを3フェーズで説明するページ。各フェーズの期間と到達目標を載せる"
+          className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={create}
+            disabled={loading || !description.trim()}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+          >
+            {loading ? "生成中…(1〜2分)" : "生成して追加"}
+          </button>
+        </div>
       </div>
     </div>
   );

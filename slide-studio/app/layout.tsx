@@ -1,6 +1,28 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+// テーマで選べる5書体はセルフホスト(@fontsource)で同一オリジン配信する。
+// Google Fonts CDN依存だとオフライン/ブロック環境でフォールバック書体に
+// 化けて、ポン出しの見た目が再現しないため
+import "@fontsource/noto-sans-jp/400.css";
+import "@fontsource/noto-sans-jp/500.css";
+import "@fontsource/noto-sans-jp/700.css";
+import "@fontsource/noto-sans-jp/800.css";
+import "@fontsource/noto-sans-jp/900.css";
+import "@fontsource/noto-serif-jp/500.css";
+import "@fontsource/noto-serif-jp/700.css";
+import "@fontsource/noto-serif-jp/900.css";
+import "@fontsource/zen-kaku-gothic-new/400.css";
+import "@fontsource/zen-kaku-gothic-new/500.css";
+import "@fontsource/zen-kaku-gothic-new/700.css";
+import "@fontsource/zen-kaku-gothic-new/900.css";
+import "@fontsource/m-plus-rounded-1c/400.css";
+import "@fontsource/m-plus-rounded-1c/700.css";
+import "@fontsource/m-plus-rounded-1c/800.css";
+import "@fontsource/shippori-mincho/500.css";
+import "@fontsource/shippori-mincho/700.css";
+import "@fontsource/shippori-mincho/800.css";
+
 export const metadata: Metadata = {
   title: "Slide Studio — AIスライドデザインツール",
   description:
@@ -12,18 +34,6 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800;900&family=Noto+Serif+JP:wght@500;700;900&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=M+PLUS+Rounded+1c:wght@400;700;800&family=Shippori+Mincho:wght@500;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
       <body className="antialiased">{children}</body>
     </html>
   );

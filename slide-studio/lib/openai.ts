@@ -88,7 +88,8 @@ export async function chatJSON<T>(
   return JSON.parse(text.slice(start, end + 1)) as T;
 }
 
-// 画像生成。1536x1024(3:2)で生成し、呼び出し側で16:9に切り出す
+// 画像生成。1536x1024(3:2)で生成し、呼び出し側で16:9に切り出す。
+// 背景デザインの品質が製品価値そのものなので、既定のqualityはhigh
 export async function generateImage(
   model: string,
   prompt: string,
@@ -101,7 +102,7 @@ export async function generateImage(
       model,
       prompt,
       size: "1536x1024",
-      quality: quality ?? process.env.OPENAI_IMAGE_QUALITY ?? "medium",
+      quality: quality ?? process.env.OPENAI_IMAGE_QUALITY ?? "high",
       n: 1,
     }),
   });

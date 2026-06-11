@@ -81,7 +81,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
             desc={
               avail !== null && !avail.openai
                 ? "OPENAI_API_KEY が必要です"
-                : "画像生成でページ全面をデザインし、テキストを編集可能な層として配置(高品質・1〜3分)"
+                : "画像生成でページ全面をデザインし、テキストを編集可能な層として配置(最高品質・2〜5分)"
             }
           />
           <EngineCard
@@ -164,7 +164,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
           >
             {loading
               ? engine === "image2"
-                ? "画像を生成中…(1〜3分)"
+                ? "画像を生成中…(2〜5分)"
                 : "生成中…(最大1分)"
               : "生成する"}
           </button>

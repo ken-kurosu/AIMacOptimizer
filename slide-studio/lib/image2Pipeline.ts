@@ -54,6 +54,7 @@ export const IMAGE_PROMPT_GUIDE = `# imagePrompt の書き方(最重要)
 - 全ページ共通のスタイルガイド(配色のhex値・モチーフ・質感)を毎ページのプロンプト冒頭に同じ文で繰り返し、デッキ全体のトーンを揃える
 - "Flat graphic presentation slide background design" として、写実ではなくエディトリアル/グラフィックデザインとして描かせる
 - 必ず含める指示: "ABSOLUTELY NO text, letters, words, numbers, typography, or characters of any kind"
+- 擬似文字の混入を防ぐ: UIモックアップ・偽スクリーンショット・書類・新聞・看板・ラベル付き図表など「文字が載っていそうなオブジェクト」をプロンプトに含めない
 - テキストを載せる場所を意図的に空ける: "large clean empty negative space in the (位置)" を、そのページのtextsの量・役割に合わせて指定する
 - 構図はページごとに変化させる(左空け/中央空け/上空け、抽象形状、グラデーション、幾何学パターン、オーガニックな形)
 - 余白(ネガティブスペース)はフラットな無地または非常に淡いグラデーションにし、テキストの可読性を確保する
@@ -86,7 +87,9 @@ ${IMAGE_PROMPT_GUIDE}
 
 const VISION_SYSTEM = `あなたはプレゼンテーションのレイアウトエンジンです。スライド背景画像(1280x720)と、配置すべきテキスト一覧を受け取り、各テキストの最適な配置をJSONで返します。
 
-出力(JSONのみ): { "items": [ { "index": 0, "x": 0-1280, "y": 0-720, "w": px, "h": px, "fontSizePx": px, "fontWeight": 400|500|700|800|900, "align": "left|center|right", "colorHex": "#hex" } ] }
+出力(JSONのみ): { "containsText": boolean, "items": [ { "index": 0, "x": 0-1280, "y": 0-720, "w": px, "h": px, "fontSizePx": px, "fontWeight": 400|500|700|800|900, "align": "left|center|right", "colorHex": "#hex" } ] }
+
+containsText: 背景画像そのものに文字・数字・ロゴ・崩れた擬似文字(文字のように見える模様)が描き込まれている場合にtrue。抽象的な図形・アイコンだけならfalse
 
 ルール:
 - 背景の「空いている領域(ネガティブスペース)」にテキストを置く。背景の複雑な部分・コントラストの低い場所は避ける
@@ -155,41 +158,56 @@ export async function generateImage2Slide(
 ): Promise<Slide> {
   const texts = (page.texts ?? []).slice(0, 8);
   try {
-    const raw = await generateImage(imageModel, page.imagePrompt);
-    // 3:2 (1536x1024) → 中央16:9を切り出して1280x720へ
-    const cropped = await sharp(raw)
-      .extract({ left: 0, top: 80, width: 1536, height: 864 })
-      .resize(1280, 720)
-      .png()
-      .toBuffer();
+    // 画像生成→ビジョン解析。背景に文字(化けた擬似文字含む)が混入していたら
+    // 1回だけ作り直す。検知はレイアウト解析と同じビジョン呼び出しに相乗りさせる
+    let cropped!: Buffer;
+    let placements: Placement[] = [];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prompt =
+        attempt === 0
+          ? page.imagePrompt
+          : `${page.imagePrompt}\n\nIMPORTANT: The previous attempt contained text or letter-like glyphs. ` +
+            `Render ABSOLUTELY NO text, letters, numbers, logos, UI screenshots, or any character-like marks anywhere.`;
+      const raw = await generateImage(imageModel, prompt);
+      // 3:2 (1536x1024) → 中央16:9を切り出して1280x720へ
+      cropped = await sharp(raw)
+        .extract({ left: 0, top: 80, width: 1536, height: 864 })
+        .resize(1280, 720)
+        .png()
+        .toBuffer();
+
+      // ビジョン解析用に縮小(トークン節約)。座標系は1280x720で回答させる
+      const small = await sharp(cropped).resize(800, 450).jpeg({ quality: 80 }).toBuffer();
+      let containsText = false;
+      try {
+        const result = await chatJSON<{ containsText?: boolean; items: Placement[] }>(
+          textModel,
+          VISION_SYSTEM,
+          [
+            {
+              type: "image_url",
+              image_url: { url: `data:image/jpeg;base64,${small.toString("base64")}`, detail: "high" },
+            },
+            {
+              type: "text",
+              text:
+                `この画像は1280x720のスライド背景です(座標はその系で回答)。配置するテキスト:\n` +
+                texts.map((t, j) => `${j}: [${t.role}] ${t.text}`).join("\n"),
+            },
+          ],
+          8000,
+        );
+        placements = result.items ?? [];
+        containsText = result.containsText === true;
+      } catch {
+        placements = [];
+      }
+      if (!containsText) break;
+      console.warn(`page ${index}: background contains text-like glyphs, regenerating`);
+    }
+
     const assetId = `bg-${uid()}`;
     const url = await saveAsset(assetId, cropped);
-
-    // ビジョン解析用に縮小(トークン節約)。座標系は1280x720で回答させる
-    const small = await sharp(cropped).resize(800, 450).jpeg({ quality: 80 }).toBuffer();
-    let placements: Placement[] = [];
-    try {
-      const result = await chatJSON<{ items: Placement[] }>(
-        textModel,
-        VISION_SYSTEM,
-        [
-          {
-            type: "image_url",
-            image_url: { url: `data:image/jpeg;base64,${small.toString("base64")}`, detail: "high" },
-          },
-          {
-            type: "text",
-            text:
-              `この画像は1280x720のスライド背景です(座標はその系で回答)。配置するテキスト:\n` +
-              texts.map((t, j) => `${j}: [${t.role}] ${t.text}`).join("\n"),
-          },
-        ],
-        8000,
-      );
-      placements = result.items ?? [];
-    } catch {
-      placements = [];
-    }
 
     const elements: SlideElement[] =
       placements.length > 0

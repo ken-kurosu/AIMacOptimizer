@@ -20,6 +20,7 @@ export function TopBar() {
   const [showGenerate, setShowGenerate] = useState(false);
   const [showGenImage, setShowGenImage] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
 
@@ -74,6 +75,30 @@ export function TopBar() {
       alert(e instanceof Error ? e.message : "アップロードに失敗しました");
     } finally {
       setUploading(false);
+    }
+  };
+
+  // サーバーサイドでPDF化(Chrome自動検出)。使えない環境では印刷ビューへフォールバック
+  const exportPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await fetch("/api/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deck }),
+      });
+      if (!res.ok) throw new Error("server export unavailable");
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${deck.title || "deck"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      window.open("/print", "_blank");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -166,10 +191,12 @@ export function TopBar() {
       />
 
       <button
-        onClick={() => window.open("/print", "_blank")}
-        className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-bold text-white hover:bg-neutral-700"
+        onClick={exportPdf}
+        disabled={exporting}
+        title="Chromeを自動検出してワンクリックでPDF化。使えない環境では印刷ビューが開きます"
+        className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-bold text-white hover:bg-neutral-700 disabled:opacity-50"
       >
-        PDF書き出し
+        {exporting ? "書き出し中…" : "PDF書き出し"}
       </button>
 
       {showGenerate && <GenerateDialog onClose={() => setShowGenerate(false)} />}

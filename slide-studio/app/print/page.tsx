@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Deck } from "@/lib/types";
 import { normalizeDeck } from "@/lib/normalize";
 import { STORAGE_KEY } from "@/lib/store";
 import { SlideRenderer } from "@/components/SlideRenderer";
+
+// サーバーサイドPDF書き出し時はヘッドレスブラウザが ?deck=<id> 付きで開く
+function exportDeckId(): string | null {
+  return new URLSearchParams(window.location.search).get("deck");
+}
 
 // localStorageのデッキをuseSyncExternalStoreで読む(effect内setStateを避ける)。
 // スナップショットは同一性が要求されるため、raw文字列単位でキャッシュする
@@ -31,12 +36,30 @@ function readDeckSnapshot(): Deck | null {
 // 印刷ビュー: 全スライドを1280x720の実寸ページとして縦に並べる。
 // ブラウザの「印刷 → PDFに保存」でリンク付き・ベクターテキストのPDFになる。
 export default function PrintPage() {
-  const deck = useSyncExternalStore(subscribeStorage, readDeckSnapshot, () => null);
+  const storedDeck = useSyncExternalStore(subscribeStorage, readDeckSnapshot, () => null);
   const hydrated = useSyncExternalStore(subscribeStorage, () => true, () => false);
-  const error = hydrated && !deck;
+  const exportMode = useSyncExternalStore(
+    subscribeStorage,
+    () => !!exportDeckId(),
+    () => false,
+  );
+  const [fetchedDeck, setFetchedDeck] = useState<Deck | null>(null);
+
+  // サーバーサイド書き出し時はlocalStorageではなく一時APIからデッキを取得する
+  useEffect(() => {
+    const id = exportDeckId();
+    if (!id) return;
+    fetch(`/api/export/deck/${id}`)
+      .then((r) => r.json())
+      .then((d) => setFetchedDeck(normalizeDeck(d)))
+      .catch(() => {});
+  }, []);
+
+  const deck = fetchedDeck ?? (exportMode ? null : storedDeck);
+  const error = hydrated && !exportMode && !deck;
 
   useEffect(() => {
-    if (!deck) return;
+    if (!deck || exportDeckId()) return; // 書き出しモードではダイアログを開かない
     // Webフォント読み込み完了後に印刷ダイアログを開く
     const t = setTimeout(() => {
       if (document.fonts?.ready) {

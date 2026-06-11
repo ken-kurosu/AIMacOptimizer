@@ -9,6 +9,7 @@ import {
   ShapeEl,
   TextEl,
   resolveColor,
+  uid,
 } from "@/lib/types";
 import { useEditor, useSelectedSlide } from "@/lib/store";
 import { COLOR_LABELS } from "@/lib/theme";
@@ -110,6 +111,43 @@ export function Inspector() {
   const reorderElement = useEditor((s) => s.reorderElement);
   const commit = useEditor((s) => s.commit);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
+  const [decomposing, setDecomposing] = React.useState(false);
+
+  // 背景をAIで「動かせるモチーフ画像 + 無地背景」に分解する
+  const decompose = async () => {
+    if (!slide?.background.image || decomposing) return;
+    setDecomposing(true);
+    try {
+      const res = await fetch("/api/decompose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src: slide.background.image }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `分解に失敗しました (${res.status})`);
+      commit((d) => {
+        const s = d.slides.find((x) => x.id === selectedSlideId);
+        if (!s) return;
+        s.background.image = data.background;
+        // モチーフはテキストの背面に置く(elementsは先頭ほど背面)
+        s.elements.unshift({
+          id: uid(),
+          type: "image",
+          src: data.motif.url,
+          x: data.motif.x,
+          y: data.motif.y,
+          w: data.motif.w,
+          h: data.motif.h,
+          fit: "contain",
+          name: "motif",
+        });
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "分解に失敗しました");
+    } finally {
+      setDecomposing(false);
+    }
+  };
 
   if (!slide) return null;
   const el = slide.elements.find((e) => e.id === selectedElementId);
@@ -160,6 +198,18 @@ export function Inspector() {
                 className="w-36 rounded border border-neutral-300 px-1.5 py-1 text-xs"
               />
             </Row>
+            {slide.background.image?.startsWith("/api/assets/") && (
+              <Row label="AI編集">
+                <button
+                  onClick={decompose}
+                  disabled={decomposing}
+                  title="背景の装飾を「動かせるモチーフ画像 + 無地背景」に分解します(1〜2分)"
+                  className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                >
+                  {decomposing ? "分解中…" : "✦ モチーフを分解"}
+                </button>
+              </Row>
+            )}
           </Section>
           <Section title="スライド名">
             <input

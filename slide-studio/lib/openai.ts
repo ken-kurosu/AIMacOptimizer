@@ -135,3 +135,36 @@ export async function generateImage(
   }
   throw new Error("image response had no data");
 }
+
+// 画像編集(images/edits)。入力画像をプロンプトで編集する。背景除去などに使う
+export async function editImage(
+  model: string,
+  image: Buffer,
+  prompt: string,
+  opts: ImageGenOptions = {},
+): Promise<Buffer> {
+  const form = new FormData();
+  form.append("model", model);
+  form.append("prompt", prompt);
+  form.append("image", new Blob([new Uint8Array(image)], { type: "image/png" }), "image.png");
+  form.append("quality", opts.quality ?? process.env.OPENAI_IMAGE_QUALITY ?? "high");
+  if (opts.size) form.append("size", opts.size);
+  if (opts.background) form.append("background", opts.background);
+  const res = await fetch(`${BASE}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI image edit failed: ${res.status} ${body.slice(0, 300)}`);
+  }
+  const data = (await res.json()) as { data: { b64_json?: string; url?: string }[] };
+  const item = data.data[0];
+  if (item.b64_json) return Buffer.from(item.b64_json, "base64");
+  if (item.url) {
+    const img = await fetch(item.url);
+    return Buffer.from(await img.arrayBuffer());
+  }
+  throw new Error("image edit response had no data");
+}

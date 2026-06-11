@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
 import { generateImage2Deck } from "@/lib/image2Pipeline";
-import { openaiAvailable } from "@/lib/openai";
+import { critiqueAndFixDeck } from "@/lib/critique";
+import { openaiAvailable, pickTextModel } from "@/lib/openai";
 
 export const maxDuration = 300;
 
@@ -93,6 +94,18 @@ export async function POST(req: Request) {
     }
     try {
       const deck = await generateImage2Deck({ ...brief, pages });
+      // 批評ループ: 実レンダリングをビジョンモデルが検査し、必要なら組み直す。
+      // Chromeがない環境や検査失敗時はそのまま返す(品質向上のための追加工程)
+      try {
+        const { checked, fixed } = await critiqueAndFixDeck(
+          new URL(req.url).origin,
+          deck,
+          await pickTextModel(),
+        );
+        if (checked > 0) console.log(`critique: ${checked} slides checked, ${fixed} refit`);
+      } catch (e) {
+        console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
+      }
       return Response.json({ mode: "image2", deck });
     } catch (e) {
       console.error("image2 pipeline failed:", e);

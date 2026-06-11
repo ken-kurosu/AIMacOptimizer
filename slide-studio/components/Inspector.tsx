@@ -365,6 +365,28 @@ function ShapeInspector({ el }: { el: ShapeEl }) {
 
 function ImageInspector({ el }: { el: ImageEl }) {
   const updateElement = useEditor((s) => s.updateElement);
+  const [cutting, setCutting] = React.useState(false);
+
+  // AIで被写体を切り抜き、透過PNGに差し替える(アセット画像のみ)
+  const removeBackground = async () => {
+    if (cutting) return;
+    setCutting(true);
+    try {
+      const res = await fetch("/api/edit-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ src: el.src }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `切り抜きに失敗しました (${res.status})`);
+      updateElement(el.id, { src: data.url, fit: "contain" });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "切り抜きに失敗しました");
+    } finally {
+      setCutting(false);
+    }
+  };
+
   return (
     <Section title="画像">
       <Row label="URL">
@@ -375,6 +397,18 @@ function ImageInspector({ el }: { el: ImageEl }) {
           className="w-36 rounded border border-neutral-300 px-1.5 py-1 text-xs"
         />
       </Row>
+      {el.src.startsWith("/api/assets/") && (
+        <Row label="AI編集">
+          <button
+            onClick={removeBackground}
+            disabled={cutting}
+            title="被写体だけを切り抜いて透過PNGにします(30〜90秒)"
+            className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+          >
+            {cutting ? "切り抜き中…" : "✦ 背景を透過"}
+          </button>
+        </Row>
+      )}
       <Row label="フィット">
         <select
           value={el.fit}

@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { Deck, Slide, TextEl, uid } from "./types";
+import { Deck, SLIDE_H, SLIDE_W, Slide, TextEl, uid } from "./types";
 import { normalizeTheme } from "./normalize";
 import { saveAsset } from "./assets";
 import { chatJSON, generateImage, pickImageModel, pickTextModel } from "./openai";
@@ -172,9 +172,7 @@ export async function generateImage2Deck(brief: GenerateBrief): Promise<Deck> {
 
       const elements: TextEl[] =
         placements.length > 0
-          ? placements
-              .filter((p) => texts[p.index])
-              .map((p) => placementToEl(p, texts[p.index]))
+          ? refinePlacements(placements, texts).map((p) => placementToEl(p, texts[p.index]))
           : fallbackLayout(texts);
 
       return {
@@ -196,6 +194,71 @@ export async function generateImage2Deck(brief: GenerateBrief): Promise<Deck> {
   });
 
   return { id: uid(), title: plan.title || brief.topic, theme, slides };
+}
+
+// ビジョン解析の配置をそのまま信用せず、テキスト量から決定的に補正する。
+// 実機検証で「hの過小見積もり→要素同士の重なり」「長文statへの巨大フォント」が頻発した。
+function refinePlacements(placements: Placement[], texts: PlanText[]): Placement[] {
+  const MARGIN = 24;
+  const out = placements
+    .filter((p) => texts[p.index])
+    .map((p) => ({ ...p }))
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+
+  for (const p of out) {
+    const t = texts[p.index];
+    p.x = clamp(Math.round(p.x), 0, SLIDE_W - 160);
+    p.w = clamp(Math.round(p.w), 120, SLIDE_W - p.x - 48);
+    p.y = clamp(Math.round(p.y), MARGIN, SLIDE_H - 72);
+
+    // 役割別のフォント上限。statの巨大文字は短い数字のときだけ許す
+    const longStat = t.role === "stat" && t.text.length > 12;
+    const maxFont =
+      t.role === "title" ? 76
+      : t.role === "stat" ? (longStat ? 28 : 96)
+      : t.role === "subtitle" ? 28
+      : t.role === "kicker" || t.role === "label" ? 18
+      : 22;
+    p.fontSizePx = clamp(Math.round(p.fontSizePx) || 18, 12, maxFont);
+
+    // 推定必要高さが役割別の上限を超える間はフォントを縮め、hは推定値で引き直す
+    const maxH = t.role === "title" ? 330 : t.role === "stat" ? 220 : 180;
+    while (p.fontSizePx > 14 && estimateHeight(t, p.fontSizePx, p.w) > maxH) {
+      p.fontSizePx -= 2;
+    }
+    p.h = estimateHeight(t, p.fontSizePx, p.w) + 8;
+  }
+
+  // x範囲が重なる要素同士の縦の重なりを上から順に下へ送って解消
+  for (let i = 1; i < out.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const a = out[j];
+      const b = out[i];
+      const xOverlap = a.x < b.x + b.w && b.x < a.x + a.w;
+      if (xOverlap && b.y < a.y + a.h + MARGIN) b.y = a.y + a.h + MARGIN;
+    }
+  }
+
+  // 下端からあふれた分は、上端の余裕の範囲で全体を上に詰める
+  const bottom = Math.max(...out.map((p) => p.y + p.h));
+  if (bottom > SLIDE_H - MARGIN) {
+    const slack = Math.min(...out.map((p) => p.y)) - MARGIN;
+    const shift = Math.min(bottom - (SLIDE_H - MARGIN), Math.max(slack, 0));
+    if (shift > 0) for (const p of out) p.y -= shift;
+  }
+  return out;
+}
+
+// 日本語前提の必要高さ見積もり(字間・括弧で実効文字幅はfontSizeの約1.1倍)
+function estimateHeight(t: PlanText, fontSize: number, w: number): number {
+  const perLine = Math.max(1, Math.floor(w / (fontSize * 1.1)));
+  const lines = Math.ceil(t.text.length / perLine);
+  const lh = t.role === "title" || t.role === "stat" ? 1.35 : 1.6;
+  return Math.ceil(lines * fontSize * lh);
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
 }
 
 function placementToEl(p: Placement, t: PlanText): TextEl {

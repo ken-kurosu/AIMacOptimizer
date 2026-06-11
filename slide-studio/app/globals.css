@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+body {
+  background: #f5f5f5;
+  color: #171717;
+  font-family: "Noto Sans JP", sans-serif;
+}
+
+/* PDF書き出し(印刷ビュー)用。
+   1280px @96dpi = 13.333in / 720px = 7.5in なので等倍でページにぴったり収まる。 */
+@page {
+  size: 13.333in 7.5in;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-slide {
+    break-after: page;
+    page-break-after: always;
+  }
+  .print-slide:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

@@ -12,6 +12,8 @@ interface Brief {
   pages: number;
   audience?: string;
   tone?: string;
+  notes?: string;
+  references?: string[];
   engine?: "image2" | "structured";
 }
 
@@ -135,6 +137,7 @@ export async function POST(req: Request) {
             `ページ数: ${pages}ページ`,
             brief.audience ? `想定読者: ${brief.audience}` : "",
             brief.tone ? `トーン: ${brief.tone}` : "",
+            brief.notes ? `補足(必ず反映する): ${brief.notes}` : "",
           ]
             .filter(Boolean)
             .join("\n"),

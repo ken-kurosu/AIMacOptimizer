@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
+import { uploadImageFile } from "@/lib/upload";
 
 type Engine = "image2" | "structured";
+
+interface RefImage {
+  url: string;
+}
 
 export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const setDeck = useEditor((s) => s.setDeck);
@@ -12,11 +17,36 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const [pages, setPages] = useState(8);
   const [audience, setAudience] = useState("");
   const [tone, setTone] = useState("信頼感のあるビジネス");
+  const [notes, setNotes] = useState("");
+  const [refs, setRefs] = useState<RefImage[]>([]);
+  const [refUploading, setRefUploading] = useState(false);
+  const refInput = useRef<HTMLInputElement>(null);
   const [engine, setEngine] = useState<Engine>("structured");
   const [avail, setAvail] = useState<{ openai: boolean; anthropic: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // 参考画像(任意・3枚まで)。配色・トーンの抽出元としてimage2の制作計画に渡す
+  const addRefs = async (files: FileList) => {
+    const images = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, 3 - refs.length);
+    if (images.length === 0) return;
+    setRefUploading(true);
+    try {
+      const uploaded: RefImage[] = [];
+      for (const f of images) {
+        const { url } = await uploadImageFile(f);
+        uploaded.push({ url });
+      }
+      setRefs((prev) => [...prev, ...uploaded].slice(0, 3));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "参考画像のアップロードに失敗しました");
+    } finally {
+      setRefUploading(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/generate")
@@ -36,7 +66,15 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, pages, audience, tone, engine }),
+        body: JSON.stringify({
+          topic,
+          pages,
+          audience,
+          tone,
+          engine,
+          notes: notes.trim() || undefined,
+          references: refs.length > 0 ? refs.map((r) => r.url) : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
@@ -136,7 +174,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
           </label>
         </div>
 
-        <label className="mb-4 block text-xs font-medium text-neutral-600">
+        <label className="mb-3 block text-xs font-medium text-neutral-600">
           想定読者(任意)
           <input
             type="text"
@@ -146,6 +184,67 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
             className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
           />
         </label>
+
+        <label className="mb-3 block text-xs font-medium text-neutral-600">
+          補足・必ず入れたい内容(任意)
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            placeholder="例: ブランドカラーは#1B4D3E / 料金は月額980円(税込) / 最後に問い合わせ先ページを入れる"
+            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="mb-4">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-xs font-medium text-neutral-600">
+              参考画像(任意・3枚まで)
+              <span className="ml-1 font-normal text-neutral-400">
+                配色・トーンの参考にします(image2)
+              </span>
+            </span>
+            <button
+              onClick={() => refInput.current?.click()}
+              disabled={refUploading || refs.length >= 3}
+              className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
+            >
+              {refUploading ? "アップロード中…" : "+ 追加"}
+            </button>
+            <input
+              ref={refInput}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) addRefs(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+          {refs.length > 0 && (
+            <div className="flex gap-2">
+              {refs.map((r) => (
+                <div key={r.url} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={r.url}
+                    alt=""
+                    className="h-14 w-20 rounded border border-neutral-200 object-cover"
+                  />
+                  <button
+                    onClick={() => setRefs((prev) => prev.filter((x) => x.url !== r.url))}
+                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[9px] text-white"
+                    title="削除"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
         {notice && <p className="mb-3 text-xs text-amber-600">{notice}</p>}

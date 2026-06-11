@@ -16,6 +16,8 @@ export interface GenerateBrief {
   pages: number;
   audience?: string;
   tone?: string;
+  notes?: string; // 必ず反映したい補足(任意)
+  references?: string[]; // 参考画像のアセットURL(任意・配色/トーンの参考)
 }
 
 // ANTHROPIC_API_KEY が無い環境でもツールを一通り試せるデモ用ジェネレーター。

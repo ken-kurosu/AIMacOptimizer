@@ -1,6 +1,7 @@
 import { Deck, uid } from "./types";
 import { THEME_PRESETS } from "./theme";
 import {
+  agendaSlide,
   bulletsSlide,
   closingSlide,
   quoteSlide,
@@ -24,6 +25,10 @@ export function generateMockDeck(brief: GenerateBrief): Deck {
   const themeIndex = Math.abs(hash(t)) % THEME_PRESETS.length;
   const theme = THEME_PRESETS[themeIndex].theme;
 
+  // セクション扉を先に作り、アジェンダから内部リンクを張る(リンク機能のデモ)
+  const section1 = sectionSlide("01", "背景と課題");
+  const section2 = sectionSlide("02", "提案内容");
+
   const all = [
     titleSlide(
       t,
@@ -34,16 +39,23 @@ export function generateMockDeck(brief: GenerateBrief): Deck {
         day: "numeric",
       }),
     ),
-    bulletsSlide(
-      "本日お伝えしたいこと",
-      [
-        { head: "背景と課題", body: `${t}を取り巻く現状と、解決すべき本質的な課題を整理します。` },
-        { head: "提案内容", body: "課題に対するアプローチと提供価値をご説明します。" },
-        { head: "実行計画", body: "スケジュール・体制・次のアクションをご提示します。" },
-      ],
-      "AGENDA",
-    ),
-    sectionSlide("01", "背景と課題"),
+    agendaSlide("本日お伝えしたいこと", [
+      {
+        head: "背景と課題",
+        body: `${t}を取り巻く現状と、解決すべき本質的な課題を整理します。`,
+        link: `#${section1.id}`,
+      },
+      {
+        head: "提案内容",
+        body: "課題に対するアプローチと提供価値をご説明します。",
+        link: `#${section2.id}`,
+      },
+      {
+        head: "実行計画",
+        body: "スケジュール・体制・次のアクションをご提示します。",
+      },
+    ]),
+    section1,
     statsSlide(
       "市場環境の変化",
       [
@@ -54,7 +66,7 @@ export function generateMockDeck(brief: GenerateBrief): Deck {
       "MARKET",
     ),
     twoColSlide(
-      "現状とあるべき姿のギャップ",
+      "現状とあるべき姿",
       {
         head: "現状 (As-Is)",
         body: "属人的なプロセスに依存しており、品質とスピードの両立が難しい。意思決定に必要な情報が分散している。",
@@ -63,19 +75,19 @@ export function generateMockDeck(brief: GenerateBrief): Deck {
         head: "あるべき姿 (To-Be)",
         body: `${t}を起点に業務を再設計し、データに基づく意思決定とスピーディな実行を両立する。`,
       },
-      "GAP",
+      "AS-IS",
     ),
-    sectionSlide("02", "提案内容"),
+    section2,
     bulletsSlide(
       "提案する3つの柱",
       [
-        { head: "STEP 1: 現状診断", body: "ヒアリングとデータ分析で課題を定量化し、優先順位を確定します。" },
-        { head: "STEP 2: パイロット導入", body: "小さく始めて2週間で効果を可視化。リスクを抑えながら検証します。" },
-        { head: "STEP 3: 全体展開", body: "検証結果をもとに全社展開のロードマップを策定・実行します。" },
+        { head: "現状診断", body: "ヒアリングとデータ分析で課題を定量化し、優先順位を確定します。" },
+        { head: "パイロット導入", body: "小さく始めて2週間で効果を可視化。リスクを抑えながら検証します。" },
+        { head: "全体展開", body: "検証結果をもとに全社展開のロードマップを策定・実行します。" },
       ],
       "APPROACH",
     ),
-    quoteSlide("小さく検証し、速く学び、大きく展開する。", `— ${t} プロジェクトの基本方針`),
+    quoteSlide("小さく検証し、速く学び、大きく展開する。", `${t} プロジェクトの基本方針`),
     statsSlide(
       "期待される効果",
       [
@@ -99,15 +111,9 @@ export function generateMockDeck(brief: GenerateBrief): Deck {
     all[all.length - 1],
   ];
 
-  // リンク機能のデモ: アジェンダ先頭カード→セクション扉への内部リンク、CTA→外部リンク
-  const section = slides.find((s) => s.name.startsWith("セクション"));
-  const agenda = slides.find((s) => s.name === "本日お伝えしたいこと");
-  if (section && agenda) {
-    const firstCard = agenda.elements.find((e) => e.type === "shape" && e.w > 1000);
-    if (firstCard) firstCard.link = `#${section.id}`;
-  }
+  // 外部リンクのデモ: クロージングのCTAピル
   const closing = slides[slides.length - 1];
-  const cta = closing.elements.find((e) => e.type === "shape" && e.fill === "token:accent");
+  const cta = closing.elements.find((e) => e.type === "shape" && e.fill === "token:accent" && e.name === "CTAボタン");
   if (cta) cta.link = "https://example.com";
 
   return { id: uid(), title: t, theme, slides };

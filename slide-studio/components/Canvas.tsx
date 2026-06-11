@@ -208,9 +208,10 @@ export function Canvas() {
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
     try {
+      const avoid = slide?.elements ?? [];
       for (let i = 0; i < files.length; i++) {
         const { url, width, height } = await uploadImageFile(files[i]);
-        addElement(imageElementFor(url, width, height, i));
+        addElement(imageElementFor(url, width, height, i, avoid));
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "アップロードに失敗しました");

@@ -47,6 +47,7 @@ export interface Placement {
   fontWeight: number;
   align: "left" | "center" | "right";
   colorHex: string;
+  lh?: number; // 行間(役割スケール由来)。未指定時は役割から推定
 }
 
 // 単一ページの再生成プロンプトでも同じ書き方を共有する
@@ -85,19 +86,18 @@ ${IMAGE_PROMPT_GUIDE}
 - 各ページ1メッセージ。title/kicker(短い英字ラベル)/body等を3〜6個
 - 中身は具体的に(プレースホルダー禁止)。数値は仮であることが分かる表記`;
 
-const VISION_SYSTEM = `あなたはプレゼンテーションのレイアウトエンジンです。スライド背景画像(1280x720)と、配置すべきテキスト一覧を受け取り、各テキストの最適な配置をJSONで返します。
+// ビジョンモデルには「最も大きく空いている領域」の特定だけを任せる。
+// 文字組(サイズ・行数・間隔・整列)は実測ベースで決定的に行う方が崩れない。
+const VISION_SYSTEM = `あなたはプレゼンテーションのアートディレクターです。スライド背景画像(1280x720)を見て、テキスト一式を載せるべき領域をJSONで返します。
 
-出力(JSONのみ): { "containsText": boolean, "items": [ { "index": 0, "x": 0-1280, "y": 0-720, "w": px, "h": px, "fontSizePx": px, "fontWeight": 400|500|700|800|900, "align": "left|center|right", "colorHex": "#hex" } ] }
-
-containsText: 背景画像そのものに文字・数字・ロゴ・崩れた擬似文字(文字のように見える模様)が描き込まれている場合にtrue。抽象的な図形・アイコンだけならfalse
+出力(JSONのみ): { "containsText": boolean, "zone": { "x": 0-1280, "y": 0-720, "w": px, "h": px } }
 
 ルール:
-- 背景の「空いている領域(ネガティブスペース)」にテキストを置く。背景の複雑な部分・コントラストの低い場所は避ける
-- colorHexは直下の背景に対してコントラスト比4.5以上になる色。背景が暗ければ白系、明るければ濃色
-- タイポグラフィのジャンプ率を高く: title 56-76px(weight 900)、kicker 14-16px(weight 700)、body 16-20px、stat 70-90px
-- h は fontSizePx × 1.5 × 推定行数 以上。1行の文字数 ≈ w ÷ fontSizePx(日本語)
-- 要素同士を重ねない。マージンは最低64px。整列(左揃えなら全要素のxを揃える)を守る
-- indexは入力テキストの番号と1対1で対応させ、全テキストを配置する`;
+- zone: 背景の中で最も大きく綺麗に「空いている領域(ネガティブスペース)」。ここに見出し+本文の一式を組む
+- 装飾・モチーフ・複雑な模様・コントラストの強い境界線の上は避け、フラットな(または淡いグラデーションの)領域を選ぶ
+- スライドの端から最低64pxの余白を取る。zoneはできるだけ大きく取る(目安: 幅500px以上・高さ380px以上)
+- テキスト量が多いほど大きなzoneが必要
+- containsText: 背景画像そのものに文字・数字・ロゴ・崩れた擬似文字(文字のように見える模様)が描き込まれていればtrue。抽象的な図形・アイコンだけならfalse`;
 
 async function asyncPool<T, R>(
   limit: number,
@@ -159,9 +159,9 @@ export async function generateImage2Slide(
   const texts = (page.texts ?? []).slice(0, 8);
   try {
     // 画像生成→ビジョン解析。背景に文字(化けた擬似文字含む)が混入していたら
-    // 1回だけ作り直す。検知はレイアウト解析と同じビジョン呼び出しに相乗りさせる
+    // 1回だけ作り直す。検知は余白ゾーン特定と同じビジョン呼び出しに相乗りさせる
     let cropped!: Buffer;
-    let placements: Placement[] = [];
+    let zone: Zone | null = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       const prompt =
         attempt === 0
@@ -180,7 +180,7 @@ export async function generateImage2Slide(
       const small = await sharp(cropped).resize(800, 450).jpeg({ quality: 80 }).toBuffer();
       let containsText = false;
       try {
-        const result = await chatJSON<{ containsText?: boolean; items: Placement[] }>(
+        const result = await chatJSON<{ containsText?: boolean; zone?: unknown }>(
           textModel,
           VISION_SYSTEM,
           [
@@ -191,16 +191,16 @@ export async function generateImage2Slide(
             {
               type: "text",
               text:
-                `この画像は1280x720のスライド背景です(座標はその系で回答)。配置するテキスト:\n` +
+                `この画像は1280x720のスライド背景です(座標はその系で回答)。載せるテキスト:\n` +
                 texts.map((t, j) => `${j}: [${t.role}] ${t.text}`).join("\n"),
             },
           ],
           8000,
         );
-        placements = result.items ?? [];
+        zone = sanitizeZone(result.zone);
         containsText = result.containsText === true;
       } catch {
-        placements = [];
+        zone = null;
       }
       if (!containsText) break;
       console.warn(`page ${index}: background contains text-like glyphs, regenerating`);
@@ -209,10 +209,9 @@ export async function generateImage2Slide(
     const assetId = `bg-${uid()}`;
     const url = await saveAsset(assetId, cropped);
 
-    const elements: SlideElement[] =
-      placements.length > 0
-        ? await applyContrast(refinePlacements(placements, texts), texts, cropped, theme)
-        : fallbackLayout(texts);
+    // ゾーン内に決定的に文字組し、背景の実測輝度で色とスクリムを決める
+    const placements = typesetZone(texts, zone ?? DEFAULT_ZONE);
+    const elements: SlideElement[] = await applyContrast(placements, texts, cropped, theme);
 
     return {
       id: uid(),
@@ -233,65 +232,140 @@ export async function generateImage2Slide(
   }
 }
 
-// ビジョン解析の配置をそのまま信用せず、テキスト量から決定的に補正する。
-// 実機検証で「hの過小見積もり→要素同士の重なり」「長文statへの巨大フォント」が頻発した。
-function refinePlacements(placements: Placement[], texts: PlanText[]): Placement[] {
-  const MARGIN = 24;
-  const out = placements
-    .filter((p) => texts[p.index])
-    .map((p) => ({ ...p }))
-    .sort((a, b) => a.y - b.y || a.x - b.x);
+// ---- ゾーン内の決定的文字組 ----------------------------------------------
+// カンプ(背景画像)の余白ゾーンに、役割別のタイポグラフィスケールで
+// 上から順に組む。行数は全角/半角を区別した実測ベースの見積もりを使い、
+// ゾーンからあふれる場合は全体を段階的に縮小する。
 
-  for (const p of out) {
-    const t = texts[p.index];
-    p.x = clamp(Math.round(p.x), 0, SLIDE_W - 160);
-    p.w = clamp(Math.round(p.w), 120, SLIDE_W - p.x - 48);
-    p.y = clamp(Math.round(p.y), MARGIN, SLIDE_H - 72);
-
-    // 役割別のフォント上限。statの巨大文字は短い数字のときだけ許す
-    const longStat = t.role === "stat" && t.text.length > 12;
-    const maxFont =
-      t.role === "title" ? 76
-      : t.role === "stat" ? (longStat ? 28 : 96)
-      : t.role === "subtitle" ? 28
-      : t.role === "kicker" || t.role === "label" ? 18
-      : 22;
-    p.fontSizePx = clamp(Math.round(p.fontSizePx) || 18, 12, maxFont);
-
-    // 推定必要高さが役割別の上限を超える間はフォントを縮め、hは推定値で引き直す
-    const maxH = t.role === "title" ? 330 : t.role === "stat" ? 220 : 180;
-    while (p.fontSizePx > 14 && estimateHeight(t, p.fontSizePx, p.w) > maxH) {
-      p.fontSizePx -= 2;
-    }
-    p.h = estimateHeight(t, p.fontSizePx, p.w) + 8;
-  }
-
-  // x範囲が重なる要素同士の縦の重なりを上から順に下へ送って解消
-  for (let i = 1; i < out.length; i++) {
-    for (let j = 0; j < i; j++) {
-      const a = out[j];
-      const b = out[i];
-      const xOverlap = a.x < b.x + b.w && b.x < a.x + a.w;
-      if (xOverlap && b.y < a.y + a.h + MARGIN) b.y = a.y + a.h + MARGIN;
-    }
-  }
-
-  // 下端からあふれた分は、上端の余裕の範囲で全体を上に詰める
-  const bottom = Math.max(...out.map((p) => p.y + p.h));
-  if (bottom > SLIDE_H - MARGIN) {
-    const slack = Math.min(...out.map((p) => p.y)) - MARGIN;
-    const shift = Math.min(bottom - (SLIDE_H - MARGIN), Math.max(slack, 0));
-    if (shift > 0) for (const p of out) p.y -= shift;
-  }
-  return out;
+export interface Zone {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
-// 日本語前提の必要高さ見積もり(字間・括弧で実効文字幅はfontSizeの約1.1倍)
-function estimateHeight(t: PlanText, fontSize: number, w: number): number {
-  const perLine = Math.max(1, Math.floor(w / (fontSize * 1.1)));
-  const lines = Math.ceil(t.text.length / perLine);
-  const lh = t.role === "title" || t.role === "stat" ? 1.35 : 1.6;
-  return Math.ceil(lines * fontSize * lh);
+export const DEFAULT_ZONE: Zone = { x: 96, y: 110, w: 660, h: 510 };
+
+export function sanitizeZone(z: unknown): Zone | null {
+  if (!z || typeof z !== "object") return null;
+  const o = z as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+  const rx = num(o.x);
+  const ry = num(o.y);
+  const rw = num(o.w);
+  const rh = num(o.h);
+  if ([rx, ry, rw, rh].some(Number.isNaN)) return null;
+  const x = clamp(Math.round(rx), 32, SLIDE_W - 392);
+  const y = clamp(Math.round(ry), 32, SLIDE_H - 272);
+  const w = clamp(Math.round(rw), 360, SLIDE_W - x - 32);
+  const h = clamp(Math.round(rh), 240, SLIDE_H - y - 32);
+  return { x, y, w, h };
+}
+
+// 全角≈1.05em(字間・括弧込み)、半角≈0.55em として行幅を実測に近づける
+function textEm(s: string): number {
+  let em = 0;
+  for (const ch of s) {
+    em += /[ -ÿ｡-ﾟ]/.test(ch) ? 0.55 : 1.05;
+  }
+  return em;
+}
+
+function linesFor(text: string, fontSize: number, width: number): number {
+  const emPerLine = Math.max(1, width / fontSize);
+  return text
+    .split("\n")
+    .reduce((acc, seg) => acc + Math.max(1, Math.ceil(textEm(seg) / emPerLine)), 0);
+}
+
+interface RoleSpec {
+  size: number;
+  weight: number;
+  lh: number;
+  gap: number; // 次の要素までの間隔
+}
+
+function specFor(t: PlanText, zoneW: number): RoleSpec {
+  switch (t.role) {
+    case "kicker":
+      return { size: 15, weight: 700, lh: 1.4, gap: 22 };
+    case "label":
+      return { size: 14, weight: 700, lh: 1.5, gap: 12 };
+    case "title": {
+      // 3行以内に収まる最大サイズをスケールから選ぶ
+      const w = Math.min(zoneW, 760);
+      const steps = [68, 60, 52, 46, 40, 36];
+      const size = steps.find((s) => linesFor(t.text, s, w) <= 3) ?? 36;
+      return { size, weight: 900, lh: 1.3, gap: 26 };
+    }
+    case "subtitle":
+      return { size: textEm(t.text) > 30 ? 20 : 24, weight: 500, lh: 1.55, gap: 18 };
+    case "stat":
+      // 巨大数字は短いstatのときだけ。文章statは強調本文として組む
+      return textEm(t.text) <= 14
+        ? { size: 80, weight: 900, lh: 1.15, gap: 20 }
+        : { size: 22, weight: 700, lh: 1.5, gap: 16 };
+    default: // body
+      return { size: 18, weight: 400, lh: 1.7, gap: 14 };
+  }
+}
+
+function roleRank(role: string): number {
+  if (role === "kicker") return 0;
+  if (role === "title") return 1;
+  if (role === "subtitle") return 2;
+  if (role === "label") return 4; // 注釈は最後
+  return 3; // body / stat は元の順序
+}
+
+export function typesetZone(texts: PlanText[], zone: Zone): Placement[] {
+  const ordered = texts
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => roleRank(a.t.role) - roleRank(b.t.role) || a.i - b.i);
+
+  // ゾーンが画面中央付近の広い領域なら中央揃え、それ以外は左揃え
+  const centerX = zone.x + zone.w / 2;
+  const centered = Math.abs(centerX - SLIDE_W / 2) < 140 && zone.x > 180 && zone.w > 560;
+
+  const build = (scale: number) => {
+    let y = zone.y;
+    const items: Placement[] = [];
+    for (const { t, i } of ordered) {
+      const spec = specFor(t, zone.w);
+      const size = Math.max(12, Math.round(spec.size * scale));
+      // 可読性のため行長を抑える(見出しは広め、本文は約36文字相当まで)
+      const w = Math.min(zone.w, t.role === "title" || t.role === "stat" ? 760 : 660);
+      const h = Math.ceil(linesFor(t.text, size, w) * size * spec.lh) + 6;
+      items.push({
+        index: i,
+        x: centered ? zone.x + Math.round((zone.w - w) / 2) : zone.x,
+        y,
+        w,
+        h,
+        fontSizePx: size,
+        fontWeight: spec.weight,
+        align: centered ? "center" : "left",
+        colorHex: "",
+        lh: spec.lh,
+      });
+      y += h + Math.round(spec.gap * scale);
+    }
+    return { items, bottom: y };
+  };
+
+  let scale = 1;
+  let r = build(scale);
+  while (r.bottom - zone.y > zone.h && scale > 0.72) {
+    scale -= 0.07;
+    r = build(scale);
+  }
+  // 余りが大きければ1/3だけ下げて光学的に落ち着かせる
+  const slack = zone.h - (r.bottom - zone.y);
+  if (slack > 60) {
+    const off = Math.min(Math.round(slack / 3), 70);
+    for (const p of r.items) p.y += off;
+  }
+  return r.items;
 }
 
 // ---- コントラスト保証 ----------------------------------------------------
@@ -444,38 +518,17 @@ function placementToEl(p: Placement, t: PlanText): TextEl {
     fontWeight: p.fontWeight,
     color: /^#[0-9a-fA-F]{6}$/.test(p.colorHex) ? p.colorHex : "#FFFFFF",
     align: p.align ?? "left",
-    lineHeight: isHeading ? 1.35 : 1.6,
+    lineHeight: p.lh ?? (isHeading ? 1.35 : 1.6),
     letterSpacing: t.role === "kicker" ? 3 : undefined,
     font: isHeading ? "heading" : "body",
     name: t.role,
   };
 }
 
-// ビジョン解析が失敗したときの安全なデフォルト配置
+// 画像生成自体が失敗したとき(背景なし)の安全なデフォルト配置。
+// 同じ文字組エンジンを既定ゾーンに適用し、指定色で組む
 function fallbackLayout(texts: PlanText[], color = "#1B2421"): TextEl[] {
-  let y = 180;
-  return texts.map((t) => {
-    const isTitle = t.role === "title";
-    const fontSize = isTitle ? 56 : t.role === "kicker" ? 14 : 18;
-    const h = isTitle ? 160 : 60;
-    const el: TextEl = {
-      id: uid(),
-      type: "text",
-      text: t.text,
-      x: 80,
-      y,
-      w: 1120,
-      h,
-      fontSize,
-      fontWeight: isTitle ? 900 : t.role === "kicker" ? 700 : 400,
-      color,
-      align: "left",
-      lineHeight: isTitle ? 1.35 : 1.6,
-      letterSpacing: t.role === "kicker" ? 3 : undefined,
-      font: isTitle ? "heading" : "body",
-      name: t.role,
-    };
-    y += h + 24;
-    return el;
-  });
+  return typesetZone(texts, DEFAULT_ZONE).map((p) =>
+    placementToEl({ ...p, colorHex: color }, texts[p.index]),
+  );
 }

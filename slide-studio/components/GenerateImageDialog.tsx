@@ -24,7 +24,9 @@ export function GenerateImageDialog({ onClose }: { onClose: () => void }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
-      addElement(imageElementFor(data.url, data.width, data.height));
+      const { deck, selectedSlideId } = useEditor.getState();
+      const avoid = deck.slides.find((s) => s.id === selectedSlideId)?.elements ?? [];
+      addElement(imageElementFor(data.url, data.width, data.height, 0, avoid));
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成に失敗しました");

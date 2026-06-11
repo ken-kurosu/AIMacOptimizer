@@ -64,7 +64,10 @@ lib/mock.ts         APIキーなしで動くデモ用デッキジェネレータ
 lib/normalize.ts    LLM出力/インポートJSONの正規化(壊れたJSONも描画可能に倒す)
 lib/store.ts        Zustandストア(履歴Undo/Redo + localStorage永続化)
 lib/openai.ts       OpenAI APIラッパー(モデルIDを実行時に自動解決)
-lib/image2Pipeline.ts カンプ先行パイプライン(計画→背景画像→ビジョン配置→決定的補正)
+lib/image2Pipeline.ts カンプ先行パイプライン(計画→背景画像→余白ゾーン特定→決定的組版)
+                    ビジョンモデルの役割は「最も空いている領域」の特定と文字混入検知のみ。
+                    文字組(サイズ・行数・間隔・整列)は全角/半角を区別した実測見積もりで
+                    決定的に行い、コントラストは背景輝度の実測で保証する
 components/
   SlideRenderer.tsx エディタ/サムネイル/印刷で共有する描画コア
   PresetBackground  手続き生成SVG背景(テーマカラー追従の装飾レイヤー)

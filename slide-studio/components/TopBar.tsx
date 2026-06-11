@@ -64,9 +64,11 @@ export function TopBar() {
     if (images.length === 0) return;
     setUploading(true);
     try {
+      const { deck: d, selectedSlideId } = useEditor.getState();
+      const avoid = d.slides.find((s) => s.id === selectedSlideId)?.elements ?? [];
       for (let i = 0; i < images.length; i++) {
         const { url, width, height } = await uploadImageFile(images[i]);
-        addElement(imageElementFor(url, width, height, i));
+        addElement(imageElementFor(url, width, height, i, avoid));
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : "アップロードに失敗しました");

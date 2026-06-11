@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:contrast": "tsx scripts/verify-contrast.ts"
+    "test:contrast": "tsx scripts/verify-contrast.ts",
+    "test:typeset": "tsx scripts/verify-typeset.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.1",

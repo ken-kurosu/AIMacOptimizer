@@ -28,6 +28,7 @@ One free-text prompt ("what do you want to tell, to whom") goes through a multi-
 
 ## Everything stays editable
 
+- **Bilingual UI** — English / Japanese chrome, auto-detected from the browser with a one-click toggle; generated deck content follows the language of your prompt
 - Drag, resize (8 handles + numeric), inline-edit any element; snap guides, undo/redo, design tokens (change a theme color, every page follows)
 - **Per-element AI edits** — rewrite one text block ("shorter, punchier") at constant layout, or regenerate one image in place
 - **Per-page regeneration** — redo a page's background and layout while keeping its content; or add a new AI-designed page matching the deck's theme

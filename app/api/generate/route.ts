@@ -14,6 +14,7 @@ interface Brief {
   tone?: string;
   notes?: string;
   references?: string[];
+  lang?: "ja" | "en"; // デモ生成の言語
   engine?: "image2" | "structured";
   plan?: DeckPlan; // 承認済みの構成案(レビュー後の生成)。あれば計画工程をスキップ
 }
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
     if (!openaiAvailable()) {
       return Response.json({
         mode: "demo",
-        warning: "OPENAI_API_KEY が未設定のため image2 生成は使えません",
+        warning: "OPENAI_API_KEY is not configured — generated with the demo generator instead",
         deck: generateMockDeck({ ...brief, pages }),
       });
     }

@@ -16,7 +16,7 @@ const REMOVE_BG_PROMPT =
 
 export async function POST(req: Request) {
   if (!openaiAvailable()) {
-    return Response.json({ error: "OPENAI_API_KEY が未設定です" }, { status: 400 });
+    return Response.json({ error: "OPENAI_API_KEY is not configured" }, { status: 400 });
   }
   let src: string;
   try {
@@ -28,19 +28,19 @@ export async function POST(req: Request) {
   const assetId = src.match(/^\/api\/assets\/([a-zA-Z0-9_-]+)$/)?.[1];
   if (!assetId) {
     return Response.json(
-      { error: "アップロード/AI生成した画像(/api/assets/...)のみ編集できます" },
+      { error: "only uploaded/generated images (/api/assets/...) can be edited" },
       { status: 400 },
     );
   }
   const image = await readAsset(assetId);
-  if (!image) return Response.json({ error: "画像が見つかりません" }, { status: 404 });
+  if (!image) return Response.json({ error: "image not found" }, { status: 404 });
 
   try {
     // 透過出力に対応するモデル(gpt-image-1系)を新しい順に試す
     const models = await pickTransparentImageModels();
     if (models.length === 0) {
       return Response.json(
-        { error: "このAPIキーでは透過対応の画像編集モデルが使えません" },
+        { error: "no transparency-capable image edit model is available for this API key" },
         { status: 400 },
       );
     }

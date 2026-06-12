@@ -79,7 +79,7 @@ export async function POST(req: Request) {
       throw new Error("no input");
     }
   } catch {
-    return Response.json({ error: "topic か plan か deck が必要です" }, { status: 400 });
+    return Response.json({ error: "one of topic / plan / deck is required" }, { status: 400 });
   }
   const origin = new URL(req.url).origin;
 

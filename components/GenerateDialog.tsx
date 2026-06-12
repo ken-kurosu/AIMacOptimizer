@@ -4,6 +4,7 @@ import React, { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
 import { uploadImageFile } from "@/lib/upload";
+import { MessageKey, getLocale, useT } from "@/lib/i18n";
 
 // 生成ダイアログ(2ステップ)。
 //  1. 入力: 「内容(自由記述)・ページ数・参考画像(任意)」の3つだけ
@@ -27,15 +28,16 @@ interface DeckPlan {
   pages?: PlanPage[];
 }
 
-const SPACE_LABELS: Record<string, string> = {
-  left: "テキストは左",
-  right: "テキストは右",
-  top: "テキストは上",
-  bottom: "テキストは下",
-  center: "テキストは中央",
+const SPACE_LABEL_KEYS: Record<string, MessageKey> = {
+  left: "spaceLeft",
+  right: "spaceRight",
+  top: "spaceTop",
+  bottom: "spaceBottom",
+  center: "spaceCenter",
 };
 
 export function GenerateDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const setDeck = useEditor((s) => s.setDeck);
   const [step, setStep] = useState<"input" | "review">("input");
   const [topic, setTopic] = useState("");
@@ -62,7 +64,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       for (const f of images) urls.push((await uploadImageFile(f)).url);
       setRefs((prev) => [...prev, ...urls].slice(0, 3));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "画像のアップロードに失敗しました");
+      setError(e instanceof Error ? e.message : t("uploadFailed"));
     } finally {
       setRefUploading(false);
     }
@@ -90,13 +92,13 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
         await generate(null);
         return;
       }
-      if (!res.ok) throw new Error(data.error ?? `構成案の作成に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("planFailed")} (${res.status})`);
       setPlan(data.plan);
       setPlanModel(data.model ?? "");
       setFeedback("");
       setStep("review");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "構成案の作成に失敗しました");
+      setError(e instanceof Error ? e.message : t("planFailed"));
     } finally {
       setPlanning(false);
     }
@@ -115,21 +117,22 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
           topic,
           pages,
           engine: "image2",
+          lang: getLocale(),
           references: refs.length > 0 ? refs : undefined,
           plan: approvedPlan ?? undefined,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("generateFailed")} (${res.status})`);
       setDeck(normalizeDeck(data.deck));
       if (data.mode === "demo") {
-        setNotice(data.warning ?? "APIキーが未設定のため、デモ生成で作成しました。");
+        setNotice(data.warning ?? t("demoNotice"));
         setTimeout(onClose, 2500);
       } else {
         onClose();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "生成に失敗しました");
+      setError(e instanceof Error ? e.message : t("generateFailed"));
     } finally {
       setLoading(false);
     }
@@ -148,9 +151,9 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       >
         {step === "input" ? (
           <>
-            <h2 className="mb-1 text-lg font-bold">新しい資料を作る</h2>
+            <h2 className="mb-1 text-lg font-bold">{t("gdTitle")}</h2>
             <p className="mb-4 text-xs text-neutral-500">
-              内容を書くと、まず構成案が出ます。確認してOKなら生成に進みます。
+              {t("gdIntro")}
             </p>
 
             <textarea
@@ -158,17 +161,13 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               rows={5}
-              placeholder={
-                "どんな資料を作りたいか、自由に書いてください。\n" +
-                "誰向けか・トーン・必ず入れたい数字や構成があれば一緒に。\n\n" +
-                "例: 自家焙煎コーヒー定期便の紹介資料。在宅ワーカー向けに上品なトーンで。月額980円(税込)は必ず載せる"
-              }
+              placeholder={t("gdPlaceholder")}
               className="mb-3 w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm leading-relaxed"
             />
 
             <div className="mb-5 flex items-center justify-between">
               <label className="flex items-center gap-2 text-xs text-neutral-600">
-                ページ数
+                {t("pagesLabel")}
                 <input
                   type="number"
                   min={3}
@@ -201,10 +200,10 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                   <button
                     onClick={() => refInput.current?.click()}
                     disabled={refUploading}
-                    title="ブランド資料やトンマナの近い画像を渡すと、配色・雰囲気の参考にします"
+                    title={t("refTitle")}
                     className="rounded-lg border border-dashed border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
                   >
-                    {refUploading ? "追加中…" : "+ 参考画像"}
+                    {refUploading ? t("refUploading") : t("addRef")}
                   </button>
                 )}
                 <input
@@ -230,22 +229,22 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 disabled={busy}
                 className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
               >
-                キャンセル
+                {t("cancel")}
               </button>
               <button
                 onClick={() => makePlan(false)}
                 disabled={busy || !topic.trim()}
                 className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
               >
-                {planning ? "構成を考えています…(30秒〜1分)" : loading ? "生成中…" : "構成案を見る"}
+                {planning ? t("planning") : loading ? t("generatingShort") : t("makePlan")}
               </button>
             </div>
           </>
         ) : (
           <>
-            <h2 className="mb-0.5 text-lg font-bold">{plan?.title || "構成案"}</h2>
+            <h2 className="mb-0.5 text-lg font-bold">{plan?.title || t("planFallbackTitle")}</h2>
             <div className="mb-3 flex items-center gap-2 text-xs text-neutral-500">
-              <span>この内容で{plan?.pages?.length ?? 0}ページ生成します</span>
+              <span>{t("reviewCount", { n: plan?.pages?.length ?? 0 })}</span>
               {plan?.theme?.colors && (
                 <span className="flex items-center gap-1">
                   {["brand", "accent", "bg", "ink"].map((k) => (
@@ -257,7 +256,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                   ))}
                 </span>
               )}
-              {planModel && <span className="text-neutral-300">構成: {planModel}</span>}
+              {planModel && <span className="text-neutral-300">{t("planBy")} {planModel}</span>}
             </div>
 
             <div className="mb-3 max-h-[340px] space-y-2 overflow-y-auto pr-1">
@@ -270,7 +269,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                       className="ml-auto min-w-0 truncate text-[10px] text-neutral-400"
                       title={p.motif}
                     >
-                      {SPACE_LABELS[p.space ?? ""] ?? ""}
+                      {p.space && SPACE_LABEL_KEYS[p.space] ? t(SPACE_LABEL_KEYS[p.space]) : ""}
                       {p.motif ? `・${p.motif}` : ""}
                     </span>
                   </div>
@@ -289,7 +288,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
               type="text"
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
-              placeholder="修正したい点があれば書いて「作り直す」(例: 3ページ目は事例紹介にして)"
+              placeholder={t("feedbackPlaceholder")}
               className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs"
             />
 
@@ -301,7 +300,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 disabled={busy}
                 className="rounded-lg px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
               >
-                ← 入力に戻る
+                {t("backToInput")}
               </button>
               <div className="flex gap-2">
                 <button
@@ -309,14 +308,14 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                   disabled={busy}
                   className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
                 >
-                  {planning ? "作り直し中…" : "作り直す"}
+                  {planning ? t("remaking") : t("remake")}
                 </button>
                 <button
                   onClick={() => generate(plan)}
                   disabled={busy}
                   className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
                 >
-                  {loading ? "生成中…(1ページ約1分)" : "この構成で生成する"}
+                  {loading ? t("generatingLong") : t("approveGenerate")}
                 </button>
               </div>
             </div>

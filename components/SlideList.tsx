@@ -4,8 +4,10 @@ import React, { useState } from "react";
 import { useEditor } from "@/lib/store";
 import { Slide } from "@/lib/types";
 import { ScaledSlide } from "./SlideRenderer";
+import { useT } from "@/lib/i18n";
 
 export function SlideList() {
+  const t = useT();
   const deck = useEditor((s) => s.deck);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
   const select = useEditor((s) => s.select);
@@ -40,10 +42,10 @@ export function SlideList() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `再生成に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("regenFailed")} (${res.status})`);
       replaceSlide(slide.id, data.slide as Slide);
     } catch (e) {
-      setRegenError(e instanceof Error ? e.message : "再生成に失敗しました");
+      setRegenError(e instanceof Error ? e.message : t("regenFailed"));
     } finally {
       setRegenId(null);
     }
@@ -52,20 +54,20 @@ export function SlideList() {
   return (
     <div className="flex h-full w-56 shrink-0 flex-col border-r border-neutral-200 bg-white">
       <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2">
-        <span className="text-xs font-bold text-neutral-500">ページ</span>
+        <span className="text-xs font-bold text-neutral-500">{t("pages")}</span>
         <div className="flex gap-1">
           <button
             onClick={() => setAiAddOpen(true)}
-            title="内容を書くと、デッキのテーマに合わせてAIがページを1枚生成します"
+            title={t("aiAddBtnTitle")}
             className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
           >
-            ✦ AI
+            {t("aiAddBtn")}
           </button>
           <button
             onClick={() => addSlide(undefined, selectedSlideId)}
             className="rounded bg-neutral-900 px-2 py-1 text-xs font-medium text-white hover:bg-neutral-700"
           >
-            + 追加
+            {t("addPage")}
           </button>
         </div>
       </div>
@@ -99,7 +101,7 @@ export function SlideList() {
               <ScaledSlide slide={slide} theme={deck.theme} width={192} />
               {regenId === slide.id && (
                 <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-[11px] font-medium text-neutral-600">
-                  <span className="animate-pulse">再デザイン中…</span>
+                  <span className="animate-pulse">{t("regenerating")}</span>
                 </div>
               )}
             </div>
@@ -108,16 +110,16 @@ export function SlideList() {
                 {i + 1}. {slide.name}
               </span>
               <div className="flex gap-0.5 opacity-0 transition group-hover:opacity-100">
-                <MiniBtn title="上へ" onClick={() => moveSlide(slide.id, -1)}>↑</MiniBtn>
-                <MiniBtn title="下へ" onClick={() => moveSlide(slide.id, 1)}>↓</MiniBtn>
+                <MiniBtn title={t("moveUp")} onClick={() => moveSlide(slide.id, -1)}>↑</MiniBtn>
+                <MiniBtn title={t("moveDown")} onClick={() => moveSlide(slide.id, 1)}>↓</MiniBtn>
                 <MiniBtn
-                  title="このページをAIで再デザイン(テキストは維持)"
+                  title={t("regenTitle")}
                   onClick={() => regenerate(slide)}
                 >
                   ✦
                 </MiniBtn>
-                <MiniBtn title="複製" onClick={() => duplicateSlide(slide.id)}>⧉</MiniBtn>
-                <MiniBtn title="削除" onClick={() => deleteSlide(slide.id)}>✕</MiniBtn>
+                <MiniBtn title={t("duplicate")} onClick={() => duplicateSlide(slide.id)}>⧉</MiniBtn>
+                <MiniBtn title={t("del")} onClick={() => deleteSlide(slide.id)}>✕</MiniBtn>
               </div>
             </div>
           </div>
@@ -139,6 +141,7 @@ function AiAddDialog({
   onClose: () => void;
   onCreated: (slide: Slide) => void;
 }) {
+  const t = useT();
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,10 +156,10 @@ function AiAddDialog({
         body: JSON.stringify({ topic, theme, page: { description } }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("generateFailed")} (${res.status})`);
       onCreated(data.slide as Slide);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "生成に失敗しました");
+      setError(e instanceof Error ? e.message : t("generateFailed"));
       setLoading(false);
     }
   };
@@ -170,16 +173,16 @@ function AiAddDialog({
         className="w-[420px] rounded-2xl bg-white p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-base font-bold">AIでページを追加</h3>
+        <h3 className="mb-1 text-base font-bold">{t("aiAddTitle2")}</h3>
         <p className="mb-3 text-xs text-neutral-500">
-          デッキのテーマ(配色・トーン)に合わせて、背景デザイン込みの1ページを生成します。
+          {t("aiAddIntro")}
         </p>
         <textarea
           autoFocus
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
-          placeholder="例: 導入スケジュールを3フェーズで説明するページ。各フェーズの期間と到達目標を載せる"
+          placeholder={t("aiAddPlaceholder")}
           className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
         />
         {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
@@ -189,14 +192,14 @@ function AiAddDialog({
             disabled={loading}
             className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
           >
-            キャンセル
+            {t("cancel")}
           </button>
           <button
             onClick={create}
             disabled={loading || !description.trim()}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
           >
-            {loading ? "生成中…(1〜2分)" : "生成して追加"}
+            {loading ? t("aiAddCreating") : t("aiAddCreate")}
           </button>
         </div>
       </div>

@@ -3,19 +3,21 @@
 import React from "react";
 import { ColorKey } from "@/lib/types";
 import { useEditor } from "@/lib/store";
-import { COLOR_LABELS, FONT_OPTIONS, THEME_PRESETS } from "@/lib/theme";
+import { FONT_OPTIONS, THEME_PRESETS } from "@/lib/theme";
+import { COLOR_LABEL_KEYS, useT } from "@/lib/i18n";
 
 // テーマトークンパネル。色を変えると token 参照している全要素・全ページに即時反映される。
 export function ThemePanel() {
+  const t = useT();
   const theme = useEditor((s) => s.deck.theme);
   const updateTheme = useEditor((s) => s.updateTheme);
 
   return (
     <div className="flex h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-neutral-200 bg-white">
-      <div className="border-b border-neutral-200 px-4 py-3 text-sm font-bold">テーマ</div>
+      <div className="border-b border-neutral-200 px-4 py-3 text-sm font-bold">{t("themeTitle")}</div>
 
       <div className="border-b border-neutral-200 px-4 py-3">
-        <div className="mb-2 text-[11px] font-bold tracking-wider text-neutral-400">プリセット</div>
+        <div className="mb-2 text-[11px] font-bold tracking-wider text-neutral-400">{t("presets")}</div>
         <div className="grid grid-cols-2 gap-2">
           {THEME_PRESETS.map((p) => (
             <button
@@ -42,12 +44,12 @@ export function ThemePanel() {
 
       <div className="border-b border-neutral-200 px-4 py-3">
         <div className="mb-2 text-[11px] font-bold tracking-wider text-neutral-400">
-          カラートークン
+          {t("colorTokens")}
         </div>
         <div className="space-y-1.5">
           {(Object.keys(theme.colors) as ColorKey[]).map((key) => (
             <label key={key} className="flex items-center justify-between text-xs text-neutral-600">
-              <span>{COLOR_LABELS[key] ?? key}</span>
+              <span>{COLOR_LABEL_KEYS[key] ? t(COLOR_LABEL_KEYS[key]) : key}</span>
               <span className="flex items-center gap-2">
                 <span className="font-mono text-[10px] text-neutral-400">
                   {theme.colors[key].toUpperCase()}

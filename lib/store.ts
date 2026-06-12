@@ -48,7 +48,15 @@ function cloneDeck(deck: Deck): Deck {
   return structuredClone(deck);
 }
 
-const initialDeck = generateMockDeck({ topic: "CompDeck へようこそ", pages: 6 });
+const initialLang =
+  typeof navigator !== "undefined" && !navigator.language?.toLowerCase().startsWith("ja")
+    ? ("en" as const)
+    : ("ja" as const);
+const initialDeck = generateMockDeck({
+  topic: initialLang === "en" ? "Welcome to CompDeck" : "CompDeck へようこそ",
+  pages: 6,
+  lang: initialLang,
+});
 
 export const useEditor = create<EditorState>()(
   persist(

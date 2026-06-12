@@ -7,8 +7,11 @@ import { GenerateImageDialog } from "./GenerateImageDialog";
 import { DeckLibraryDialog } from "./DeckLibraryDialog";
 import { ShapeEl, TextEl, uid } from "@/lib/types";
 import { imageElementFor, uploadImageFile } from "@/lib/upload";
+import { useT, useLocale, setLocale } from "@/lib/i18n";
 
 export function TopBar() {
+  const t = useT();
+  const locale = useLocale();
   const deck = useEditor((s) => s.deck);
   const commit = useEditor((s) => s.commit);
   const undo = useEditor((s) => s.undo);
@@ -71,7 +74,7 @@ export function TopBar() {
         addElement(imageElementFor(url, width, height, i, avoid));
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "アップロードに失敗しました");
+      alert(e instanceof Error ? e.message : t("uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -112,17 +115,25 @@ export function TopBar() {
         className="w-56 rounded px-2 py-1 text-sm font-medium hover:bg-neutral-100 focus:bg-neutral-100 focus:outline-none"
       />
 
+      <button
+        onClick={() => setLocale(locale === "ja" ? "en" : "ja")}
+        title={locale === "ja" ? "Switch to English" : "日本語に切り替え"}
+        className="rounded px-1.5 py-1 text-[10px] font-bold tracking-wider text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+      >
+        {locale === "ja" ? "EN" : "JA"}
+      </button>
+
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
-      <ToolButton onClick={() => addText("heading")} label="見出し" />
-      <ToolButton onClick={() => addText("body")} label="テキスト" />
-      <ToolButton onClick={() => addShape("rect")} label="□" title="四角形" />
-      <ToolButton onClick={() => addShape("ellipse")} label="○" title="円" />
-      <ToolButton onClick={() => addShape("line")} label="—" title="線" />
+      <ToolButton onClick={() => addText("heading")} label={t("heading")} />
+      <ToolButton onClick={() => addText("body")} label={t("text")} />
+      <ToolButton onClick={() => addShape("rect")} label="□" title={t("rectTitle")} />
+      <ToolButton onClick={() => addShape("ellipse")} label="○" title={t("ellipseTitle")} />
+      <ToolButton onClick={() => addShape("line")} label="—" title={t("lineTitle")} />
       <ToolButton
         onClick={() => imageRef.current?.click()}
-        label={uploading ? "アップロード中…" : "画像"}
-        title="画像をアップロードして配置(キャンバスへのドラッグ&ドロップも可)"
+        label={uploading ? t("imageUploading") : t("image")}
+        title={t("imageTitle")}
         disabled={uploading}
       />
       <input
@@ -136,38 +147,38 @@ export function TopBar() {
           e.target.value = "";
         }}
       />
-      <ToolButton onClick={() => setShowGenImage(true)} label="✦画像" title="AIで画像パーツを生成して配置" />
+      <ToolButton onClick={() => setShowGenImage(true)} label={t("aiImage")} title={t("aiImageTitle")} />
 
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
-      <ToolButton onClick={undo} label="↩︎" title="元に戻す (Ctrl+Z)" disabled={!canUndo} />
-      <ToolButton onClick={redo} label="↪︎" title="やり直す (Ctrl+Shift+Z)" disabled={!canRedo} />
+      <ToolButton onClick={undo} label="↩︎" title={t("undoTitle")} disabled={!canUndo} />
+      <ToolButton onClick={redo} label="↪︎" title={t("redoTitle")} disabled={!canRedo} />
 
       <div className="flex-1" />
 
       <button
         onClick={() => setShowGenerate(true)}
-        title="作りたい内容を書くと、AIが構成案→デザイン込みのデッキを自動作成します"
+        title={t("createDeckTitle")}
         className="rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-4 py-1.5 text-sm font-bold text-white shadow hover:opacity-90"
       >
-        ✦ 資料を作る
+        {t("createDeck")}
       </button>
 
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
       <ToolButton
         onClick={() => setShowLibrary(true)}
-        label="デッキ"
-        title="デッキの切り替え・共有リンク・ファイル保存/読み込みはここから"
+        label={t("deckBtn")}
+        title={t("deckBtnTitle")}
       />
 
       <button
         onClick={exportPdf}
         disabled={exporting}
-        title="Chromeを自動検出してワンクリックでPDF化。使えない環境では印刷ビューが開きます"
+        title={t("exportPdfTitle")}
         className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-bold text-white hover:bg-neutral-700 disabled:opacity-50"
       >
-        {exporting ? "書き出し中…" : "PDF書き出し"}
+        {exporting ? t("exportPdfBusy") : t("exportPdf")}
       </button>
 
       {showGenerate && <GenerateDialog onClose={() => setShowGenerate(false)} />}

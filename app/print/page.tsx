@@ -5,6 +5,7 @@ import { Deck } from "@/lib/types";
 import { normalizeDeck } from "@/lib/normalize";
 import { STORAGE_KEY } from "@/lib/store";
 import { SlideRenderer } from "@/components/SlideRenderer";
+import { useT } from "@/lib/i18n";
 
 // サーバーサイドPDF書き出し時はヘッドレスブラウザが ?deck=<id> 付きで開く
 function exportDeckId(): string | null {
@@ -36,6 +37,7 @@ function readDeckSnapshot(): Deck | null {
 // 印刷ビュー: 全スライドを1280x720の実寸ページとして縦に並べる。
 // ブラウザの「印刷 → PDFに保存」でリンク付き・ベクターテキストのPDFになる。
 export default function PrintPage() {
+  const t = useT();
   const storedDeck = useSyncExternalStore(subscribeStorage, readDeckSnapshot, () => null);
   const hydrated = useSyncExternalStore(subscribeStorage, () => true, () => false);
   const exportMode = useSyncExternalStore(
@@ -74,7 +76,7 @@ export default function PrintPage() {
   if (error) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-neutral-500">
-        デッキが見つかりません。エディタで作成してから再度開いてください。
+        {t("printNoDeck")}
       </div>
     );
   }
@@ -87,17 +89,17 @@ export default function PrintPage() {
           onClick={() => window.print()}
           className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-bold text-white shadow-lg"
         >
-          印刷 / PDFに保存
+          {t("printSave")}
         </button>
         <button
           onClick={() => window.close()}
           className="rounded-lg bg-white px-4 py-2 text-sm text-neutral-600 shadow-lg"
         >
-          閉じる
+          {t("close")}
         </button>
       </div>
       <div className="no-print bg-amber-50 px-6 py-3 text-xs text-amber-700">
-        印刷ダイアログで「送信先: PDFに保存」「余白: なし」「背景のグラフィック: ON」を選択してください。ハイパーリンク(外部・ページ内)はPDFに保持されます。
+        {t("printHint")}
       </div>
       {deck.slides.map((slide) => (
         <div key={slide.id} id={slide.id} className="print-slide" style={{ width: 1280, height: 720 }}>

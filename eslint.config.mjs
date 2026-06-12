@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // pm2の設定はCommonJS必須
+    "scripts/ecosystem.config.cjs",
   ]),
 ]);
 

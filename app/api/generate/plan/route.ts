@@ -20,14 +20,14 @@ interface PlanBrief {
 
 export async function POST(req: Request) {
   if (!openaiAvailable()) {
-    return Response.json({ error: "OPENAI_API_KEY が未設定です" }, { status: 400 });
+    return Response.json({ error: "OPENAI_API_KEY is not configured" }, { status: 400 });
   }
   let brief: PlanBrief;
   try {
     brief = (await req.json()) as PlanBrief;
     if (!brief.topic?.trim()) throw new Error("no topic");
   } catch {
-    return Response.json({ error: "topic が必要です" }, { status: 400 });
+    return Response.json({ error: "topic is required" }, { status: 400 });
   }
   try {
     const plan = await makeDeckPlan(

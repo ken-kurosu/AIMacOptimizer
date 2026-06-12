@@ -30,7 +30,7 @@ export function proxy(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   return new NextResponse(
-    "アクセスするには ?token=<共有されたトークン> を付けてこのURLを開いてください。",
+    "Access requires a token: open this URL once with ?token=<shared token> appended.\nアクセスするには ?token=<共有されたトークン> を付けてこのURLを一度開いてください。",
     { status: 401, headers: { "Content-Type": "text/plain; charset=utf-8" } },
   );
 }

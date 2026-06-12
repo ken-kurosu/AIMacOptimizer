@@ -102,11 +102,11 @@ function imageContent(jpeg: Buffer) {
 
 export async function importPdfDeck(pdf: Buffer): Promise<Deck> {
   const pages = await rasterize(pdf);
-  if (pages.length === 0) throw new Error("PDFにページがありません");
+  if (pages.length === 0) throw new Error("the PDF has no pages");
   const textModel = await pickTextModel();
   const editModels = await pickTransparentImageModels(); // editsはgpt-image-1系が安定
   const editModel = editModels[0];
-  if (!editModel) throw new Error("画像編集モデルが使えません");
+  if (!editModel) throw new Error("no image edit model is available");
 
   // テーマは1ページ目から抽出
   const firstSmall = await sharp(pages[0]).resize(800, 450).jpeg({ quality: 80 }).toBuffer();

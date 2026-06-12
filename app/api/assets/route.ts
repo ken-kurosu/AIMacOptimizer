@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const buf = Buffer.from(await req.arrayBuffer());
   if (buf.length === 0) return Response.json({ error: "empty body" }, { status: 400 });
   if (buf.length > MAX_BYTES) {
-    return Response.json({ error: "画像が大きすぎます(20MBまで)" }, { status: 413 });
+    return Response.json({ error: "image too large (max 20MB)" }, { status: 413 });
   }
   try {
     let img = sharp(buf, { animated: false });
@@ -27,6 +27,6 @@ export async function POST(req: Request) {
     const url = await saveAsset(id, await img.png().toBuffer());
     return Response.json({ url, width, height });
   } catch {
-    return Response.json({ error: "画像として読み込めませんでした" }, { status: 400 });
+    return Response.json({ error: "could not read the file as an image" }, { status: 400 });
   }
 }

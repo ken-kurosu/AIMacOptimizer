@@ -214,7 +214,7 @@ export function Canvas() {
         addElement(imageElementFor(url, width, height, i, avoid));
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : "アップロードに失敗しました");
+      alert(err instanceof Error ? err.message : "Upload failed");
     }
   };
 

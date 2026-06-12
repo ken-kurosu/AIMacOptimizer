@@ -8,15 +8,15 @@ const MAX_BYTES = 40 * 1024 * 1024;
 
 export async function POST(req: Request) {
   if (!openaiAvailable()) {
-    return Response.json({ error: "PDFの分解には OPENAI_API_KEY が必要です" }, { status: 400 });
+    return Response.json({ error: "PDF import requires OPENAI_API_KEY" }, { status: 400 });
   }
   const buf = Buffer.from(await req.arrayBuffer());
   if (buf.length === 0) return Response.json({ error: "empty body" }, { status: 400 });
   if (buf.length > MAX_BYTES) {
-    return Response.json({ error: "PDFが大きすぎます(40MBまで)" }, { status: 413 });
+    return Response.json({ error: "PDF too large (max 40MB)" }, { status: 413 });
   }
   if (!buf.subarray(0, 5).toString("latin1").startsWith("%PDF-")) {
-    return Response.json({ error: "PDFファイルではありません" }, { status: 400 });
+    return Response.json({ error: "not a PDF file" }, { status: 400 });
   }
   try {
     const deck = await importPdfDeck(buf);

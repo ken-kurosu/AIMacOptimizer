@@ -6,6 +6,8 @@ export const FONT_OPTIONS: { label: string; value: string }[] = [
   { label: "Zen Kaku Gothic New", value: "'Zen Kaku Gothic New', sans-serif" },
   { label: "M PLUS Rounded 1c", value: "'M PLUS Rounded 1c', sans-serif" },
   { label: "Shippori Mincho", value: "'Shippori Mincho', serif" },
+  { label: "Inter", value: "'Inter', sans-serif" },
+  { label: "Playfair Display", value: "'Playfair Display', serif" },
 ];
 
 export const COLOR_LABELS: Record<string, string> = {

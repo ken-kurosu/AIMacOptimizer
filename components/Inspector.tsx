@@ -12,22 +12,9 @@ import {
   uid,
 } from "@/lib/types";
 import { useEditor, useSelectedSlide } from "@/lib/store";
-import { COLOR_LABELS } from "@/lib/theme";
+import { PRESET_LABEL_KEYS, COLOR_LABEL_KEYS, useT } from "@/lib/i18n";
 
-const PRESET_LABELS: Record<BackgroundPreset, string> = {
-  none: "なし",
-  mesh: "メッシュ",
-  blobs: "ブロブ",
-  diagonal: "斜めライン",
-  grid: "グリッド",
-  waves: "波",
-  dots: "ドット",
-  frame: "フレーム",
-  rings: "リング",
-  stripes: "ストライプ",
-  corner: "コーナー",
-  sparkle: "スパークル",
-};
+
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -79,6 +66,7 @@ export function ColorPicker({
   value: ColorValue;
   onChange: (v: ColorValue) => void;
 }) {
+  const t = useT();
   const theme = useEditor((s) => s.deck.theme);
   const keys = Object.keys(theme.colors) as ColorKey[];
   return (
@@ -86,7 +74,7 @@ export function ColorPicker({
       {keys.map((k) => (
         <button
           key={k}
-          title={COLOR_LABELS[k] ?? k}
+          title={COLOR_LABEL_KEYS[k] ? t(COLOR_LABEL_KEYS[k]) : k}
           onClick={() => onChange(`token:${k}`)}
           className={`h-5 w-5 rounded-full border ${
             value === `token:${k}` ? "ring-2 ring-blue-500 ring-offset-1" : "border-neutral-300"
@@ -99,13 +87,14 @@ export function ColorPicker({
         value={value.startsWith("token:") ? resolveColor(value, theme) : value}
         onChange={(e) => onChange(e.target.value)}
         className="h-6 w-7 cursor-pointer rounded border border-neutral-300 p-0"
-        title="カスタム色"
+        title={t("customColor")}
       />
     </div>
   );
 }
 
 export function Inspector() {
+  const t = useT();
   const slide = useSelectedSlide();
   const deck = useEditor((s) => s.deck);
   const selectedElementId = useEditor((s) => s.selectedElementId);
@@ -128,7 +117,7 @@ export function Inspector() {
         body: JSON.stringify({ src: slide.background.image }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `分解に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("decomposeFailed")} (${res.status})`);
       commit((d) => {
         const s = d.slides.find((x) => x.id === selectedSlideId);
         if (!s) return;
@@ -150,7 +139,7 @@ export function Inspector() {
         }
       });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "分解に失敗しました");
+      alert(e instanceof Error ? e.message : t("decomposeFailed"));
     } finally {
       setDecomposing(false);
     }
@@ -170,16 +159,16 @@ export function Inspector() {
       {!el ? (
         <>
           <div className="border-b border-neutral-200 px-4 py-3 text-sm font-bold">
-            スライド設定
+            {t("slideSettings")}
           </div>
-          <Section title="背景">
-            <Row label="ベース色">
+          <Section title={t("background")}>
+            <Row label={t("baseColor")}>
               <ColorPicker
                 value={slide.background.color}
                 onChange={(v) => patchSlide((s) => (s.background.color = v))}
               />
             </Row>
-            <Row label="装飾">
+            <Row label={t("decoration")}>
               <select
                 value={slide.background.preset}
                 onChange={(e) =>
@@ -187,14 +176,14 @@ export function Inspector() {
                 }
                 className="rounded border border-neutral-300 px-1.5 py-1 text-xs"
               >
-                {Object.entries(PRESET_LABELS).map(([v, label]) => (
+                {Object.entries(PRESET_LABEL_KEYS).map(([v, key]) => (
                   <option key={v} value={v}>
-                    {label}
+                    {t(key)}
                   </option>
                 ))}
               </select>
             </Row>
-            <Row label="背景画像URL">
+            <Row label={t("bgImageUrl")}>
               <input
                 type="text"
                 placeholder="https://..."
@@ -206,19 +195,19 @@ export function Inspector() {
               />
             </Row>
             {slide.background.image?.startsWith("/api/assets/") && (
-              <Row label="AI編集">
+              <Row label={t("aiEdit")}>
                 <button
                   onClick={decompose}
                   disabled={decomposing}
-                  title="背景の装飾を「動かせるモチーフ画像 + 無地背景」に分解します(1〜2分)"
+                  title={t("decomposeTitle")}
                   className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
                 >
-                  {decomposing ? "分解中…" : "✦ モチーフを分解"}
+                  {decomposing ? t("decomposing") : t("decompose")}
                 </button>
               </Row>
             )}
           </Section>
-          <Section title="スライド名">
+          <Section title={t("slideName")}>
             <input
               type="text"
               value={slide.name}
@@ -227,34 +216,34 @@ export function Inspector() {
             />
           </Section>
           <div className="px-4 py-3 text-xs leading-relaxed text-neutral-400">
-            要素をクリックすると詳細を編集できます。ダブルクリックでテキストを直接編集、ドラッグで移動できます。
+            {t("editorHint")}
           </div>
         </>
       ) : (
         <>
           <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
             <div className="text-sm font-bold">
-              {el.type === "text" ? "テキスト" : el.type === "shape" ? "図形" : "画像"}
+              {el.type === "text" ? t("textEl") : el.type === "shape" ? t("shapeEl") : t("imageEl")}
             </div>
             <div className="flex gap-1">
-              <IconBtn title="背面へ" onClick={() => reorderElement(el.id, -1)}>▼</IconBtn>
-              <IconBtn title="前面へ" onClick={() => reorderElement(el.id, 1)}>▲</IconBtn>
-              <IconBtn title="複製" onClick={() => duplicateElement(el.id)}>⧉</IconBtn>
-              <IconBtn title="削除" danger onClick={() => deleteElement(el.id)}>🗑</IconBtn>
+              <IconBtn title={t("toBack")} onClick={() => reorderElement(el.id, -1)}>▼</IconBtn>
+              <IconBtn title={t("toFront")} onClick={() => reorderElement(el.id, 1)}>▲</IconBtn>
+              <IconBtn title={t("duplicate")} onClick={() => duplicateElement(el.id)}>⧉</IconBtn>
+              <IconBtn title={t("del")} danger onClick={() => deleteElement(el.id)}>🗑</IconBtn>
             </div>
           </div>
 
-          <Section title="位置とサイズ">
+          <Section title={t("posSize")}>
             <div className="grid grid-cols-2 gap-2">
               <Row label="X"><NumInput value={el.x} onChange={(n) => updateElement(el.id, { x: n })} /></Row>
               <Row label="Y"><NumInput value={el.y} onChange={(n) => updateElement(el.id, { y: n })} /></Row>
               <Row label="W"><NumInput value={el.w} onChange={(n) => updateElement(el.id, { w: Math.max(8, n) })} /></Row>
               <Row label="H"><NumInput value={el.h} onChange={(n) => updateElement(el.id, { h: Math.max(4, n) })} /></Row>
             </div>
-            <Row label="回転">
+            <Row label={t("rotation")}>
               <NumInput value={el.rotation ?? 0} onChange={(n) => updateElement(el.id, { rotation: n })} />
             </Row>
-            <Row label="不透明度">
+            <Row label={t("opacity")}>
               <input
                 type="range"
                 min={0}
@@ -270,7 +259,7 @@ export function Inspector() {
           {el.type === "shape" && <ShapeInspector el={el} />}
           {el.type === "image" && <ImageInspector el={el} />}
 
-          <Section title="ハイパーリンク">
+          <Section title={t("hyperlink")}>
             <input
               type="text"
               placeholder="https://example.com"
@@ -278,13 +267,13 @@ export function Inspector() {
               onChange={(e) => updateElement(el.id, { link: e.target.value || undefined })}
               className="w-full rounded border border-neutral-300 px-2 py-1 text-xs"
             />
-            <Row label="内部リンク">
+            <Row label={t("internalLink")}>
               <select
                 value={el.link?.startsWith("#") ? el.link : ""}
                 onChange={(e) => updateElement(el.id, { link: e.target.value || undefined })}
                 className="w-36 rounded border border-neutral-300 px-1.5 py-1 text-xs"
               >
-                <option value="">なし</option>
+                <option value="">{t("linkNone")}</option>
                 {deck.slides.map((s, i) => (
                   <option key={s.id} value={`#${s.id}`}>
                     {i + 1}. {s.name}
@@ -293,7 +282,7 @@ export function Inspector() {
               </select>
             </Row>
             <div className="text-[11px] leading-relaxed text-neutral-400">
-              リンクはPDF書き出し時にも保持されます。
+              {t("linkNote")}
             </div>
           </Section>
         </>
@@ -327,6 +316,7 @@ function IconBtn({
 }
 
 function TextInspector({ el }: { el: TextEl }) {
+  const t = useT();
   const updateElement = useEditor((s) => s.updateElement);
   const deck = useEditor((s) => s.deck);
   const [instruction, setInstruction] = React.useState("");
@@ -347,11 +337,11 @@ function TextInspector({ el }: { el: TextEl }) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `書き換えに失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("rewriteFailed")} (${res.status})`);
       updateElement(el.id, { text: data.text });
       setInstruction("");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "書き換えに失敗しました");
+      alert(e instanceof Error ? e.message : t("rewriteFailed"));
     } finally {
       setRewriting(false);
     }
@@ -359,7 +349,7 @@ function TextInspector({ el }: { el: TextEl }) {
 
   return (
     <>
-      <Section title="テキスト">
+      <Section title={t("textEl")}>
         <textarea
           value={el.text}
           rows={3}
@@ -371,25 +361,25 @@ function TextInspector({ el }: { el: TextEl }) {
             type="text"
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
-            placeholder="AIへの指示(空なら磨くだけ)"
+            placeholder={t("rewritePlaceholder")}
             className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs"
           />
           <button
             onClick={rewrite}
             disabled={rewriting}
-            title="この文言だけをAIで書き直します(文字数は同程度に保たれます)"
+            title={t("rewriteTitle")}
             className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
           >
             {rewriting ? "…" : "✦"}
           </button>
         </div>
       </Section>
-      <Section title="タイポグラフィ">
+      <Section title={t("typography")}>
         <div className="grid grid-cols-2 gap-2">
-          <Row label="サイズ"><NumInput value={el.fontSize} onChange={(n) => updateElement(el.id, { fontSize: Math.max(6, n) })} /></Row>
-          <Row label="行間"><NumInput value={el.lineHeight} step={0.1} onChange={(n) => updateElement(el.id, { lineHeight: n })} /></Row>
+          <Row label={t("fontSize")}><NumInput value={el.fontSize} onChange={(n) => updateElement(el.id, { fontSize: Math.max(6, n) })} /></Row>
+          <Row label={t("lineHeight")}><NumInput value={el.lineHeight} step={0.1} onChange={(n) => updateElement(el.id, { lineHeight: n })} /></Row>
         </div>
-        <Row label="太さ">
+        <Row label={t("fontWeight")}>
           <select
             value={el.fontWeight}
             onChange={(e) => updateElement(el.id, { fontWeight: parseInt(e.target.value) })}
@@ -400,7 +390,7 @@ function TextInspector({ el }: { el: TextEl }) {
             ))}
           </select>
         </Row>
-        <Row label="揃え">
+        <Row label={t("align")}>
           <div className="flex gap-1">
             {(["left", "center", "right"] as const).map((a) => (
               <button
@@ -410,22 +400,22 @@ function TextInspector({ el }: { el: TextEl }) {
                   el.align === a ? "border-blue-500 bg-blue-50 text-blue-600" : "border-neutral-300"
                 }`}
               >
-                {a === "left" ? "左" : a === "center" ? "中" : "右"}
+                {a === "left" ? t("alignLeft") : a === "center" ? t("alignCenter") : t("alignRight")}
               </button>
             ))}
           </div>
         </Row>
-        <Row label="フォント">
+        <Row label={t("fontLabel")}>
           <select
             value={el.font ?? "body"}
             onChange={(e) => updateElement(el.id, { font: e.target.value as "heading" | "body" })}
             className="rounded border border-neutral-300 px-1.5 py-1 text-xs"
           >
-            <option value="heading">見出し用</option>
-            <option value="body">本文用</option>
+            <option value="heading">{t("fontHeading")}</option>
+            <option value="body">{t("fontBody")}</option>
           </select>
         </Row>
-        <Row label="色">
+        <Row label={t("colorLabel")}>
           <ColorPicker value={el.color} onChange={(v) => updateElement(el.id, { color: v })} />
         </Row>
       </Section>
@@ -434,32 +424,33 @@ function TextInspector({ el }: { el: TextEl }) {
 }
 
 function ShapeInspector({ el }: { el: ShapeEl }) {
+  const t = useT();
   const updateElement = useEditor((s) => s.updateElement);
   return (
-    <Section title="図形">
-      <Row label="種類">
+    <Section title={t("shapeEl")}>
+      <Row label={t("shapeKind")}>
         <select
           value={el.shape}
           onChange={(e) => updateElement(el.id, { shape: e.target.value as ShapeEl["shape"] })}
           className="rounded border border-neutral-300 px-1.5 py-1 text-xs"
         >
-          <option value="rect">四角形</option>
-          <option value="ellipse">円</option>
-          <option value="line">線</option>
+          <option value="rect">{t("shapeRect")}</option>
+          <option value="ellipse">{t("shapeEllipse")}</option>
+          <option value="line">{t("shapeLine")}</option>
         </select>
       </Row>
-      <Row label="塗り">
+      <Row label={t("fill")}>
         <ColorPicker value={el.fill} onChange={(v) => updateElement(el.id, { fill: v })} />
       </Row>
       {el.shape === "rect" && (
-        <Row label="角丸">
+        <Row label={t("cornerRadius")}>
           <NumInput value={el.radius ?? 0} onChange={(n) => updateElement(el.id, { radius: Math.max(0, n) })} />
         </Row>
       )}
-      <Row label="枠線色">
+      <Row label={t("strokeColor")}>
         <ColorPicker value={el.stroke ?? "token:line"} onChange={(v) => updateElement(el.id, { stroke: v })} />
       </Row>
-      <Row label="枠線幅">
+      <Row label={t("strokeWidth")}>
         <NumInput value={el.strokeWidth ?? 0} onChange={(n) => updateElement(el.id, { strokeWidth: Math.max(0, n) })} />
       </Row>
     </Section>
@@ -467,6 +458,7 @@ function ShapeInspector({ el }: { el: ShapeEl }) {
 }
 
 function ImageInspector({ el }: { el: ImageEl }) {
+  const t = useT();
   const updateElement = useEditor((s) => s.updateElement);
   const [cutting, setCutting] = React.useState(false);
   const [remakeInstruction, setRemakeInstruction] = React.useState("");
@@ -487,11 +479,11 @@ function ImageInspector({ el }: { el: ImageEl }) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `作り直しに失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("remakeImgFailed")} (${res.status})`);
       updateElement(el.id, { src: data.url });
       setRemakeInstruction("");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "作り直しに失敗しました");
+      alert(e instanceof Error ? e.message : t("remakeImgFailed"));
     } finally {
       setRemaking(false);
     }
@@ -508,18 +500,18 @@ function ImageInspector({ el }: { el: ImageEl }) {
         body: JSON.stringify({ src: el.src }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `切り抜きに失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("removeBgFailed")} (${res.status})`);
       updateElement(el.id, { src: data.url, fit: "contain" });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "切り抜きに失敗しました");
+      alert(e instanceof Error ? e.message : t("removeBgFailed"));
     } finally {
       setCutting(false);
     }
   };
 
   return (
-    <Section title="画像">
-      <Row label="URL">
+    <Section title={t("imageEl")}>
+      <Row label={t("imageUrl")}>
         <input
           type="text"
           value={el.src}
@@ -532,10 +524,10 @@ function ImageInspector({ el }: { el: ImageEl }) {
           <button
             onClick={removeBackground}
             disabled={cutting}
-            title="被写体だけを切り抜いて透過PNGにします(30〜90秒)"
+            title={t("removeBgTitle")}
             className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
           >
-            {cutting ? "切り抜き中…" : "✦ 背景を透過"}
+            {cutting ? t("cutting") : t("removeBg")}
           </button>
         </Row>
       )}
@@ -544,26 +536,26 @@ function ImageInspector({ el }: { el: ImageEl }) {
           type="text"
           value={remakeInstruction}
           onChange={(e) => setRemakeInstruction(e.target.value)}
-          placeholder="この画像を作り直す指示"
+          placeholder={t("remakePlaceholder")}
           className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs"
         />
         <button
           onClick={remake}
           disabled={remaking || !remakeInstruction.trim()}
-          title="位置とサイズを保ったまま、この画像だけをAIで生成し直します(30〜90秒)"
+          title={t("remakeImgTitle")}
           className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
         >
           {remaking ? "…" : "✦"}
         </button>
       </div>
-      <Row label="フィット">
+      <Row label={t("fit")}>
         <select
           value={el.fit}
           onChange={(e) => updateElement(el.id, { fit: e.target.value as "cover" | "contain" })}
           className="rounded border border-neutral-300 px-1.5 py-1 text-xs"
         >
-          <option value="cover">カバー</option>
-          <option value="contain">全体表示</option>
+          <option value="cover">{t("fitCover")}</option>
+          <option value="contain">{t("fitContain")}</option>
         </select>
       </Row>
       <Row label="角丸">

@@ -7,10 +7,12 @@ import { SlideList } from "./SlideList";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { ThemePanel } from "./ThemePanel";
+import { useT } from "@/lib/i18n";
 
 const emptySubscribe = () => () => {};
 
 export function Editor() {
+  const t = useT();
   // localStorageからの復元とSSRの不一致を避けるため、マウント後に描画
   // (effect内setStateを避けるため、ハイドレーション判定はuseSyncExternalStoreで行う)
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -108,7 +110,7 @@ export function Editor() {
   if (!mounted) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-neutral-400">
-        読み込み中…
+        {t("loading")}
       </div>
     );
   }
@@ -119,8 +121,8 @@ export function Editor() {
       <div className="flex min-h-0 flex-1">
         <div className="flex shrink-0">
           <div className="flex w-10 flex-col items-center gap-1 border-r border-neutral-200 bg-white py-2">
-            <SideTab active={tab === "slides"} onClick={() => setTab("slides")} label="頁" />
-            <SideTab active={tab === "theme"} onClick={() => setTab("theme")} label="色" />
+            <SideTab active={tab === "slides"} onClick={() => setTab("slides")} label={t("tabSlides")} />
+            <SideTab active={tab === "theme"} onClick={() => setTab("theme")} label={t("tabTheme")} />
           </div>
           {tab === "slides" ? <SlideList /> : <ThemePanel />}
         </div>

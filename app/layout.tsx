@@ -22,6 +22,13 @@ import "@fontsource/m-plus-rounded-1c/800.css";
 import "@fontsource/shippori-mincho/500.css";
 import "@fontsource/shippori-mincho/700.css";
 import "@fontsource/shippori-mincho/800.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/inter/900.css";
+import "@fontsource/playfair-display/400.css";
+import "@fontsource/playfair-display/700.css";
+import "@fontsource/playfair-display/900.css";
 
 export const metadata: Metadata = {
   title: "CompDeck — AIスライドデザインツール",

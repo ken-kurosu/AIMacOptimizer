@@ -33,7 +33,7 @@ export async function renderDeckPdf(origin: string, deckId: string, deck: Deck):
   const executablePath = findChrome();
   if (!executablePath) {
     throw new Error(
-      "Chrome/Chromiumが見つかりません。CHROME_PATH 環境変数で実行ファイルを指定するか、印刷ビューから書き出してください",
+      "Chrome/Chromium not found. Set CHROME_PATH or use the print view to export.",
     );
   }
   const browser = await chromium.launch({ executablePath, headless: true });

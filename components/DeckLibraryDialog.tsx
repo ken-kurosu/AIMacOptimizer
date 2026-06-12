@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
+import { useT } from "@/lib/i18n";
 
 // デッキ管理ダイアログ = ファイル機能のハブ。
 //  - このデッキ: 共有リンク作成(サーバー保存) / JSONファイルへ書き出し
@@ -17,6 +18,7 @@ interface DeckMeta {
 }
 
 export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const deck = useEditor((s) => s.deck);
   const setDeck = useEditor((s) => s.setDeck);
   const [decks, setDecks] = useState<DeckMeta[] | null>(null);
@@ -37,11 +39,11 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
   const open = async (id: string) => {
     try {
       const res = await fetch(`/api/decks/${id}`);
-      if (!res.ok) throw new Error("デッキを開けませんでした");
+      if (!res.ok) throw new Error(t("openDeckFailed"));
       setDeck(normalizeDeck(await res.json()));
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "デッキを開けませんでした");
+      setError(e instanceof Error ? e.message : t("openDeckFailed"));
     }
   };
 
@@ -62,12 +64,12 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ deck }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `保存に失敗しました (${res.status})`);
+      if (!res.ok) throw new Error(data.error ?? `${t("saveFailed")} (${res.status})`);
       setSavedUrl(data.editUrl);
       await navigator.clipboard?.writeText(data.editUrl).catch(() => {});
       load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "保存に失敗しました");
+      setError(e instanceof Error ? e.message : t("saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -95,11 +97,11 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
       })
         .then(async (res) => {
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error ?? `取り込みに失敗しました (${res.status})`);
+          if (!res.ok) throw new Error(data.error ?? `${t("importFailed")} (${res.status})`);
           setDeck(normalizeDeck(data.deck));
           onClose();
         })
-        .catch((e) => setError(e instanceof Error ? e.message : "PDFの取り込みに失敗しました"))
+        .catch((e) => setError(e instanceof Error ? e.message : t("pdfImportFailed")))
         .finally(() => setImporting(false));
     } else {
       const reader = new FileReader();
@@ -108,7 +110,7 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
           setDeck(normalizeDeck(JSON.parse(String(reader.result))));
           onClose();
         } catch {
-          setError("JSONの読み込みに失敗しました");
+          setError(t("jsonReadFailed"));
         }
       };
       reader.readAsText(file);
@@ -124,44 +126,44 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
         className="w-[500px] rounded-2xl bg-white p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-base font-bold">デッキ</h3>
+        <h3 className="mb-3 text-base font-bold">{t("deckDialogTitle")}</h3>
 
         <div className="mb-1 text-[11px] font-bold tracking-wider text-neutral-400">
-          このデッキ「{deck.title}」
+          {t("thisDeck", { title: deck.title })}
         </div>
         <div className="mb-4 flex gap-2">
           <button
             onClick={saveCurrent}
             disabled={saving}
-            title="サーバーに保存して、誰でも開ける共有リンクをコピーします"
+            title={t("shareLinkTitle")}
             className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
           >
-            {saving ? "保存中…" : "共有リンクを作る"}
+            {saving ? t("saving") : t("shareLink")}
           </button>
           <button
             onClick={exportJson}
-            title="バックアップ用にJSONファイルとしてダウンロードします"
+            title={t("saveJsonTitle")}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-100"
           >
-            ファイルに保存 (JSON)
+            {t("saveJson")}
           </button>
         </div>
 
         {savedUrl && (
           <p className="mb-3 break-all rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700">
-            共有リンクをコピーしました: {savedUrl}
+            {t("linkCopied")} {savedUrl}
           </p>
         )}
 
-        <div className="mb-1 text-[11px] font-bold tracking-wider text-neutral-400">開く</div>
+        <div className="mb-1 text-[11px] font-bold tracking-wider text-neutral-400">{t("openSection")}</div>
         <div className="mb-2">
           <button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            title="JSONはそのまま、PDFは「背景画像+編集できるテキスト」に分解して取り込みます"
+            title={t("openFileTitle")}
             className="rounded-lg border border-neutral-300 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
           >
-            {importing ? "PDFを分解中…(ページ数×1分)" : "ファイルから開く (JSON / PDF)"}
+            {importing ? t("importingPdf") : t("openFile")}
           </button>
           <input
             ref={fileRef}
@@ -180,10 +182,10 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
 
         <div className="max-h-[260px] space-y-1 overflow-y-auto">
           {decks === null ? (
-            <p className="py-4 text-center text-xs text-neutral-400">読み込み中…</p>
+            <p className="py-4 text-center text-xs text-neutral-400">{t("loading")}</p>
           ) : decks.length === 0 ? (
             <p className="py-4 text-center text-xs text-neutral-400">
-              保存されたデッキはまだありません
+              {t("noSavedDecks")}
             </p>
           ) : (
             decks.map((d) => (
@@ -194,7 +196,7 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={() => open(d.id)}
                   className="min-w-0 flex-1 truncate text-left text-sm text-neutral-800 hover:underline"
-                  title="開く"
+                  title={t("openSection")}
                 >
                   {d.title}
                 </button>
@@ -203,7 +205,7 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
                 </span>
                 <button
                   onClick={() => remove(d.id)}
-                  title="削除"
+                  title={t("del")}
                   className="shrink-0 rounded px-1 text-xs text-neutral-300 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
                 >
                   ✕

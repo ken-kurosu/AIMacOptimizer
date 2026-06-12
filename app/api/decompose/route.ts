@@ -102,7 +102,7 @@ function findComponents(rgba: Buffer): { x: number; y: number; w: number; h: num
 
 export async function POST(req: Request) {
   if (!openaiAvailable()) {
-    return Response.json({ error: "OPENAI_API_KEY が未設定です" }, { status: 400 });
+    return Response.json({ error: "OPENAI_API_KEY is not configured" }, { status: 400 });
   }
   let src: string;
   try {
@@ -112,15 +112,15 @@ export async function POST(req: Request) {
   }
   const assetId = src.match(/^\/api\/assets\/([a-zA-Z0-9_-]+)$/)?.[1];
   if (!assetId) {
-    return Response.json({ error: "AI生成した背景(/api/assets/...)のみ分解できます" }, { status: 400 });
+    return Response.json({ error: "only generated backgrounds (/api/assets/...) can be decomposed" }, { status: 400 });
   }
   const image = await readAsset(assetId);
-  if (!image) return Response.json({ error: "背景画像が見つかりません" }, { status: 404 });
+  if (!image) return Response.json({ error: "background image not found" }, { status: 404 });
 
   try {
     const models = await pickTransparentImageModels();
     if (models.length === 0) {
-      return Response.json({ error: "透過対応の画像編集モデルが使えません" }, { status: 400 });
+      return Response.json({ error: "no transparency-capable image edit model is available for this API key" }, { status: 400 });
     }
     const model = models[0];
     const [motifRaw, cleanRaw] = await Promise.all([
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
     const { data } = await sharp(motifPng).raw().toBuffer({ resolveWithObject: true });
     const boxes = findComponents(data);
     if (boxes.length === 0) {
-      return Response.json({ error: "モチーフを検出できませんでした" }, { status: 422 });
+      return Response.json({ error: "could not detect any motif" }, { status: 422 });
     }
     const motifs = await Promise.all(
       boxes.map(async (b) => {

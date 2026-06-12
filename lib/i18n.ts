@@ -36,6 +36,7 @@ const ja = {
   exportPdf: "PDF書き出し",
   exportPdfBusy: "書き出し中…",
   exportPdfTitle: "Chromeを自動検出してワンクリックでPDF化。使えない環境では印刷ビューが開きます",
+  exportFailedAlert: "サーバーでのPDF書き出しに失敗し、印刷ビューもポップアップブロックで開けませんでした。ブロックを解除して再試行してください。",
 
   // GenerateDialog
   gdTitle: "新しい資料を作る",
@@ -255,6 +256,7 @@ const en: Record<keyof typeof ja, string> = {
   exportPdf: "Export PDF",
   exportPdfBusy: "Exporting…",
   exportPdfTitle: "One-click server-side PDF via your installed Chrome (falls back to the print view)",
+  exportFailedAlert: "Server-side PDF export failed and the print view was blocked by the popup blocker. Allow popups and try again.",
 
   gdTitle: "Create a new deck",
   gdIntro: "Describe it, review the outline, then approve to generate.",

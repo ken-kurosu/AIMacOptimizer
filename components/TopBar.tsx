@@ -90,15 +90,23 @@ export function TopBar() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deck }),
       });
-      if (!res.ok) throw new Error("server export unavailable");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `server export failed (${res.status})`);
+      }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `${deck.title || "deck"}.pdf`;
       a.click();
       URL.revokeObjectURL(a.href);
-    } catch {
-      window.open("/print", "_blank");
+    } catch (e) {
+      // フォールバック: 印刷ビュー。非同期後のwindow.openはポップアップ
+      // ブロックされることがあるため、ブロック時は理由を表示する
+      const w = window.open("/print", "_blank");
+      if (!w) {
+        alert(`${t("exportFailedAlert")}\n${e instanceof Error ? e.message : e}`);
+      }
     } finally {
       setExporting(false);
     }

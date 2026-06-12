@@ -65,20 +65,17 @@ def format_plan(plan: dict) -> str:
 
 ## slide-studio のデプロイ(Mac mini)
 
-```bash
-git clone https://github.com/ken-kurosu/AIMacOptimizer.git
-cd AIMacOptimizer/slide-studio
-npm install && npm run build
+Mac mini のターミナルでこの1行を実行するだけ(初回はOpenAI APIキーの入力を求められます):
 
-# 起動(例: pm2)
-npm install -g pm2
-OPENAI_API_KEY=sk-... \
-SLIDE_STUDIO_API_TOKEN=長いランダム文字列 \
-PORT=3100 \
-pm2 start npm --name slide-studio -- start
-pm2 save && pm2 startup   # 再起動後も自動起動
+```bash
+curl -fsSL https://raw.githubusercontent.com/ken-kurosu/AIMacOptimizer/main/slide-studio/scripts/setup-macmini.sh | bash
 ```
 
-- Chrome がインストールされていれば PDF書き出し・批評ループも自動で有効
+スクリプトが「コード取得 → npm install → 本番ビルド → アクセストークン自動生成 →
+pm2常駐起動(ポート3100) → ヘルスチェック」まで行い、最後に **ブラウザ用URLと
+AIka用の SLIDE_STUDIO_URL / SLIDE_STUDIO_TOKEN** を表示します。
+更新デプロイも同じ1行を再実行するだけです。
+
+- 前提: Node.js 20+(`brew install node`)。Chrome があれば PDF書き出し・批評ループも自動で有効
 - 生成物は `slide-studio/.assets/` に保存される(ディスクに余裕を)
-- 社内からは `http://<mac-miniのホスト名>.local:3100/?token=<トークン>` を一度開けば以後トークン不要
+- Mac再起動後の自動起動は初回のみ `pm2 startup` を実行し、表示されるsudoコマンドを実行

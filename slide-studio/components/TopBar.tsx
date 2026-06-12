@@ -2,7 +2,6 @@
 
 import React, { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
-import { normalizeDeck } from "@/lib/normalize";
 import { GenerateDialog } from "./GenerateDialog";
 import { GenerateImageDialog } from "./GenerateImageDialog";
 import { DeckLibraryDialog } from "./DeckLibraryDialog";
@@ -16,15 +15,12 @@ export function TopBar() {
   const redo = useEditor((s) => s.redo);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
-  const setDeck = useEditor((s) => s.setDeck);
   const addElement = useEditor((s) => s.addElement);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showGenImage, setShowGenImage] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
 
   const addText = (variant: "heading" | "body") => {
@@ -105,51 +101,6 @@ export function TopBar() {
     }
   };
 
-  const exportJson = () => {
-    const blob = new Blob([JSON.stringify(deck, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${deck.title || "deck"}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const importJson = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        setDeck(normalizeDeck(JSON.parse(String(reader.result))));
-      } catch {
-        alert("JSONの読み込みに失敗しました");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  // 画像だけのPDF資料を、編集可能なデッキ(背景画像+テキスト要素)へ分解して取り込む
-  const importPdf = async (file: File) => {
-    setImporting(true);
-    try {
-      const res = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/pdf" },
-        body: file,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `取り込みに失敗しました (${res.status})`);
-      setDeck(normalizeDeck(data.deck));
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "PDFの取り込みに失敗しました");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const importFile = (file: File) => {
-    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) importPdf(file);
-    else importJson(file);
-  };
-
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
       <span className="mr-1 rounded bg-neutral-900 px-2 py-0.5 text-xs font-black tracking-wide text-white">
@@ -207,25 +158,7 @@ export function TopBar() {
       <ToolButton
         onClick={() => setShowLibrary(true)}
         label="デッキ"
-        title="保存済みデッキを開く / 現在のデッキを保存して共有リンクを作る"
-      />
-      <ToolButton onClick={exportJson} label="JSON保存" />
-      <ToolButton
-        onClick={() => fileRef.current?.click()}
-        label={importing ? "分解中…" : "読込"}
-        title="JSONデッキ、またはスライドPDF(画像のみ可)を編集可能な状態に分解して取り込みます"
-        disabled={importing}
-      />
-      <input
-        ref={fileRef}
-        type="file"
-        accept="application/json,.json,application/pdf,.pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) importFile(f);
-          e.target.value = "";
-        }}
+        title="デッキの切り替え・共有リンク・ファイル保存/読み込みはここから"
       />
 
       <button

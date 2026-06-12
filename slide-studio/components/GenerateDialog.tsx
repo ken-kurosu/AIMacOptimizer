@@ -39,7 +39,6 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const setDeck = useEditor((s) => s.setDeck);
   const [step, setStep] = useState<"input" | "review">("input");
   const [topic, setTopic] = useState("");
-  const [pages, setPages] = useState(6);
   const [refs, setRefs] = useState<string[]>([]);
   const [refUploading, setRefUploading] = useState(false);
   const refInput = useRef<HTMLInputElement>(null);
@@ -81,7 +80,6 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
-          pages,
           references: refs.length > 0 ? refs : undefined,
           research: research || undefined,
           researchNotes: withFeedback ? researchNotes || undefined : undefined,
@@ -120,7 +118,6 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic,
-          pages,
           engine: "image2",
           references: refs.length > 0 ? refs : undefined,
           plan: approvedPlan ?? undefined,
@@ -167,25 +164,13 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
               rows={5}
               placeholder={
                 "どんな資料を作りたいか、自由に書いてください。\n" +
-                "誰向けか・トーン・必ず入れたい数字や構成があれば一緒に。\n\n" +
+                "誰向けか・トーン・枚数の希望・必ず入れたい数字があれば一緒に。\n\n" +
                 "例: 自家焙煎コーヒー定期便の紹介資料。在宅ワーカー向けに上品なトーンで。月額980円(税込)は必ず載せる"
               }
               className="mb-3 w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm leading-relaxed"
             />
 
             <div className="mb-5 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs text-neutral-600">
-                ページ数
-                <input
-                  type="number"
-                  min={3}
-                  max={12}
-                  value={pages}
-                  onChange={(e) => setPages(parseInt(e.target.value) || 6)}
-                  className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-              </label>
               <label
                 className="flex items-center gap-1.5 text-xs text-neutral-600"
                 title="構成案を作る前にWebで事実(料金・実績・正式名称など)を調べて反映します(+30秒〜1分)"
@@ -197,7 +182,6 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 />
                 Web検索で最新情報を反映
               </label>
-              </div>
 
               <div className="flex items-center gap-2">
                 {refs.map((url) => (
@@ -331,7 +315,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
               type="text"
               value={feedback}
               onChange={(e) => setFeedback(e.target.value)}
-              placeholder="修正したい点があれば書いて「作り直す」(例: 3ページ目は事例紹介にして)"
+              placeholder="修正したい点があれば書いて「作り直す」(例: 5ページに収めて / 3ページ目は事例に)"
               className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs"
             />
 

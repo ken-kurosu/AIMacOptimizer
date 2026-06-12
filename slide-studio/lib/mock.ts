@@ -13,7 +13,7 @@ import {
 
 export interface GenerateBrief {
   topic: string;
-  pages: number;
+  pages?: number; // 未指定なら構成提案時にAIが内容量から決める
   audience?: string;
   tone?: string;
   notes?: string; // 必ず反映したい補足(任意)

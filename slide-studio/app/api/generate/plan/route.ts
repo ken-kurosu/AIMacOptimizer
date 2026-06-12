@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       .join("\n\n");
 
     const plan = await makeDeckPlan(
-      { topic: brief.topic!, pages: brief.pages || 6, audience: brief.audience, tone: brief.tone, notes: notes || undefined, references: brief.references },
+      { topic: brief.topic!, pages: brief.pages, audience: brief.audience, tone: brief.tone, notes: notes || undefined, references: brief.references },
       brief.feedback,
       brief.previousPlan,
     );

@@ -33,8 +33,9 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-def make_plan(topic: str, pages: int = 6, feedback: str | None = None, previous_plan: dict | None = None) -> dict:
+def make_plan(topic: str, pages: int | None = None, feedback: str | None = None, previous_plan: dict | None = None) -> dict:
     """構成案を作る(修正時は feedback + previous_plan を渡す)。60-90秒。
+    pages は省略するとAIが内容量から適切な枚数を提案する(ユーザーが枚数を指定した時だけ渡す)。
     research=True を渡すと、構成前にWeb検索で事実(料金・実績・正式名称)を集めて反映する(+30-60秒)。
     レスポンスの sources(参照URL一覧)はSlackの構成案投稿に添えるとよい。"""
     r = requests.post(f"{BASE}/api/generate/plan", headers=HEADERS, json={

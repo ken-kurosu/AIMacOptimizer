@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const pages = Math.max(3, Math.min(brief.pages || brief.plan?.pages?.length || 6, 12));
+    const pages = brief.plan?.pages?.length || brief.pages || undefined;
     let deck;
     if (openaiAvailable()) {
       if (brief.research && !brief.plan?.pages?.length && brief.topic) {
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
         }
       }
       deck = brief.plan?.pages?.length
-        ? await generateDeckFromPlan(brief.plan, pages)
+        ? await generateDeckFromPlan(brief.plan, brief.plan.pages.length)
         : await generateImage2Deck({ ...brief, topic: brief.topic!, pages });
       try {
         await critiqueAndFixDeck(origin, deck, await pickTextModel());
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
         console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
       }
     } else {
-      deck = generateMockDeck({ topic: brief.topic || brief.plan?.title || "資料", pages });
+      deck = generateMockDeck({ topic: brief.topic || brief.plan?.title || "資料", pages: pages ?? 6 });
     }
 
     const id = await saveDeck(deck);

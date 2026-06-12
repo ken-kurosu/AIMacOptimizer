@@ -39,6 +39,8 @@ export function Canvas() {
   const transient = useEditor((s) => s.transient);
   const commit = useEditor((s) => s.commit);
   const addElement = useEditor((s) => s.addElement);
+  const fxScanning = useEditor((s) => s.fxScanning);
+  const fxPopIds = useEditor((s) => s.fxPopIds);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -253,8 +255,12 @@ export function Canvas() {
             return (
               <div
                 key={el.id}
+                className={fxPopIds.includes(el.id) ? "cd-pop" : undefined}
                 style={{
                   ...elementStyle(el),
+                  animationDelay: fxPopIds.includes(el.id)
+                    ? `${fxPopIds.indexOf(el.id) * 90}ms`
+                    : undefined,
                   cursor: isEditing ? "text" : "move",
                   outline:
                     selectedElementId === el.id
@@ -314,6 +320,13 @@ export function Canvas() {
               </div>
             );
           })}
+
+          {/* 分解中のスキャン演出 */}
+          {fxScanning && (
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div className="cd-scan-beam" />
+            </div>
+          )}
 
           {/* スナップガイド */}
           {guides.v !== null && (

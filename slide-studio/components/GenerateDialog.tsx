@@ -5,17 +5,48 @@ import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
 import { uploadImageFile } from "@/lib/upload";
 
-// 生成ダイアログ。迷わないことを最優先に、入力は
-// 「内容(自由記述)・ページ数・参考画像(任意)」の3つだけに絞る。
-// エンジンはimage2(カンプ生成)一択。APIキーが無い環境はサーバー側で
-// 自動的にデモ生成へフォールバックする。
+// 生成ダイアログ(2ステップ)。
+//  1. 入力: 「内容(自由記述)・ページ数・参考画像(任意)」の3つだけ
+//  2. レビュー: gpt-5系が立てた構成案(配色・ページ毎の内容とデザイン)を確認し、
+//     OKなら生成へ。修正指示を書いて作り直しもできる
+// APIキーが無い環境はレビューを挟まずデモ生成に直行する。
+
+interface PlanText {
+  role?: string;
+  text?: string;
+}
+interface PlanPage {
+  name?: string;
+  motif?: string;
+  space?: string;
+  texts?: PlanText[];
+}
+interface DeckPlan {
+  title?: string;
+  theme?: { colors?: Record<string, string>; headingFont?: string; bodyFont?: string };
+  pages?: PlanPage[];
+}
+
+const SPACE_LABELS: Record<string, string> = {
+  left: "テキストは左",
+  right: "テキストは右",
+  top: "テキストは上",
+  bottom: "テキストは下",
+  center: "テキストは中央",
+};
+
 export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const setDeck = useEditor((s) => s.setDeck);
+  const [step, setStep] = useState<"input" | "review">("input");
   const [topic, setTopic] = useState("");
   const [pages, setPages] = useState(6);
   const [refs, setRefs] = useState<string[]>([]);
   const [refUploading, setRefUploading] = useState(false);
   const refInput = useRef<HTMLInputElement>(null);
+  const [plan, setPlan] = useState<DeckPlan | null>(null);
+  const [planModel, setPlanModel] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [planning, setPlanning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -37,7 +68,42 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const generate = async () => {
+  // 構成案を作る(修正指示があれば前回案と一緒に渡して作り直す)
+  const makePlan = async (withFeedback = false) => {
+    setPlanning(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generate/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          pages,
+          references: refs.length > 0 ? refs : undefined,
+          feedback: withFeedback ? feedback.trim() || undefined : undefined,
+          previousPlan: withFeedback ? plan : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 400 && !withFeedback) {
+        // キー未設定など → レビューなしでデモ生成に直行
+        await generate(null);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? `構成案の作成に失敗しました (${res.status})`);
+      setPlan(data.plan);
+      setPlanModel(data.model ?? "");
+      setFeedback("");
+      setStep("review");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "構成案の作成に失敗しました");
+    } finally {
+      setPlanning(false);
+    }
+  };
+
+  // 承認された構成案(またはデモ)で生成する
+  const generate = async (approvedPlan: DeckPlan | null) => {
     setLoading(true);
     setError(null);
     setNotice(null);
@@ -50,15 +116,14 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
           pages,
           engine: "image2",
           references: refs.length > 0 ? refs : undefined,
+          plan: approvedPlan ?? undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
       setDeck(normalizeDeck(data.deck));
       if (data.mode === "demo") {
-        setNotice(
-          data.warning ?? "APIキーが未設定のため、デモ生成で作成しました。",
-        );
+        setNotice(data.warning ?? "APIキーが未設定のため、デモ生成で作成しました。");
         setTimeout(onClose, 2500);
       } else {
         onClose();
@@ -70,112 +135,193 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const busy = planning || loading;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={loading ? undefined : onClose}
+      onClick={busy ? undefined : onClose}
     >
       <div
-        className="w-[520px] rounded-2xl bg-white p-6 shadow-2xl"
+        className="w-[560px] rounded-2xl bg-white p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-1 text-lg font-bold">AIでスライドを生成</h2>
-        <p className="mb-4 text-xs text-neutral-500">
-          内容を書くだけで、デザイン込みのデッキを作ります。生成後はすべて編集できます。
-        </p>
+        {step === "input" ? (
+          <>
+            <h2 className="mb-1 text-lg font-bold">AIでスライドを生成</h2>
+            <p className="mb-4 text-xs text-neutral-500">
+              内容を書くと、まず構成案が出ます。確認してOKなら生成に進みます。
+            </p>
 
-        <textarea
-          autoFocus
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          rows={5}
-          placeholder={
-            "どんな資料を作りたいか、自由に書いてください。\n" +
-            "誰向けか・トーン・必ず入れたい数字や構成があれば一緒に。\n\n" +
-            "例: 自家焙煎コーヒー定期便の紹介資料。在宅ワーカー向けに上品なトーンで。月額980円(税込)は必ず載せる"
-          }
-          className="mb-3 w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm leading-relaxed"
-        />
-
-        <div className="mb-5 flex items-center justify-between">
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
-            ページ数
-            <input
-              type="number"
-              min={3}
-              max={12}
-              value={pages}
-              onChange={(e) => setPages(parseInt(e.target.value) || 6)}
-              className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+            <textarea
+              autoFocus
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              rows={5}
+              placeholder={
+                "どんな資料を作りたいか、自由に書いてください。\n" +
+                "誰向けか・トーン・必ず入れたい数字や構成があれば一緒に。\n\n" +
+                "例: 自家焙煎コーヒー定期便の紹介資料。在宅ワーカー向けに上品なトーンで。月額980円(税込)は必ず載せる"
+              }
+              className="mb-3 w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm leading-relaxed"
             />
-          </label>
 
-          <div className="flex items-center gap-2">
-            {refs.map((url) => (
-              <div key={url} className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={url}
-                  alt=""
-                  className="h-9 w-12 rounded border border-neutral-200 object-cover"
+            <div className="mb-5 flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-neutral-600">
+                ページ数
+                <input
+                  type="number"
+                  min={3}
+                  max={12}
+                  value={pages}
+                  onChange={(e) => setPages(parseInt(e.target.value) || 6)}
+                  className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
                 />
+              </label>
+
+              <div className="flex items-center gap-2">
+                {refs.map((url) => (
+                  <div key={url} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-9 w-12 rounded border border-neutral-200 object-cover"
+                    />
+                    <button
+                      onClick={() => setRefs((prev) => prev.filter((x) => x !== url))}
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[9px] text-white"
+                      title="削除"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {refs.length < 3 && (
+                  <button
+                    onClick={() => refInput.current?.click()}
+                    disabled={refUploading}
+                    title="ブランド資料やトンマナの近い画像を渡すと、配色・雰囲気の参考にします"
+                    className="rounded-lg border border-dashed border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+                  >
+                    {refUploading ? "追加中…" : "+ 参考画像"}
+                  </button>
+                )}
+                <input
+                  ref={refInput}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) addRefs(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+
+            {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+            {notice && <p className="mb-3 text-xs text-amber-600">{notice}</p>}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => makePlan(false)}
+                disabled={busy || !topic.trim()}
+                className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+              >
+                {planning ? "構成を考えています…(30秒〜1分)" : loading ? "生成中…" : "構成案を見る"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="mb-0.5 text-lg font-bold">{plan?.title || "構成案"}</h2>
+            <div className="mb-3 flex items-center gap-2 text-xs text-neutral-500">
+              <span>この内容で{plan?.pages?.length ?? 0}ページ生成します</span>
+              {plan?.theme?.colors && (
+                <span className="flex items-center gap-1">
+                  {["brand", "accent", "bg", "ink"].map((k) => (
+                    <span
+                      key={k}
+                      className="inline-block h-3.5 w-3.5 rounded-full border border-neutral-200"
+                      style={{ background: plan.theme!.colors![k] }}
+                    />
+                  ))}
+                </span>
+              )}
+              {planModel && <span className="text-neutral-300">構成: {planModel}</span>}
+            </div>
+
+            <div className="mb-3 max-h-[340px] space-y-2 overflow-y-auto pr-1">
+              {(plan?.pages ?? []).map((p, i) => (
+                <div key={i} className="rounded-xl border border-neutral-200 px-3 py-2.5">
+                  <div className="mb-1 flex items-baseline gap-2">
+                    <span className="shrink-0 text-[11px] font-bold text-neutral-400">{i + 1}</span>
+                    <span className="shrink-0 text-sm font-bold">{p.name || `ページ ${i + 1}`}</span>
+                    <span
+                      className="ml-auto min-w-0 truncate text-[10px] text-neutral-400"
+                      title={p.motif}
+                    >
+                      {SPACE_LABELS[p.space ?? ""] ?? ""}
+                      {p.motif ? `・${p.motif}` : ""}
+                    </span>
+                  </div>
+                  <ul className="space-y-0.5 text-xs leading-relaxed text-neutral-600">
+                    {(p.texts ?? []).map((t, j) => (
+                      <li key={j} className="truncate">
+                        {t.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="修正したい点があれば書いて「作り直す」(例: 3ページ目は事例紹介にして)"
+              className="mb-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-xs"
+            />
+
+            {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
+
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setStep("input")}
+                disabled={busy}
+                className="rounded-lg px-3 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+              >
+                ← 入力に戻る
+              </button>
+              <div className="flex gap-2">
                 <button
-                  onClick={() => setRefs((prev) => prev.filter((x) => x !== url))}
-                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[9px] text-white"
-                  title="削除"
+                  onClick={() => makePlan(true)}
+                  disabled={busy}
+                  className="rounded-lg border border-neutral-300 px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
                 >
-                  ✕
+                  {planning ? "作り直し中…" : "作り直す"}
+                </button>
+                <button
+                  onClick={() => generate(plan)}
+                  disabled={busy}
+                  className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+                >
+                  {loading ? "生成中…(1ページ約1分)" : "この構成で生成する"}
                 </button>
               </div>
-            ))}
-            {refs.length < 3 && (
-              <button
-                onClick={() => refInput.current?.click()}
-                disabled={refUploading}
-                title="ブランド資料やトンマナの近い画像を渡すと、配色・雰囲気の参考にします"
-                className="rounded-lg border border-dashed border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
-              >
-                {refUploading ? "追加中…" : "+ 参考画像"}
-              </button>
-            )}
-            <input
-              ref={refInput}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files) addRefs(e.target.files);
-                e.target.value = "";
-              }}
-            />
-          </div>
-        </div>
-
-        {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
-        {notice && <p className="mb-3 text-xs text-amber-600">{notice}</p>}
-
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-neutral-400">
-            {loading ? "" : "目安: 1ページあたり約1分"}
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              disabled={loading}
-              className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
-            >
-              キャンセル
-            </button>
-            <button
-              onClick={generate}
-              disabled={loading || !topic.trim()}
-              className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
-            >
-              {loading ? "生成中…そのままお待ちください" : "生成する"}
-            </button>
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

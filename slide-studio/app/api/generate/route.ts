@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
-import { generateImage2Deck } from "@/lib/image2Pipeline";
+import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2Pipeline";
 import { critiqueAndFixDeck } from "@/lib/critique";
 import { openaiAvailable, pickTextModel } from "@/lib/openai";
 
@@ -15,6 +15,7 @@ interface Brief {
   notes?: string;
   references?: string[];
   engine?: "image2" | "structured";
+  plan?: DeckPlan; // 承認済みの構成案(レビュー後の生成)。あれば計画工程をスキップ
 }
 
 // エンジンの利用可否(ダイアログが起動時に問い合わせる)
@@ -95,7 +96,9 @@ export async function POST(req: Request) {
       });
     }
     try {
-      const deck = await generateImage2Deck({ ...brief, pages });
+      const deck = brief.plan?.pages?.length
+        ? await generateDeckFromPlan(brief.plan, pages)
+        : await generateImage2Deck({ ...brief, pages });
       // 批評ループ: 実レンダリングをビジョンモデルが検査し、必要なら組み直す。
       // Chromeがない環境や検査失敗時はそのまま返す(品質向上のための追加工程)
       try {

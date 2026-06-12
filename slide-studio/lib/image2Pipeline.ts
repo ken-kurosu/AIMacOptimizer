@@ -29,7 +29,8 @@ export interface PlanPage {
   space?: string; // テキストを置く余白の位置: left|right|top|bottom|center
 }
 
-interface Plan {
+// 制作計画(構成案)。レビューを挟むため計画と生成を分離して公開する
+export interface DeckPlan {
   title: string;
   theme: {
     colors: Record<string, string>;
@@ -147,22 +148,33 @@ async function loadReferences(refs: string[] | undefined): Promise<Exclude<ChatC
 }
 
 export async function generateImage2Deck(brief: GenerateBrief): Promise<Deck> {
-  const [textModel, imageModel] = await Promise.all([pickTextModel(), pickImageModel()]);
+  const plan = await makeDeckPlan(brief);
+  return generateDeckFromPlan(plan, brief.pages);
+}
+
+// 1. 制作計画(構成案)を作る。feedback と previousPlan を渡すと修正版を出す
+export async function makeDeckPlan(
+  brief: GenerateBrief,
+  feedback?: string,
+  previousPlan?: DeckPlan,
+): Promise<DeckPlan> {
+  const textModel = await pickTextModel();
   const pages = Math.max(3, Math.min(brief.pages || 8, 12));
 
-  // 1. 制作計画(アウトライン+アートディレクション+画像プロンプト)。
-  // 参考画像があればビジョン入力として渡し、配色・トーンの抽出元にする
   const planText = [
     `テーマ: ${brief.topic}`,
     `ページ数: ${pages}ページ`,
     brief.audience ? `想定読者: ${brief.audience}` : "",
     brief.tone ? `トーン: ${brief.tone}` : "",
     brief.notes ? `補足(必ず反映する): ${brief.notes}` : "",
+    previousPlan
+      ? `\n前回の構成案:\n${JSON.stringify(previousPlan)}\n\n上の構成案に対する修正指示: ${feedback || "(全体を改善)"}\n指示を反映した構成案を全ページ分あらためて出力する`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
   const refs = await loadReferences(brief.references);
-  const plan = await chatJSON<Plan>(
+  const plan = await chatJSON<DeckPlan>(
     textModel,
     PLAN_SYSTEM,
     refs.length > 0
@@ -170,15 +182,22 @@ export async function generateImage2Deck(brief: GenerateBrief): Promise<Deck> {
       : planText,
     32000,
   );
-  const theme = normalizeTheme(plan.theme);
-  const planPages = (plan.pages ?? []).slice(0, pages);
+  plan.pages = (plan.pages ?? []).slice(0, pages);
+  return plan;
+}
 
-  // 2〜4. ページ毎に 画像生成 → 切り出し → ビジョン解析 → 補正(並列・部分失敗許容)
+// 2. 承認済みの構成案からデッキを生成する
+export async function generateDeckFromPlan(plan: DeckPlan, pagesLimit?: number): Promise<Deck> {
+  const [textModel, imageModel] = await Promise.all([pickTextModel(), pickImageModel()]);
+  const theme = normalizeTheme(plan.theme);
+  const planPages = (plan.pages ?? []).slice(0, Math.max(3, Math.min(pagesLimit || 12, 12)));
+
+  // ページ毎に 画像生成 → 切り出し → ビジョン解析 → 補正(並列・部分失敗許容)
   const slides = await asyncPool(3, planPages, (page, i) =>
     generateImage2Slide(page, theme, textModel, imageModel, i),
   );
 
-  return { id: uid(), title: plan.title || brief.topic, theme, slides };
+  return { id: uid(), title: plan.title || "無題のデッキ", theme, slides };
 }
 
 // 1ページ分の生成。デッキ一括生成と「このページだけ再生成」の両方から使う。

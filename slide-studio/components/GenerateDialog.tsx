@@ -148,7 +148,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       >
         {step === "input" ? (
           <>
-            <h2 className="mb-1 text-lg font-bold">AIでスライドを生成</h2>
+            <h2 className="mb-1 text-lg font-bold">新しい資料を作る</h2>
             <p className="mb-4 text-xs text-neutral-500">
               内容を書くと、まず構成案が出ます。確認してOKなら生成に進みます。
             </p>

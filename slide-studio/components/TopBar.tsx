@@ -196,9 +196,10 @@ export function TopBar() {
 
       <button
         onClick={() => setShowGenerate(true)}
+        title="作りたい内容を書くと、AIが構成案→デザイン込みのデッキを自動作成します"
         className="rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-4 py-1.5 text-sm font-bold text-white shadow hover:opacity-90"
       >
-        ✦ AIで生成
+        ✦ 資料を作る
       </button>
 
       <div className="mx-1 h-6 w-px bg-neutral-200" />

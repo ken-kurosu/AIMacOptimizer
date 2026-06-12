@@ -12,7 +12,7 @@ import {
   uid,
 } from "@/lib/types";
 import { useEditor, useSelectedSlide } from "@/lib/store";
-import { PRESET_LABEL_KEYS, COLOR_LABEL_KEYS, useT } from "@/lib/i18n";
+import { PRESET_LABEL_KEYS, COLOR_LABEL_KEYS, getLocale, useT } from "@/lib/i18n";
 
 
 
@@ -105,43 +105,52 @@ export function Inspector() {
   const commit = useEditor((s) => s.commit);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
   const [decomposing, setDecomposing] = React.useState(false);
+  const setFxScanning = useEditor((s) => s.setFxScanning);
+  const setFxPopIds = useEditor((s) => s.setFxPopIds);
+  const select = useEditor((s) => s.select);
 
   // 背景をAIで「動かせるモチーフ画像 + 無地背景」に分解する
   const decompose = async () => {
     if (!slide?.background.image || decomposing) return;
     setDecomposing(true);
+    setFxScanning(true);
     try {
       const res = await fetch("/api/decompose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ src: slide.background.image }),
+        body: JSON.stringify({ src: slide.background.image, lang: getLocale() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `${t("decomposeFailed")} (${res.status})`);
+      const motifs = (data.motifs ?? []) as {
+        url: string; x: number; y: number; w: number; h: number; name?: string;
+      }[];
+      const newEls = motifs.map((m) => ({
+        id: uid(),
+        type: "image" as const,
+        src: m.url,
+        x: m.x,
+        y: m.y,
+        w: m.w,
+        h: m.h,
+        fit: "contain" as const,
+        name: m.name || "motif",
+      }));
       commit((d) => {
         const s = d.slides.find((x) => x.id === selectedSlideId);
         if (!s) return;
         s.background.image = data.background;
-        // 各モチーフをテキストの背面に置く(elementsは先頭ほど背面)
-        const motifs = (data.motifs ?? []) as { url: string; x: number; y: number; w: number; h: number }[];
-        for (const m of motifs) {
-          s.elements.unshift({
-            id: uid(),
-            type: "image",
-            src: m.url,
-            x: m.x,
-            y: m.y,
-            w: m.w,
-            h: m.h,
-            fit: "contain",
-            name: "motif",
-          });
-        }
+        // 背面(配列の先頭ほど背面)にdepth順で積む。テキストは常にレイヤーの前面
+        s.elements = [...newEls, ...s.elements];
       });
+      // ピール演出: 背面から順にポップイン
+      setFxPopIds(newEls.map((e) => e.id));
+      setTimeout(() => setFxPopIds([]), newEls.length * 90 + 900);
     } catch (e) {
       alert(e instanceof Error ? e.message : t("decomposeFailed"));
     } finally {
       setDecomposing(false);
+      setFxScanning(false);
     }
   };
 
@@ -215,6 +224,28 @@ export function Inspector() {
               className="w-full rounded border border-neutral-300 px-2 py-1 text-xs"
             />
           </Section>
+          {slide.elements.length > 0 && (
+            <Section title={t("layersLabel")}>
+              <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                {[...slide.elements].reverse().map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => select(selectedSlideId, e.id)}
+                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-700 hover:bg-neutral-100"
+                  >
+                    <span className="w-4 shrink-0 text-center text-[10px] text-neutral-400">
+                      {e.type === "text" ? "T" : e.type === "image" ? "🖼" : "◆"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {e.type === "text"
+                        ? e.text.slice(0, 24)
+                        : e.name || (e.type === "image" ? t("imageEl") : t("shapeEl"))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Section>
+          )}
           <div className="px-4 py-3 text-xs leading-relaxed text-neutral-400">
             {t("editorHint")}
           </div>

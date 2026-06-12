@@ -40,6 +40,12 @@ interface EditorState {
   duplicateElement: (id: string) => void;
   reorderElement: (id: string, dir: -1 | 1) => void;
   updateTheme: (patch: Partial<Theme>) => void;
+
+  // 分解(Magic Layers)エフェクト用の一時状態(永続化しない)
+  fxScanning: boolean;
+  fxPopIds: string[];
+  setFxScanning: (v: boolean) => void;
+  setFxPopIds: (ids: string[]) => void;
 }
 
 const HISTORY_LIMIT = 60;
@@ -248,6 +254,11 @@ export const useEditor = create<EditorState>()(
           slide.elements.splice(j, 0, e);
         });
       },
+
+      fxScanning: false,
+      fxPopIds: [],
+      setFxScanning: (v) => set({ fxScanning: v }),
+      setFxPopIds: (ids) => set({ fxPopIds: ids }),
 
       updateTheme: (patch) =>
         get().commit((deck) => {

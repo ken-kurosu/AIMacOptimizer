@@ -18,7 +18,7 @@ Request:
 ```json
 {
   "topic": "Product intro deck for remote workers, friendly tone, must include the ¥980/mo price",
-  "pages": 5,
+  "pages": 5,                                 // optional — omit and the AI picks a count that fits the content
   "references": ["/api/assets/up-..."],      // optional, uploaded reference images
   "feedback": "swap page 3 for case studies", // optional (revision)
   "previousPlan": { ... },                    // optional (revision: pass the previous plan back verbatim)
@@ -69,7 +69,7 @@ Variants: `{"topic": "…", "pages": 5}` generates without the review step;
 ## GET /api/decks — list saved decks
 
 ```json
-{ "decks": [ { "id": "…", "title": "…", "pages": 5, "updatedAt": 1780000000000 } ] }
+{ "decks": [ { "id": "…", "title": "…", "pages": 5,                                 // optional — omit and the AI picks a count that fits the content "updatedAt": 1780000000000 } ] }
 ```
 
 Useful for "open the deck we made last week". Fetch one with `GET /api/decks/:id`,

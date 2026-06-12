@@ -161,11 +161,14 @@ export async function makeDeckPlan(
   previousPlan?: DeckPlan,
 ): Promise<DeckPlan> {
   const textModel = await pickTextModel();
-  const pages = Math.max(3, Math.min(brief.pages || 8, 12));
+  // ページ数は指定があれば従い、なければ内容量からAIが提案する
+  const pages = brief.pages ? Math.max(3, Math.min(brief.pages, 12)) : undefined;
 
   const planText = [
     `テーマ: ${brief.topic}`,
-    `ページ数: ${pages}ページ`,
+    pages
+      ? `ページ数: ${pages}ページ`
+      : `ページ数: 内容量に対して適切な枚数をあなたが決める(3〜12ページ)。1ページ1メッセージで詰め込まない。依頼文に枚数の希望が書かれていればそれを優先する`,
     brief.audience ? `想定読者: ${brief.audience}` : "",
     brief.tone ? `トーン: ${brief.tone}` : "",
     brief.notes ? `補足(必ず反映する): ${brief.notes}` : "",
@@ -184,7 +187,7 @@ export async function makeDeckPlan(
       : planText,
     32000,
   );
-  plan.pages = (plan.pages ?? []).slice(0, pages);
+  plan.pages = (plan.pages ?? []).slice(0, pages ?? 12);
   return plan;
 }
 

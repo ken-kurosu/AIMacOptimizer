@@ -13,7 +13,7 @@ import {
 
 export interface GenerateBrief {
   topic: string;
-  pages: number;
+  pages?: number; // 未指定なら構成提案時にAIが内容量から決める
   lang?: "ja" | "en"; // デモ生成の言語(既定: ja)
   audience?: string;
   tone?: string;

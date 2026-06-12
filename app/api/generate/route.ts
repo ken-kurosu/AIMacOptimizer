@@ -9,7 +9,7 @@ export const maxDuration = 300;
 
 interface Brief {
   topic: string;
-  pages: number;
+  pages?: number; // 未指定なら構成提案時にAIが決める
   audience?: string;
   tone?: string;
   notes?: string;
@@ -98,8 +98,8 @@ export async function POST(req: Request) {
     }
     try {
       const deck = brief.plan?.pages?.length
-        ? await generateDeckFromPlan(brief.plan, pages)
-        : await generateImage2Deck({ ...brief, pages });
+        ? await generateDeckFromPlan(brief.plan, brief.plan.pages.length)
+        : await generateImage2Deck({ ...brief, pages: brief.pages || undefined });
       // 批評ループ: 実レンダリングをビジョンモデルが検査し、必要なら組み直す。
       // Chromeがない環境や検査失敗時はそのまま返す(品質向上のための追加工程)
       try {

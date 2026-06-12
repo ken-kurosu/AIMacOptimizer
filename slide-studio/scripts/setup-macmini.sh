@@ -17,14 +17,29 @@ PORT=3100
 step() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
 
 step "Node.js の確認"
+# 非対話SSH経由だとHomebrew等のPATHが通っていないため、よくある場所を補完する
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH"
+if ! command -v node >/dev/null 2>&1 && [ -s "$HOME/.nvm/nvm.sh" ]; then
+  . "$HOME/.nvm/nvm.sh" >/dev/null 2>&1 || true
+fi
 if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js が見つかりません。先に 'brew install node' を実行してください" >&2
-  exit 1
+  if command -v brew >/dev/null 2>&1; then
+    echo "Node.js が見つからないため Homebrew でインストールします(数分かかります)"
+    brew install node
+  else
+    echo "Node.js も Homebrew も見つかりません。Mac mini で https://brew.sh の手順でHomebrewを入れてから再実行してください" >&2
+    exit 1
+  fi
 fi
 NODE_MAJOR=$(node -v | sed 's/^v\([0-9]*\).*/\1/')
 if [ "$NODE_MAJOR" -lt 20 ]; then
-  echo "Node.js 20以上が必要です(現在: $(node -v))。'brew install node' で更新してください" >&2
-  exit 1
+  if command -v brew >/dev/null 2>&1; then
+    echo "Node.js 20以上が必要です(現在: $(node -v))。Homebrewで更新します"
+    brew install node && brew link --overwrite node
+  else
+    echo "Node.js 20以上が必要です(現在: $(node -v))" >&2
+    exit 1
+  fi
 fi
 echo "node $(node -v) / npm $(npm -v)"
 

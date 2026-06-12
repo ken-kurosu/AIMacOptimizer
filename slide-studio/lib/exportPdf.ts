@@ -39,7 +39,12 @@ export async function renderDeckPdf(origin: string, deckId: string, deck: Deck):
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-    await page.goto(`${origin}/print?deck=${deckId}`, { waitUntil: "networkidle" });
+    // トークン認証が有効な環境では、内部のヘッドレスブラウザも認証を通す
+    const token = process.env.SLIDE_STUDIO_API_TOKEN;
+    await page.goto(
+      `${origin}/print?deck=${deckId}${token ? `&token=${encodeURIComponent(token)}` : ""}`,
+      { waitUntil: "networkidle" },
+    );
     // 全スライドの描画とWebフォント・背景画像の読み込みを待つ
     await page.waitForFunction(
       (n) => document.querySelectorAll(".print-slide").length >= n,

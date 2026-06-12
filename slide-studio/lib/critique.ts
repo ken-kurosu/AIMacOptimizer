@@ -44,7 +44,12 @@ async function screenshotDeck(origin: string, deck: Deck): Promise<Buffer[] | nu
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1320, height: 780 } });
-    await page.goto(`${origin}/print?deck=${id}`, { waitUntil: "networkidle" });
+    // トークン認証が有効な環境では、内部のヘッドレスブラウザも認証を通す
+    const token = process.env.SLIDE_STUDIO_API_TOKEN;
+    await page.goto(
+      `${origin}/print?deck=${id}${token ? `&token=${encodeURIComponent(token)}` : ""}`,
+      { waitUntil: "networkidle" },
+    );
     await page.waitForFunction(
       (n) => document.querySelectorAll(".print-slide").length >= n,
       deck.slides.length,

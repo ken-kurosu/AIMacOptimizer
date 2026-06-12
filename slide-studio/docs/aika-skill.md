@@ -34,11 +34,13 @@ HEADERS = {
 }
 
 def make_plan(topic: str, pages: int = 6, feedback: str | None = None, previous_plan: dict | None = None) -> dict:
-    """構成案を作る(修正時は feedback + previous_plan を渡す)。60-90秒。"""
+    """構成案を作る(修正時は feedback + previous_plan を渡す)。60-90秒。
+    research=True を渡すと、構成前にWeb検索で事実(料金・実績・正式名称)を集めて反映する(+30-60秒)。
+    レスポンスの sources(参照URL一覧)はSlackの構成案投稿に添えるとよい。"""
     r = requests.post(f"{BASE}/api/generate/plan", headers=HEADERS, json={
-        "topic": topic, "pages": pages,
+        "topic": topic, "pages": pages, "research": True,
         "feedback": feedback, "previousPlan": previous_plan,
-    }, timeout=180)
+    }, timeout=300)
     r.raise_for_status()
     return r.json()["plan"]
 

@@ -168,3 +168,67 @@ export async function editImage(
   }
   throw new Error("image edit response had no data");
 }
+
+// Webリサーチ(Responses API + web_searchツール)。資料テーマについて
+// 確認できた事実と出典URLを返す。構成案の精度を上げるための前段工程。
+export interface ResearchResult {
+  summary: string;
+  sources: { url: string; title?: string }[];
+}
+
+export async function researchTopic(model: string, topic: string): Promise<ResearchResult> {
+  const prompt =
+    `あなたはプレゼン資料のリサーチャーです。次の資料テーマについてWeb検索し、` +
+    `確認できた事実だけを箇条書きで簡潔にまとめてください。\n` +
+    `- 対象: サービス/製品の正確な名称・内容、料金、実績、規模、最新の数値、運営者\n` +
+    `- 確認できなかったことは書かない(推測しない)\n` +
+    `- 出力は資料テーマと同じ言語で\n\n資料テーマ: ${topic}`;
+
+  const call = async (toolType: string) =>
+    fetch(`${BASE}/responses`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        model,
+        tools: [{ type: toolType }],
+        input: prompt,
+        max_output_tokens: 4000,
+      }),
+    });
+
+  let res = await call("web_search");
+  if (!res.ok) {
+    const body = await res.text();
+    // 古いAPIサーフェス向けのフォールバック
+    if (/web_search/.test(body)) res = await call("web_search_preview");
+    else throw new Error(`OpenAI research failed: ${res.status} ${body.slice(0, 300)}`);
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI research failed: ${res.status} ${body.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as {
+    output?: {
+      type: string;
+      content?: { type: string; text?: string; annotations?: { type: string; url?: string; title?: string }[] }[];
+    }[];
+  };
+  let summary = "";
+  const sources: ResearchResult["sources"] = [];
+  const seen = new Set<string>();
+  for (const item of data.output ?? []) {
+    if (item.type !== "message") continue;
+    for (const c of item.content ?? []) {
+      if (c.text) summary += c.text;
+      for (const a of c.annotations ?? []) {
+        if (a.type === "url_citation" && a.url && !seen.has(a.url)) {
+          seen.add(a.url);
+          sources.push({ url: a.url, title: a.title });
+        }
+      }
+    }
+  }
+  if (!summary.trim()) throw new Error("research returned no text");
+  return { summary: summary.trim(), sources };
+}

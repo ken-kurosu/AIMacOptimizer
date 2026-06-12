@@ -4,7 +4,7 @@ import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2
 import { critiqueAndFixDeck } from "@/lib/critique";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
-import { openaiAvailable, pickTextModel } from "@/lib/openai";
+import { openaiAvailable, pickTextModel, researchTopic } from "@/lib/openai";
 import { Deck, uid } from "@/lib/types";
 
 export const maxDuration = 600;
@@ -29,6 +29,7 @@ interface DeckBrief {
   references?: string[];
   plan?: DeckPlan; // 承認済みの構成案から生成
   deck?: unknown; // 既存デッキの保存のみ(共有リンク作成)
+  research?: boolean; // topicからの一発生成時にWeb検索で事実を集める
   title?: string;
 }
 
@@ -100,6 +101,16 @@ export async function POST(req: Request) {
     const pages = Math.max(3, Math.min(brief.pages || brief.plan?.pages?.length || 6, 12));
     let deck;
     if (openaiAvailable()) {
+      if (brief.research && !brief.plan?.pages?.length && brief.topic) {
+        try {
+          const r = await researchTopic(await pickTextModel(), brief.topic);
+          brief.notes = [brief.notes, `Web調査で確認できた事実(正確に反映する):\n${r.summary}`]
+            .filter(Boolean)
+            .join("\n\n");
+        } catch (e) {
+          console.warn("research skipped:", e instanceof Error ? e.message : e);
+        }
+      }
       deck = brief.plan?.pages?.length
         ? await generateDeckFromPlan(brief.plan, pages)
         : await generateImage2Deck({ ...brief, topic: brief.topic!, pages });

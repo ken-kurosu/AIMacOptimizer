@@ -133,18 +133,21 @@ export function Inspector() {
         const s = d.slides.find((x) => x.id === selectedSlideId);
         if (!s) return;
         s.background.image = data.background;
-        // モチーフはテキストの背面に置く(elementsは先頭ほど背面)
-        s.elements.unshift({
-          id: uid(),
-          type: "image",
-          src: data.motif.url,
-          x: data.motif.x,
-          y: data.motif.y,
-          w: data.motif.w,
-          h: data.motif.h,
-          fit: "contain",
-          name: "motif",
-        });
+        // 各モチーフをテキストの背面に置く(elementsは先頭ほど背面)
+        const motifs = (data.motifs ?? []) as { url: string; x: number; y: number; w: number; h: number }[];
+        for (const m of motifs) {
+          s.elements.unshift({
+            id: uid(),
+            type: "image",
+            src: m.url,
+            x: m.x,
+            y: m.y,
+            w: m.w,
+            h: m.h,
+            fit: "contain",
+            name: "motif",
+          });
+        }
       });
     } catch (e) {
       alert(e instanceof Error ? e.message : "分解に失敗しました");
@@ -325,6 +328,35 @@ function IconBtn({
 
 function TextInspector({ el }: { el: TextEl }) {
   const updateElement = useEditor((s) => s.updateElement);
+  const deck = useEditor((s) => s.deck);
+  const [instruction, setInstruction] = React.useState("");
+  const [rewriting, setRewriting] = React.useState(false);
+
+  // この文言だけをAIで磨く/書き換える(レイアウトは維持)
+  const rewrite = async () => {
+    if (rewriting) return;
+    setRewriting(true);
+    try {
+      const res = await fetch("/api/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: el.text,
+          instruction: instruction.trim() || undefined,
+          context: deck.title,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `書き換えに失敗しました (${res.status})`);
+      updateElement(el.id, { text: data.text });
+      setInstruction("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "書き換えに失敗しました");
+    } finally {
+      setRewriting(false);
+    }
+  };
+
   return (
     <>
       <Section title="テキスト">
@@ -334,6 +366,23 @@ function TextInspector({ el }: { el: TextEl }) {
           onChange={(e) => updateElement(el.id, { text: e.target.value })}
           className="w-full rounded border border-neutral-300 px-2 py-1 text-xs"
         />
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder="AIへの指示(空なら磨くだけ)"
+            className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs"
+          />
+          <button
+            onClick={rewrite}
+            disabled={rewriting}
+            title="この文言だけをAIで書き直します(文字数は同程度に保たれます)"
+            className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+          >
+            {rewriting ? "…" : "✦"}
+          </button>
+        </div>
       </Section>
       <Section title="タイポグラフィ">
         <div className="grid grid-cols-2 gap-2">
@@ -420,6 +469,33 @@ function ShapeInspector({ el }: { el: ShapeEl }) {
 function ImageInspector({ el }: { el: ImageEl }) {
   const updateElement = useEditor((s) => s.updateElement);
   const [cutting, setCutting] = React.useState(false);
+  const [remakeInstruction, setRemakeInstruction] = React.useState("");
+  const [remaking, setRemaking] = React.useState(false);
+
+  // この画像だけをAIで作り直す(位置・サイズは維持)
+  const remake = async () => {
+    if (remaking || !remakeInstruction.trim()) return;
+    setRemaking(true);
+    try {
+      const res = await fetch("/api/generate/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: remakeInstruction,
+          // 切り抜きパーツ(contain)は透過で、写真スロット(cover)は不透過で作る
+          transparent: el.fit === "contain",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `作り直しに失敗しました (${res.status})`);
+      updateElement(el.id, { src: data.url });
+      setRemakeInstruction("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "作り直しに失敗しました");
+    } finally {
+      setRemaking(false);
+    }
+  };
 
   // AIで被写体を切り抜き、透過PNGに差し替える(アセット画像のみ)
   const removeBackground = async () => {
@@ -463,6 +539,23 @@ function ImageInspector({ el }: { el: ImageEl }) {
           </button>
         </Row>
       )}
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={remakeInstruction}
+          onChange={(e) => setRemakeInstruction(e.target.value)}
+          placeholder="この画像を作り直す指示"
+          className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs"
+        />
+        <button
+          onClick={remake}
+          disabled={remaking || !remakeInstruction.trim()}
+          title="位置とサイズを保ったまま、この画像だけをAIで生成し直します(30〜90秒)"
+          className="shrink-0 rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+        >
+          {remaking ? "…" : "✦"}
+        </button>
+      </div>
       <Row label="フィット">
         <select
           value={el.fit}

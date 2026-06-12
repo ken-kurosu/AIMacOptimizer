@@ -5,6 +5,7 @@ import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
 import { GenerateDialog } from "./GenerateDialog";
 import { GenerateImageDialog } from "./GenerateImageDialog";
+import { DeckLibraryDialog } from "./DeckLibraryDialog";
 import { ShapeEl, TextEl, uid } from "@/lib/types";
 import { imageElementFor, uploadImageFile } from "@/lib/upload";
 
@@ -19,6 +20,7 @@ export function TopBar() {
   const addElement = useEditor((s) => s.addElement);
   const [showGenerate, setShowGenerate] = useState(false);
   const [showGenImage, setShowGenImage] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -201,6 +203,11 @@ export function TopBar() {
 
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
+      <ToolButton
+        onClick={() => setShowLibrary(true)}
+        label="デッキ"
+        title="保存済みデッキを開く / 現在のデッキを保存して共有リンクを作る"
+      />
       <ToolButton onClick={exportJson} label="JSON保存" />
       <ToolButton
         onClick={() => fileRef.current?.click()}
@@ -231,6 +238,7 @@ export function TopBar() {
 
       {showGenerate && <GenerateDialog onClose={() => setShowGenerate(false)} />}
       {showGenImage && <GenerateImageDialog onClose={() => setShowGenImage(false)} />}
+      {showLibrary && <DeckLibraryDialog onClose={() => setShowLibrary(false)} />}
     </div>
   );
 }

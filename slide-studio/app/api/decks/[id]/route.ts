@@ -16,3 +16,17 @@ export async function GET(
     return new Response("not found", { status: 404 });
   }
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  if (!/^[a-z0-9]+$/.test(id)) return new Response("not found", { status: 404 });
+  try {
+    await fs.unlink(path.join(process.cwd(), ".assets", `deck-${id}.json`));
+    return Response.json({ ok: true });
+  } catch {
+    return new Response("not found", { status: 404 });
+  }
+}

@@ -19,6 +19,10 @@ const PRESETS: BackgroundPreset[] = [
   "waves",
   "dots",
   "frame",
+  "rings",
+  "stripes",
+  "corner",
+  "sparkle",
 ];
 
 const HEX = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;

@@ -1,33 +1,25 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { useEditor } from "@/lib/store";
 import { normalizeDeck } from "@/lib/normalize";
 import { uploadImageFile } from "@/lib/upload";
 
-type Engine = "image2" | "structured";
-
-interface RefImage {
-  url: string;
-}
-
+// 生成ダイアログ。迷わないことを最優先に、入力は
+// 「内容(自由記述)・ページ数・参考画像(任意)」の3つだけに絞る。
+// エンジンはimage2(カンプ生成)一択。APIキーが無い環境はサーバー側で
+// 自動的にデモ生成へフォールバックする。
 export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const setDeck = useEditor((s) => s.setDeck);
   const [topic, setTopic] = useState("");
-  const [pages, setPages] = useState(8);
-  const [audience, setAudience] = useState("");
-  const [tone, setTone] = useState("信頼感のあるビジネス");
-  const [notes, setNotes] = useState("");
-  const [refs, setRefs] = useState<RefImage[]>([]);
+  const [pages, setPages] = useState(6);
+  const [refs, setRefs] = useState<string[]>([]);
   const [refUploading, setRefUploading] = useState(false);
   const refInput = useRef<HTMLInputElement>(null);
-  const [engine, setEngine] = useState<Engine>("structured");
-  const [avail, setAvail] = useState<{ openai: boolean; anthropic: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // 参考画像(任意・3枚まで)。配色・トーンの抽出元としてimage2の制作計画に渡す
   const addRefs = async (files: FileList) => {
     const images = Array.from(files)
       .filter((f) => f.type.startsWith("image/"))
@@ -35,28 +27,15 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
     if (images.length === 0) return;
     setRefUploading(true);
     try {
-      const uploaded: RefImage[] = [];
-      for (const f of images) {
-        const { url } = await uploadImageFile(f);
-        uploaded.push({ url });
-      }
-      setRefs((prev) => [...prev, ...uploaded].slice(0, 3));
+      const urls: string[] = [];
+      for (const f of images) urls.push((await uploadImageFile(f)).url);
+      setRefs((prev) => [...prev, ...urls].slice(0, 3));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "参考画像のアップロードに失敗しました");
+      setError(e instanceof Error ? e.message : "画像のアップロードに失敗しました");
     } finally {
       setRefUploading(false);
     }
   };
-
-  useEffect(() => {
-    fetch("/api/generate")
-      .then((r) => r.json())
-      .then((a) => {
-        setAvail(a);
-        if (a.openai) setEngine("image2");
-      })
-      .catch(() => setAvail({ openai: false, anthropic: false }));
-  }, []);
 
   const generate = async () => {
     setLoading(true);
@@ -69,21 +48,16 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({
           topic,
           pages,
-          audience,
-          tone,
-          engine,
-          notes: notes.trim() || undefined,
-          references: refs.length > 0 ? refs.map((r) => r.url) : undefined,
+          engine: "image2",
+          references: refs.length > 0 ? refs : undefined,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `生成に失敗しました (${res.status})`);
-      const deck = normalizeDeck(data.deck);
-      setDeck(deck);
+      setDeck(normalizeDeck(data.deck));
       if (data.mode === "demo") {
         setNotice(
-          data.warning ??
-            "APIキーが未設定のため、テンプレートベースのデモ生成で作成しました。",
+          data.warning ?? "APIキーが未設定のため、デモ生成で作成しました。",
         );
         setTimeout(onClose, 2500);
       } else {
@@ -99,7 +73,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onClose}
+      onClick={loading ? undefined : onClose}
     >
       <div
         className="w-[520px] rounded-2xl bg-white p-6 shadow-2xl"
@@ -107,110 +81,63 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       >
         <h2 className="mb-1 text-lg font-bold">AIでスライドを生成</h2>
         <p className="mb-4 text-xs text-neutral-500">
-          生成後は全パーツ(テキスト・配置・色・リンク)を自由に編集できます。
+          内容を書くだけで、デザイン込みのデッキを作ります。生成後はすべて編集できます。
         </p>
 
-        <div className="mb-4 grid grid-cols-2 gap-2">
-          <EngineCard
-            active={engine === "image2"}
-            disabled={avail !== null && !avail.openai}
-            onClick={() => setEngine("image2")}
-            title="🎨 image2 カンプ生成"
-            desc={
-              avail !== null && !avail.openai
-                ? "OPENAI_API_KEY が必要です"
-                : "画像生成でページ全面をデザインし、テキストを編集可能な層として配置(最高品質・2〜5分)"
-            }
-          />
-          <EngineCard
-            active={engine === "structured"}
-            disabled={false}
-            onClick={() => setEngine("structured")}
-            title="📐 構造化生成"
-            desc={
-              avail !== null && !avail.anthropic
-                ? "キー未設定時はデモ生成になります"
-                : "テンプレート文法でレイアウトを構成(高速・完全ベクター)"
-            }
-          />
-        </div>
+        <textarea
+          autoFocus
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          rows={5}
+          placeholder={
+            "どんな資料を作りたいか、自由に書いてください。\n" +
+            "誰向けか・トーン・必ず入れたい数字や構成があれば一緒に。\n\n" +
+            "例: 自家焙煎コーヒー定期便の紹介資料。在宅ワーカー向けに上品なトーンで。月額980円(税込)は必ず載せる"
+          }
+          className="mb-3 w-full rounded-xl border border-neutral-300 px-3 py-2.5 text-sm leading-relaxed"
+        />
 
-        <label className="mb-3 block text-xs font-medium text-neutral-600">
-          資料のテーマ・伝えたいこと *
-          <textarea
-            autoFocus
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            rows={3}
-            placeholder="例: SaaSプロダクト「○○」の新機能を既存顧客に紹介し、アップセルにつなげる提案資料"
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <div className="mb-3 grid grid-cols-2 gap-3">
-          <label className="block text-xs font-medium text-neutral-600">
+        <div className="mb-5 flex items-center justify-between">
+          <label className="flex items-center gap-2 text-xs text-neutral-600">
             ページ数
             <input
               type="number"
               min={3}
-              max={engine === "image2" ? 12 : 20}
+              max={12}
               value={pages}
-              onChange={(e) => setPages(parseInt(e.target.value) || 8)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              onChange={(e) => setPages(parseInt(e.target.value) || 6)}
+              className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
             />
           </label>
-          <label className="block text-xs font-medium text-neutral-600">
-            トーン
-            <select
-              value={tone}
-              onChange={(e) => setTone(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-            >
-              <option>信頼感のあるビジネス</option>
-              <option>先進的でテック</option>
-              <option>親しみやすくカジュアル</option>
-              <option>上品でエディトリアル</option>
-            </select>
-          </label>
-        </div>
 
-        <label className="mb-3 block text-xs font-medium text-neutral-600">
-          想定読者(任意)
-          <input
-            type="text"
-            value={audience}
-            onChange={(e) => setAudience(e.target.value)}
-            placeholder="例: 製造業の経営層"
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <label className="mb-3 block text-xs font-medium text-neutral-600">
-          補足・必ず入れたい内容(任意)
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="例: ブランドカラーは#1B4D3E / 料金は月額980円(税込) / 最後に問い合わせ先ページを入れる"
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
-          />
-        </label>
-
-        <div className="mb-4">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-xs font-medium text-neutral-600">
-              参考画像(任意・3枚まで)
-              <span className="ml-1 font-normal text-neutral-400">
-                配色・トーンの参考にします(image2)
-              </span>
-            </span>
-            <button
-              onClick={() => refInput.current?.click()}
-              disabled={refUploading || refs.length >= 3}
-              className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-40"
-            >
-              {refUploading ? "アップロード中…" : "+ 追加"}
-            </button>
+          <div className="flex items-center gap-2">
+            {refs.map((url) => (
+              <div key={url} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt=""
+                  className="h-9 w-12 rounded border border-neutral-200 object-cover"
+                />
+                <button
+                  onClick={() => setRefs((prev) => prev.filter((x) => x !== url))}
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[9px] text-white"
+                  title="削除"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {refs.length < 3 && (
+              <button
+                onClick={() => refInput.current?.click()}
+                disabled={refUploading}
+                title="ブランド資料やトンマナの近い画像を渡すと、配色・雰囲気の参考にします"
+                className="rounded-lg border border-dashed border-neutral-300 px-2.5 py-1.5 text-xs text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-40"
+              >
+                {refUploading ? "追加中…" : "+ 参考画像"}
+              </button>
+            )}
             <input
               ref={refInput}
               type="file"
@@ -223,81 +150,33 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
               }}
             />
           </div>
-          {refs.length > 0 && (
-            <div className="flex gap-2">
-              {refs.map((r) => (
-                <div key={r.url} className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={r.url}
-                    alt=""
-                    className="h-14 w-20 rounded border border-neutral-200 object-cover"
-                  />
-                  <button
-                    onClick={() => setRefs((prev) => prev.filter((x) => x.url !== r.url))}
-                    className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-neutral-800 text-[9px] text-white"
-                    title="削除"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {error && <p className="mb-3 text-xs text-red-500">{error}</p>}
         {notice && <p className="mb-3 text-xs text-amber-600">{notice}</p>}
 
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100"
-          >
-            キャンセル
-          </button>
-          <button
-            onClick={generate}
-            disabled={loading || !topic.trim()}
-            className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
-          >
-            {loading
-              ? engine === "image2"
-                ? "画像を生成中…(2〜5分)"
-                : "生成中…(最大1分)"
-              : "生成する"}
-          </button>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-neutral-400">
+            {loading ? "" : "目安: 1ページあたり約1分"}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              disabled={loading}
+              className="rounded-lg px-4 py-2 text-sm text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={generate}
+              disabled={loading || !topic.trim()}
+              className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+            >
+              {loading ? "生成中…そのままお待ちください" : "生成する"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function EngineCard({
-  active,
-  disabled,
-  onClick,
-  title,
-  desc,
-}: {
-  active: boolean;
-  disabled: boolean;
-  onClick: () => void;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-xl border-2 p-3 text-left transition ${
-        active
-          ? "border-blue-500 bg-blue-50"
-          : "border-neutral-200 hover:border-neutral-400"
-      } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
-    >
-      <div className="mb-1 text-sm font-bold">{title}</div>
-      <div className="text-[11px] leading-relaxed text-neutral-500">{desc}</div>
-    </button>
   );
 }

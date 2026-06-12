@@ -146,6 +146,79 @@ export function PresetBackground({
               <rect x={28} y={28} width={120} height={6} fill={c.accent} />
             </>
           )}
+          {background.preset === "rings" && (
+            <>
+              {[300, 230, 160, 90].map((r, i) => (
+                <circle
+                  key={r}
+                  cx={1150}
+                  cy={120}
+                  r={r}
+                  fill="none"
+                  stroke={i === 2 ? c.accent : c.brand}
+                  strokeWidth={i === 3 ? 14 : 1.5}
+                  opacity={i === 3 ? 0.16 : 0.3}
+                />
+              ))}
+              <circle cx={120} cy={650} r={130} fill="none" stroke={c.brand} strokeWidth={1.5} opacity={0.25} />
+              <circle cx={120} cy={650} r={70} fill={c.brandSoft} opacity={0.7} />
+            </>
+          )}
+          {background.preset === "stripes" && (
+            <>
+              {Array.from({ length: 9 }, (_, i) => (
+                <line
+                  key={i}
+                  x1={SLIDE_W - 420 + i * 36}
+                  y1={SLIDE_H + 60}
+                  x2={SLIDE_W + 200 + i * 36}
+                  y2={-60}
+                  stroke={i === 4 ? c.accent : c.brand}
+                  strokeWidth={i % 3 === 0 ? 10 : 2}
+                  opacity={i === 4 ? 0.5 : 0.18}
+                />
+              ))}
+              <rect x={0} y={SLIDE_H - 8} width={SLIDE_W} height={8} fill={c.brand} opacity={0.7} />
+            </>
+          )}
+          {background.preset === "corner" && (
+            <>
+              <path d={`M0 0 L340 0 L0 260 Z`} fill={c.brand} opacity={0.12} />
+              <path d={`M0 0 L220 0 L0 170 Z`} fill={c.brand} opacity={0.2} />
+              <path
+                d={`M${SLIDE_W} ${SLIDE_H} L${SLIDE_W - 300} ${SLIDE_H} L${SLIDE_W} ${SLIDE_H - 230} Z`}
+                fill={c.accent}
+                opacity={0.16}
+              />
+              <circle cx={SLIDE_W - 70} cy={90} r={10} fill={c.accent} opacity={0.8} />
+            </>
+          )}
+          {background.preset === "sparkle" && (
+            <>
+              {[
+                [90, 110, 7], [180, 70, 4], [1130, 90, 9], [1210, 190, 5],
+                [1180, 620, 7], [1080, 670, 4], [140, 600, 5], [70, 520, 8],
+                [640, 70, 4], [700, 660, 5],
+              ].map(([x, y, r], i) => (
+                <circle
+                  key={i}
+                  cx={x}
+                  cy={y}
+                  r={r}
+                  fill={i % 3 === 0 ? c.accent : c.brand}
+                  opacity={i % 2 === 0 ? 0.35 : 0.2}
+                />
+              ))}
+              {[[260, 140], [1040, 560], [980, 150], [320, 580]].map(([x, y], i) => (
+                <path
+                  key={`s${i}`}
+                  d={`M${x} ${y - 14} L${x + 4} ${y - 4} L${x + 14} ${y} L${x + 4} ${y + 4} L${x} ${y + 14} L${x - 4} ${y + 4} L${x - 14} ${y} L${x - 4} ${y - 4} Z`}
+                  fill={c.brand}
+                  opacity={0.3}
+                />
+              ))}
+            </>
+          )}
         </svg>
       )}
     </div>

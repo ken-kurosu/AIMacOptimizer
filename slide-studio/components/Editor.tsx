@@ -18,6 +18,19 @@ export function Editor() {
     // persistは状態変更時にしか書き込まないため、初期デッキも印刷ビューから
     // 参照できるようマウント時に一度保存をトリガーする
     useEditor.setState((s) => ({ deck: s.deck }));
+
+    // 外部連携(/?deck=<id>)で開かれたら、保存済みデッキを取り込んでURLを掃除する
+    const deckId = new URLSearchParams(window.location.search).get("deck");
+    if (deckId && /^[a-z0-9]+$/.test(deckId)) {
+      fetch(`/api/decks/${deckId}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then(async (d) => {
+          const { normalizeDeck } = await import("@/lib/normalize");
+          useEditor.getState().setDeck(normalizeDeck(d));
+          window.history.replaceState(null, "", "/");
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const undo = useEditor((s) => s.undo);

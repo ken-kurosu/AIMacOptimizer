@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // playwright-core はダイナミックrequire/fs操作を含むためバンドルせず
-  // ネイティブの require に任せる(PDF書き出しでのみ使用)
-  serverExternalPackages: ["playwright-core"],
+  // ダイナミックrequire/ネイティブバイナリを含むパッケージはバンドルせず
+  // ネイティブの require に任せる(PDF書き出し・PDF取り込みでのみ使用)
+  serverExternalPackages: ["playwright-core", "pdfjs-dist", "@napi-rs/canvas"],
 };
 
 export default nextConfig;

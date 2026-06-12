@@ -75,7 +75,11 @@ export type BackgroundPreset =
   | "grid"
   | "waves"
   | "dots"
-  | "frame";
+  | "frame"
+  | "rings"
+  | "stripes"
+  | "corner"
+  | "sparkle";
 
 export interface Background {
   color: ColorValue; // ベース色

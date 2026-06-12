@@ -21,6 +21,7 @@ export function TopBar() {
   const [showGenImage, setShowGenImage] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
 
@@ -123,6 +124,30 @@ export function TopBar() {
     reader.readAsText(file);
   };
 
+  // 画像だけのPDF資料を、編集可能なデッキ(背景画像+テキスト要素)へ分解して取り込む
+  const importPdf = async (file: File) => {
+    setImporting(true);
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/pdf" },
+        body: file,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `取り込みに失敗しました (${res.status})`);
+      setDeck(normalizeDeck(data.deck));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "PDFの取り込みに失敗しました");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const importFile = (file: File) => {
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) importPdf(file);
+    else importJson(file);
+  };
+
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3">
       <span className="mr-1 rounded bg-neutral-900 px-2 py-0.5 text-xs font-black tracking-wide text-white">
@@ -177,15 +202,20 @@ export function TopBar() {
       <div className="mx-1 h-6 w-px bg-neutral-200" />
 
       <ToolButton onClick={exportJson} label="JSON保存" />
-      <ToolButton onClick={() => fileRef.current?.click()} label="読込" />
+      <ToolButton
+        onClick={() => fileRef.current?.click()}
+        label={importing ? "分解中…" : "読込"}
+        title="JSONデッキ、またはスライドPDF(画像のみ可)を編集可能な状態に分解して取り込みます"
+        disabled={importing}
+      />
       <input
         ref={fileRef}
         type="file"
-        accept="application/json"
+        accept="application/json,.json,application/pdf,.pdf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) importJson(f);
+          if (f) importFile(f);
           e.target.value = "";
         }}
       />

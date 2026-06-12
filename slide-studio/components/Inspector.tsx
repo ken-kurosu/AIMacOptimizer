@@ -23,6 +23,10 @@ const PRESET_LABELS: Record<BackgroundPreset, string> = {
   waves: "波",
   dots: "ドット",
   frame: "フレーム",
+  rings: "リング",
+  stripes: "ストライプ",
+  corner: "コーナー",
+  sparkle: "スパークル",
 };
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

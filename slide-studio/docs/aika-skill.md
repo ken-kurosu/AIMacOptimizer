@@ -1,7 +1,12 @@
-# AIka(Slackエージェント)用 スライド作成スキル
+# AIka(Slackエージェント)用 スライド作成スキル — 実装依頼書
 
-slide-studio をAIka経由で使うためのドロップイン資料。
-aika-slack-agent リポジトリにスキルとして追加する想定。
+slide-studio をAIka経由で使うためのドロップイン資料。aika-slack-agent リポジトリに
+スキルとして追加する想定。**このドキュメント単体で実装が完結する**ように書いてあるので、
+AIka側の開発セッションには次のように依頼すればよい:
+
+> スライド作成スキルを追加して。仕様はこれ:
+> https://raw.githubusercontent.com/ken-kurosu/AIMacOptimizer/main/slide-studio/docs/aika-skill.md
+> SLIDE_STUDIO_URL と SLIDE_STUDIO_TOKEN は環境変数に設定済み(値は別途渡す)
 
 ## 前提
 
@@ -57,11 +62,34 @@ def format_plan(plan: dict) -> str:
     return "\n".join(lines)
 ```
 
-## 注意
+## APIリファレンス(このスキルが使うもの)
+
+| エンドポイント | 用途 | 所要時間 |
+|---|---|---|
+| `POST /api/generate/plan` | 構成案の作成・修正(`topic`,`pages`任意で`feedback`+`previousPlan`) | 60〜90秒 |
+| `POST /api/decks` | `{"plan": <承認済みplan>}` で生成+保存 → `{id, editUrl, title, pages}` | 1ページ約1分 |
+| `GET /api/decks` | 保存済みデッキ一覧(「前作ったやつ開いて」用) | 即時 |
+
+- 認証は全エンドポイント `Authorization: Bearer <SLIDE_STUDIO_TOKEN>`
+- エラー時は `{"error": "<日本語の理由>"}` が返る(HTTPは400/401/502)
+- planの構造: `{title, theme:{colors,...}, pages:[{name, motif, space, imagePrompt, texts:[{role,text}]}]}`
+  修正再依頼ではこれを `previousPlan` としてそのまま返す(会話の状態として保持しておく)
+
+## 会話設計の注意
 
 - 生成は長い(3〜10分)。`create_deck` は先に「生成を始めました(◯分くらい)」と返してから呼ぶ
+- 構成案はユーザーが修正を何往復もできる。直前のplanを会話状態に保持し、
+  修正コメントはそのまま `feedback` に渡す(解釈しすぎない)
 - `editUrl` には閲覧用トークンが含まれる。社内チャンネル以外には貼らない
-- エラー時は `r.json()["error"]` に日本語の理由が入っている
+- タイムアウトは plan: 180秒 / decks: 900秒 を目安に
+
+## 完了チェックリスト
+
+- [ ] 「◯◯のスライド作って」→ 構成案がSlackに整形されて出る
+- [ ] 「2ページ目を△△にして」→ 修正された構成案が出る
+- [ ] 「OK」→ 「生成中(◯分)」の応答 → 完成後に editUrl が投稿される
+- [ ] editUrl をクリックすると編集画面が開く(トークン込みなので認証不要)
+- [ ] slide-studio停止時など、エラーが日本語でユーザーに伝わる
 
 ## slide-studio のデプロイ(Mac mini)
 

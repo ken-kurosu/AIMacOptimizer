@@ -1,5 +1,5 @@
 import { DeckPlan, makeDeckPlan } from "@/lib/image2Pipeline";
-import { openaiAvailable, pickTextModel } from "@/lib/openai";
+import { openaiAvailable, pickTextModel, researchTopic } from "@/lib/openai";
 
 export const maxDuration = 120;
 
@@ -16,6 +16,8 @@ interface PlanBrief {
   references?: string[];
   feedback?: string;
   previousPlan?: DeckPlan;
+  research?: boolean; // Web検索で事実を集めてから構成する
+  researchNotes?: string; // 取得済みの調査結果(作り直し時に再検索しないため)
 }
 
 export async function POST(req: Request) {
@@ -30,12 +32,35 @@ export async function POST(req: Request) {
     return Response.json({ error: "topic is required" }, { status: 400 });
   }
   try {
+    const textModel = await pickTextModel();
+
+    // Webリサーチ(任意)。失敗しても構成案の作成は続行する
+    let researchNotes = brief.researchNotes?.trim() || undefined;
+    let sources: { url: string; title?: string }[] = [];
+    if (brief.research && !researchNotes) {
+      try {
+        const r = await researchTopic(textModel, brief.topic!);
+        researchNotes = r.summary;
+        sources = r.sources;
+      } catch (e) {
+        console.warn("research skipped:", e instanceof Error ? e.message : e);
+      }
+    }
+    const notes = [
+      brief.notes,
+      researchNotes
+        ? `Web調査で確認できた事実(正確に反映する。ここに無い数値を使う場合は「仮」と明記):\n${researchNotes}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
     const plan = await makeDeckPlan(
-      { topic: brief.topic!, pages: brief.pages || 6, audience: brief.audience, tone: brief.tone, notes: brief.notes, references: brief.references },
+      { topic: brief.topic!, pages: brief.pages || 6, audience: brief.audience, tone: brief.tone, notes: notes || undefined, references: brief.references },
       brief.feedback,
       brief.previousPlan,
     );
-    return Response.json({ plan, model: await pickTextModel() });
+    return Response.json({ plan, model: textModel, sources, researchNotes });
   } catch (e) {
     console.error("plan failed:", e);
     return Response.json(

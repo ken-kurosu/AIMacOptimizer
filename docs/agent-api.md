@@ -21,7 +21,9 @@ Request:
   "pages": 5,
   "references": ["/api/assets/up-..."],      // optional, uploaded reference images
   "feedback": "swap page 3 for case studies", // optional (revision)
-  "previousPlan": { ... }                     // optional (revision: pass the previous plan back verbatim)
+  "previousPlan": { ... },                    // optional (revision: pass the previous plan back verbatim)
+  "research": true,                           // optional: web-search facts (pricing, names, track record) first (+30–60 s)
+  "researchNotes": "..."                      // optional: pass back from a previous response to skip re-searching on revisions
 }
 ```
 
@@ -37,7 +39,9 @@ Response (60–90 s):
         "imagePrompt": "...", "texts": [ { "role": "kicker|title|subtitle|body|stat|label", "text": "..." } ] }
     ]
   },
-  "model": "gpt-5.5"
+  "model": "gpt-5.5",
+  "sources": [ { "url": "https://…", "title": "…" } ],  // when research was used — show these to the user
+  "researchNotes": "…"                                   // pass back on revisions
 }
 ```
 

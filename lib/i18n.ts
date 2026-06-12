@@ -68,6 +68,10 @@ const ja = {
   spaceBottom: "テキストは下",
   spaceCenter: "テキストは中央",
   planFallbackTitle: "構成案",
+  researchToggle: "Web検索で最新情報を反映",
+  researchToggleTitle: "構成案を作る前にWebで事実(料金・実績・正式名称など)を調べて反映します(+30秒〜1分)",
+  researching: "Webで調べています…(1〜2分)",
+  sourcesLabel: "参照した情報源",
 
   // SlideList
   pages: "ページ",
@@ -280,6 +284,10 @@ const en: Record<keyof typeof ja, string> = {
   spaceBottom: "text bottom",
   spaceCenter: "text centered",
   planFallbackTitle: "Outline",
+  researchToggle: "Research the web for facts",
+  researchToggleTitle: "Searches the web for facts (pricing, names, track record) before drafting (+30–60 s)",
+  researching: "Researching the web… (1–2 min)",
+  sourcesLabel: "Sources",
 
   pages: "Pages",
   aiAddBtn: "✦ AI",

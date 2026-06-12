@@ -46,6 +46,9 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
   const [refUploading, setRefUploading] = useState(false);
   const refInput = useRef<HTMLInputElement>(null);
   const [plan, setPlan] = useState<DeckPlan | null>(null);
+  const [research, setResearch] = useState(false);
+  const [sources, setSources] = useState<{ url: string; title?: string }[]>([]);
+  const [researchNotes, setResearchNotes] = useState("");
   const [planModel, setPlanModel] = useState("");
   const [feedback, setFeedback] = useState("");
   const [planning, setPlanning] = useState(false);
@@ -82,6 +85,8 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
           topic,
           pages,
           references: refs.length > 0 ? refs : undefined,
+          research: research || undefined,
+          researchNotes: withFeedback ? researchNotes || undefined : undefined,
           feedback: withFeedback ? feedback.trim() || undefined : undefined,
           previousPlan: withFeedback ? plan : undefined,
         }),
@@ -95,6 +100,8 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
       if (!res.ok) throw new Error(data.error ?? `${t("planFailed")} (${res.status})`);
       setPlan(data.plan);
       setPlanModel(data.model ?? "");
+      setSources(data.sources?.length ? data.sources : withFeedback ? sources : []);
+      setResearchNotes(data.researchNotes ?? (withFeedback ? researchNotes : ""));
       setFeedback("");
       setStep("review");
     } catch (e) {
@@ -166,6 +173,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
             />
 
             <div className="mb-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs text-neutral-600">
                 {t("pagesLabel")}
                 <input
@@ -177,6 +185,18 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                   className="w-16 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
                 />
               </label>
+              <label
+                className="flex items-center gap-1.5 text-xs text-neutral-600"
+                title={t("researchToggleTitle")}
+              >
+                <input
+                  type="checkbox"
+                  checked={research}
+                  onChange={(e) => setResearch(e.target.checked)}
+                />
+                {t("researchToggle")}
+              </label>
+              </div>
 
               <div className="flex items-center gap-2">
                 {refs.map((url) => (
@@ -236,7 +256,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 disabled={busy || !topic.trim()}
                 className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
               >
-                {planning ? t("planning") : loading ? t("generatingShort") : t("makePlan")}
+                {planning ? (research && !researchNotes ? t("researching") : t("planning")) : loading ? t("generatingShort") : t("makePlan")}
               </button>
             </div>
           </>
@@ -283,6 +303,28 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
+
+            {sources.length > 0 && (
+              <div className="mb-3">
+                <div className="mb-1 text-[10px] font-bold tracking-wider text-neutral-400">
+                  {t("sourcesLabel")}
+                </div>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {sources.slice(0, 6).map((s) => (
+                    <a
+                      key={s.url}
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="max-w-[230px] truncate text-[10px] text-blue-500 hover:underline"
+                      title={s.url}
+                    >
+                      {s.title || s.url.replace(/^https?:\/\//, "")}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <input
               type="text"

@@ -3,9 +3,10 @@ import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
 import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2Pipeline";
 import { critiqueAndFixDeck } from "@/lib/critique";
+import { decomposeDeckLayers } from "@/lib/decompose";
 import { openaiAvailable, pickTextModel } from "@/lib/openai";
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 interface Brief {
   topic: string;
@@ -16,6 +17,7 @@ interface Brief {
   references?: string[];
   engine?: "image2" | "structured";
   plan?: DeckPlan; // 承認済みの構成案(レビュー後の生成)。あれば計画工程をスキップ
+  lang?: string; // レイヤー名などの言語(ja/en)
 }
 
 // エンジンの利用可否(ダイアログが起動時に問い合わせる)
@@ -110,6 +112,15 @@ export async function POST(req: Request) {
         if (checked > 0) console.log(`critique: ${checked} slides checked, ${fixed} refit`);
       } catch (e) {
         console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
+      }
+      // 自動レイヤー分解: ユーザーが編集を始める時点で各ページが
+      // 「無地背景 + 動かせるモチーフレイヤー」になっているようにする。
+      // 見た目は変わらないので批評ループの後に実行。失敗ページは一枚絵のまま
+      try {
+        const layered = await decomposeDeckLayers(deck, brief.lang === "en" ? "en" : "ja");
+        if (layered > 0) console.log(`auto-decompose: ${layered}/${deck.slides.length} slides layered`);
+      } catch (e) {
+        console.warn("auto-decompose skipped:", e instanceof Error ? e.message : e);
       }
       return Response.json({ mode: "image2", deck });
     } catch (e) {

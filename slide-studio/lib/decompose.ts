@@ -345,6 +345,43 @@ export interface MotifLayer {
   depth: number;
 }
 
+// 合成保存性を守るクリーン背景の合成。
+// gpt-imageの「全モチーフ除去」出力(cleanRgb)を信用しすぎると、切り出しレイヤーが
+// 捉えた範囲より広くモチーフを消してしまい、どのレイヤーにも残らない画素が「消失」する。
+// そこで、実際にレイヤー化した成分のセル領域(+1セルの余白)だけをクリーン画素に置き換え、
+// それ以外は元画素をそのまま残す。これで「背景 + 全レイヤー ≈ 元画像」が常に成り立つ。
+export function buildCleanBackground(
+  originalRgb: Buffer,
+  cleanRgb: Buffer,
+  comps: { cells: number[] }[],
+): Promise<Buffer> {
+  const cellW = SLIDE_W / GRID_W;
+  const cellH = SLIDE_H / GRID_H;
+  const cellSet = new Set<number>();
+  for (const c of comps) for (const cell of c.cells) cellSet.add(cell);
+  const out = Buffer.alloc(SLIDE_W * SLIDE_H * 3);
+  for (let y = 0; y < SLIDE_H; y++) {
+    for (let x = 0; x < SLIDE_W; x++) {
+      const gx = (x / cellW) | 0;
+      const gy = (y / cellH) | 0;
+      let inMask = cellSet.has(gy * GRID_W + gx);
+      if (!inMask) {
+        for (let dy = -1; dy <= 1 && !inMask; dy++) {
+          for (let dx = -1; dx <= 1 && !inMask; dx++) {
+            inMask = cellSet.has((gy + dy) * GRID_W + (gx + dx));
+          }
+        }
+      }
+      const i = (y * SLIDE_W + x) * 3;
+      const src = inMask ? cleanRgb : originalRgb;
+      out[i] = src[i];
+      out[i + 1] = src[i + 1];
+      out[i + 2] = src[i + 2];
+    }
+  }
+  return sharp(out, { raw: { width: SLIDE_W, height: SLIDE_H, channels: 3 } }).png().toBuffer();
+}
+
 export interface DecomposeResult {
   background: string; // 無地背景のアセットURL
   motifs: MotifLayer[]; // 背面(depth小)→前面の順
@@ -401,7 +438,9 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
 
   // 1物体が複数に割れて列挙された分をbboxの重なりで統合してから割り当てる
   const objects = mergeOverlappingObjects((enumerated.objects ?? []).slice(0, 10));
-  let motifs: MotifLayer[] = [];
+  const motifs: MotifLayer[] = [];
+  // 実際にレイヤー化した成分。クリーン背景のマスク(合成保存性)に使う
+  const usedComps: Component[] = [];
 
   if (objects.length > 0) {
     // 意味単位グルーピング(Magic Layers方式): セル単位で最も特定的なオブジェクトへ
@@ -413,23 +452,32 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
         const o = objects[objIndex];
         const url = await saveAsset(`cut-${uid()}`, layer.png);
         return {
-          url,
-          x: layer.x,
-          y: layer.y,
-          w: layer.w,
-          h: layer.h,
-          name: o.name?.trim() || undefined,
-          depth: o.depth ?? objIndex,
+          comp: group,
+          motif: {
+            url,
+            x: layer.x,
+            y: layer.y,
+            w: layer.w,
+            h: layer.h,
+            name: o.name?.trim() || undefined,
+            depth: o.depth ?? objIndex,
+          },
         };
       }),
     );
-    motifs = cut.filter((m): m is NonNullable<typeof m> => m !== null);
+    for (const r of cut) {
+      if (r) {
+        motifs.push(r.motif);
+        usedComps.push(r.comp);
+      }
+    }
     // どのオブジェクトにも帰属しなかった残り(あれば)を1レイヤーに
     if (leftover) {
       const layer = await cutLayer(originalRgb, motifRgba, [leftover]);
       if (layer) {
         const url = await saveAsset(`cut-${uid()}`, layer.png);
         motifs.push({ url, x: layer.x, y: layer.y, w: layer.w, h: layer.h, depth: 99 });
+        usedComps.push(leftover);
       }
     }
   }
@@ -442,17 +490,26 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
         const layer = await cutLayer(originalRgb, motifRgba, [c]);
         if (!layer) return null;
         const url = await saveAsset(`cut-${uid()}`, layer.png);
-        return { url, x: layer.x, y: layer.y, w: layer.w, h: layer.h, depth: i };
+        return { comp: c, motif: { url, x: layer.x, y: layer.y, w: layer.w, h: layer.h, depth: i } };
       }),
     );
-    motifs = cut.filter((m): m is NonNullable<typeof m> => m !== null);
+    for (const r of cut) {
+      if (r) {
+        motifs.push(r.motif);
+        usedComps.push(r.comp);
+      }
+    }
   }
   if (motifs.length === 0) throw new Error("could not detect any motif");
 
   // 背面(depth小)が先(クライアントはこの順で背面から積む)。同深度は大きい順
   motifs.sort((a, b) => a.depth - b.depth || b.w * b.h - a.w * a.h);
 
-  const background = await saveAsset(`bg-${uid()}`, cleanPng);
+  // 合成保存性: レイヤーが覆う領域だけをクリーン画素に、それ以外は元画素を残す。
+  // これにより「背景を消したのにレイヤーにも無い=モチーフ消失」が原理的に起きない
+  const cleanRgb = await sharp(cleanPng).removeAlpha().raw().toBuffer();
+  const mergedBg = await buildCleanBackground(originalRgb, cleanRgb, usedComps);
+  const background = await saveAsset(`bg-${uid()}`, mergedBg);
   return { background, motifs };
 }
 

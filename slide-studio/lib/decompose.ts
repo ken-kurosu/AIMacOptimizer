@@ -18,17 +18,78 @@ const ENUMERATE_SYSTEM = `あなたはデザインのレイヤー解析エンジ
 出力(JSONのみ): { "objects": [ { "name": "(短い表示名)", "bbox": { "x": 0-1280, "y": 0-720, "w": px, "h": px }, "depth": 0 } ] }
 
 ルール:
-- ひとまとまりとして動かしたい最小単位で分ける(例: 円の中の豆=1つ、左下の植物=1つ、波の帯=1つ)
-- オブジェクト同士を重複させない。「グループ」と「その構成要素」を両方挙げない(構成要素を優先)
-- 最大10個。視覚的に重要な順に。微細な点・粒・テクスチャは含めない
-- depth: 0=最背面(大きな帯・グラデーション)、数字が大きいほど前面の小物
-- bboxはそのオブジェクトが占める領域(正確に)
-- nameは依頼された言語で短く(例: 「コーヒー豆の円」/ "coffee bean circle")`;
+- 【1物体=1オブジェクト・最重要】現実に1つの物体は、色や面が複数に分かれて見えても必ず1つにまとめる。例: 1棟のビルは窓・壁・影に分かれて見えても「ビル」で1つ / 1人の人物は服・髪・肌で分かれても1つ / 1台の机とPCは「デスク」で1つ。同じ物体を左右・上下・前後に割らない
+- 分ける単位は「ユーザーがドラッグで個別に動かしたい現実の物体」。装飾の帯・雲・地面のような背景地と、その上の主役オブジェクトは分けてよい
+- オブジェクト同士のbboxを大きく重複させない。「グループ」と「その構成要素」を両方挙げない(物体単位を優先)
+- 最大10個。視覚的に重要な順に。微細な点・粒・テクスチャ・葉の1枚などは含めない(まとめる)
+- depth: 0=最背面(大きな帯・グラデーション・空・地面)、数字が大きいほど前面の小物
+- bboxはその物体が占める領域を過不足なく(正確に)
+- nameは依頼された言語で短く、物体そのものの名前にする(例: 「オフィスビル」/ "office building")`;
 
 interface LayerObject {
   name?: string;
   bbox?: { x?: number; y?: number; w?: number; h?: number };
   depth?: number;
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+function boxOf(o: LayerObject): Box {
+  return { x: o.bbox?.x ?? 0, y: o.bbox?.y ?? 0, w: o.bbox?.w ?? 0, h: o.bbox?.h ?? 0 };
+}
+
+// 2つのbboxの重なり度合い = 交差面積 / 小さい方の面積(0〜1)。
+// 同じ物体が2つに列挙されると、片方がもう片方をほぼ覆うので高い値になる
+function overlapRatio(a: Box, b: Box): number {
+  const ix = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  const inter = ix * iy;
+  const minArea = Math.max(1, Math.min(a.w * a.h, b.w * b.h));
+  return inter / minArea;
+}
+
+// ビジョンが1つの物体を複数に割って列挙してしまった分を、bboxの重なりで統合する。
+// 重なりが大きい(=同じ物体の別パーツ)objectをユニオンして1つにまとめる。
+function mergeOverlappingObjects(objects: LayerObject[], threshold = 0.5): LayerObject[] {
+  const boxes = objects.map(boxOf);
+  const parent = objects.map((_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < objects.length; i++) {
+    for (let j = i + 1; j < objects.length; j++) {
+      if (boxes[i].w <= 0 || boxes[j].w <= 0) continue;
+      if (overlapRatio(boxes[i], boxes[j]) >= threshold) parent[find(i)] = find(j);
+    }
+  }
+  const groups = new Map<number, number[]>();
+  objects.forEach((_, i) => {
+    const r = find(i);
+    (groups.get(r) ?? groups.set(r, []).get(r)!).push(i);
+  });
+  const merged: LayerObject[] = [];
+  for (const idxs of groups.values()) {
+    if (idxs.length === 1) {
+      merged.push(objects[idxs[0]]);
+      continue;
+    }
+    // ユニオンbbox。名前は最大面積のもの、depthは最小(より背面)を採用
+    const bs = idxs.map((i) => boxes[i]);
+    const x = Math.min(...bs.map((b) => b.x));
+    const y = Math.min(...bs.map((b) => b.y));
+    const x1 = Math.max(...bs.map((b) => b.x + b.w));
+    const y1 = Math.max(...bs.map((b) => b.y + b.h));
+    const biggest = idxs.reduce((a, b) => (boxes[a].w * boxes[a].h >= boxes[b].w * boxes[b].h ? a : b));
+    merged.push({
+      name: objects[biggest].name,
+      bbox: { x, y, w: x1 - x, h: y1 - y },
+      depth: Math.min(...idxs.map((i) => objects[i].depth ?? i)),
+    });
+  }
+  return merged;
 }
 
 const MOTIF_PROMPT =
@@ -338,7 +399,8 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
   const comps = findComponentsFine(motifRgba);
   if (comps.length === 0) throw new Error("could not detect any motif");
 
-  const objects = (enumerated.objects ?? []).slice(0, 10);
+  // 1物体が複数に割れて列挙された分をbboxの重なりで統合してから割り当てる
+  const objects = mergeOverlappingObjects((enumerated.objects ?? []).slice(0, 10));
   let motifs: MotifLayer[] = [];
 
   if (objects.length > 0) {

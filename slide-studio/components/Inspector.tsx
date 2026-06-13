@@ -7,6 +7,7 @@ import {
   ColorValue,
   ImageEl,
   ShapeEl,
+  SlideElement,
   TextEl,
   resolveColor,
   uid,
@@ -44,6 +45,46 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="shrink-0">{label}</span>
       {children}
     </label>
+  );
+}
+
+// レイヤー一覧の1行。Cmd/Shift+クリックで選択集合に増減できる
+function LayerRow({
+  e,
+  active,
+  primary,
+  onClick,
+}: {
+  e: SlideElement;
+  active: boolean;
+  primary: boolean;
+  onClick: (additive: boolean) => void;
+}) {
+  return (
+    <button
+      onClick={(ev) => onClick(ev.metaKey || ev.ctrlKey || ev.shiftKey)}
+      className={`flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-neutral-100 ${
+        active ? "bg-blue-50 text-blue-700" : "text-neutral-700"
+      } ${primary ? "ring-1 ring-blue-400" : ""}`}
+    >
+      <span className="w-4 shrink-0 text-center text-[10px] text-neutral-400">
+        {e.type === "text" ? "T" : e.type === "image" ? "🖼" : "◆"}
+      </span>
+      <span className="min-w-0 flex-1 truncate">
+        {e.type === "text" ? e.text.slice(0, 24) : e.name || (e.type === "image" ? "画像" : "図形")}
+      </span>
+    </button>
+  );
+}
+
+function AlignBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded border border-neutral-300 px-2 py-1 text-[11px] text-neutral-700 hover:bg-neutral-100"
+    >
+      {label}
+    </button>
   );
 }
 
@@ -109,9 +150,12 @@ export function Inspector() {
   const slide = useSelectedSlide();
   const deck = useEditor((s) => s.deck);
   const selectedElementId = useEditor((s) => s.selectedElementId);
+  const selectedElementIds = useEditor((s) => s.selectedElementIds);
   const updateElement = useEditor((s) => s.updateElement);
   const deleteElement = useEditor((s) => s.deleteElement);
+  const deleteElements = useEditor((s) => s.deleteElements);
   const duplicateElement = useEditor((s) => s.duplicateElement);
+  const duplicateElements = useEditor((s) => s.duplicateElements);
   const reorderElement = useEditor((s) => s.reorderElement);
   const commit = useEditor((s) => s.commit);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
@@ -119,6 +163,24 @@ export function Inspector() {
   const setFxScanning = useEditor((s) => s.setFxScanning);
   const setFxPopIds = useEditor((s) => s.setFxPopIds);
   const select = useEditor((s) => s.select);
+  const toggleSelect = useEditor((s) => s.toggleSelect);
+
+  // 複数選択した要素を、選択全体の外接矩形を基準に整列する
+  const alignSelected = (axis: "x" | "y", mode: "start" | "center" | "end") =>
+    commit((d) => {
+      const els = d.slides.find((s) => s.id === selectedSlideId)?.elements;
+      if (!els) return;
+      const targets = els.filter((e) => selectedElementIds.includes(e.id));
+      if (targets.length < 2) return;
+      const size = axis === "x" ? ("w" as const) : ("h" as const);
+      const lo = Math.min(...targets.map((e) => e[axis]));
+      const hi = Math.max(...targets.map((e) => e[axis] + e[size]));
+      for (const e of targets) {
+        if (mode === "start") e[axis] = lo;
+        else if (mode === "end") e[axis] = hi - e[size];
+        else e[axis] = Math.round((lo + hi) / 2 - e[size] / 2);
+      }
+    });
 
   // 背景をAIで「動かせるモチーフ画像 + 無地背景」に分解する
   const decompose = async () => {
@@ -166,7 +228,8 @@ export function Inspector() {
   };
 
   if (!slide) return null;
-  const el = slide.elements.find((e) => e.id === selectedElementId);
+  const multi = selectedElementIds.length > 1;
+  const el = multi ? undefined : slide.elements.find((e) => e.id === selectedElementId);
 
   const patchSlide = (fn: (s: NonNullable<typeof slide>) => void) =>
     commit((d) => {
@@ -176,7 +239,45 @@ export function Inspector() {
 
   return (
     <div className="flex h-full w-72 shrink-0 flex-col overflow-y-auto border-l border-neutral-200 bg-white">
-      {!el ? (
+      {multi ? (
+        <>
+          <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+            <div className="text-sm font-bold">{selectedElementIds.length}個のレイヤーを選択中</div>
+            <div className="flex gap-1">
+              <IconBtn title="まとめて複製" onClick={() => duplicateElements(selectedElementIds)}>⧉</IconBtn>
+              <IconBtn title="まとめて削除" danger onClick={() => deleteElements(selectedElementIds)}>🗑</IconBtn>
+            </div>
+          </div>
+          <Section title="整列">
+            <div className="flex flex-wrap gap-1">
+              <AlignBtn label="左" onClick={() => alignSelected("x", "start")} />
+              <AlignBtn label="左右中央" onClick={() => alignSelected("x", "center")} />
+              <AlignBtn label="右" onClick={() => alignSelected("x", "end")} />
+              <AlignBtn label="上" onClick={() => alignSelected("y", "start")} />
+              <AlignBtn label="上下中央" onClick={() => alignSelected("y", "center")} />
+              <AlignBtn label="下" onClick={() => alignSelected("y", "end")} />
+            </div>
+          </Section>
+          <Section title="レイヤー">
+            <div className="max-h-72 space-y-0.5 overflow-y-auto">
+              {[...slide.elements].reverse().map((e) => (
+                <LayerRow
+                  key={e.id}
+                  e={e}
+                  active={selectedElementIds.includes(e.id)}
+                  primary={selectedElementId === e.id}
+                  onClick={(additive) =>
+                    additive ? toggleSelect(selectedSlideId, e.id) : select(selectedSlideId, e.id)
+                  }
+                />
+              ))}
+            </div>
+          </Section>
+          <div className="px-4 py-3 text-xs leading-relaxed text-neutral-400">
+            ドラッグで一緒に移動できます。Cmd/Shift+クリックで選択を増減、矢印キーで微調整、Delで一括削除。
+          </div>
+        </>
+      ) : !el ? (
         <>
           <div className="border-b border-neutral-200 px-4 py-3 text-sm font-bold">
             スライド設定
@@ -239,24 +340,21 @@ export function Inspector() {
             <Section title="レイヤー">
               <div className="max-h-56 space-y-0.5 overflow-y-auto">
                 {[...slide.elements].reverse().map((e) => (
-                  <button
+                  <LayerRow
                     key={e.id}
-                    onClick={() => select(selectedSlideId, e.id)}
-                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-700 hover:bg-neutral-100"
-                  >
-                    <span className="w-4 shrink-0 text-center text-[10px] text-neutral-400">
-                      {e.type === "text" ? "T" : e.type === "image" ? "🖼" : "◆"}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {e.type === "text" ? e.text.slice(0, 24) : e.name || (e.type === "image" ? "画像" : "図形")}
-                    </span>
-                  </button>
+                    e={e}
+                    active={selectedElementIds.includes(e.id)}
+                    primary={selectedElementId === e.id}
+                    onClick={(additive) =>
+                      additive ? toggleSelect(selectedSlideId, e.id) : select(selectedSlideId, e.id)
+                    }
+                  />
                 ))}
               </div>
             </Section>
           )}
           <div className="px-4 py-3 text-xs leading-relaxed text-neutral-400">
-            要素をクリックすると詳細を編集できます。ダブルクリックでテキストを直接編集、ドラッグで移動できます。
+            要素をクリックすると詳細を編集できます。ダブルクリックでテキストを直接編集、ドラッグで移動できます。Cmd/Shift+クリックや背景ドラッグで複数選択できます。
           </div>
         </>
       ) : (

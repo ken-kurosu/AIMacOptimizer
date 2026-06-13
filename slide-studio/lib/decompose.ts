@@ -277,10 +277,28 @@ function assignCellsToObjects(
   return { groups, leftover: leftoverCells.length >= 12 ? toComponent(leftoverCells) : null };
 }
 
-// 成分セル群からレイヤーを切り出す(画素は元画像、アルファは抽出版×セルマスク)
+// モチーフ本体の不透明度を「元画像とクリーン背景の差分」から求める。
+// gpt-imageの透過出力(motifRgba)はモチーフ本体でもアルファが甘く(半透明に)なりがちで、
+// それをそのまま使うと下のクリーン背景が透けてモチーフが褪せて見える。差分ベースなら
+// モチーフ本体(背景と色が違う)は確実に不透明になり、合成が元画像に一致する。
+export function diffAlpha(orig: Buffer, clean: Buffer, p3: number): number {
+  const d =
+    Math.abs(orig[p3] - clean[p3]) +
+    Math.abs(orig[p3 + 1] - clean[p3 + 1]) +
+    Math.abs(orig[p3 + 2] - clean[p3 + 2]);
+  const LO = 36; // これ以下は背景とみなす
+  const HI = 120; // これ以上はモチーフ本体=完全不透明
+  if (d <= LO) return 0;
+  if (d >= HI) return 255;
+  return Math.round(((d - LO) / (HI - LO)) * 255);
+}
+
+// 成分セル群からレイヤーを切り出す。画素は元画像、アルファは
+// 「元画像 vs クリーン背景の差分(本体は不透明)」をセルマスクで限定して使う
 async function cutLayer(
   originalRgb: Buffer, // 1280x720 RGB
-  motifRgba: Buffer, // 1280x720 RGBA(アルファ参照用)
+  cleanRgb: Buffer, // 1280x720 RGB(モチーフ除去版。差分でアルファを出す)
+  motifRgba: Buffer, // 1280x720 RGBA(透過抽出。高信頼な部分の補助に使う)
   comps: Component[],
 ): Promise<{ png: Buffer; x: number; y: number; w: number; h: number } | null> {
   const cellW = SLIDE_W / GRID_W;
@@ -320,8 +338,10 @@ async function cutLayer(
           }
         }
       }
-      const a = inMask ? motifRgba[(sy * SLIDE_W + sx) * 4 + 3] : 0;
       const si3 = (sy * SLIDE_W + sx) * 3;
+      // モチーフ本体は差分で不透明に。透過抽出が高信頼(>=200)な所は最低限拾う
+      const ea = motifRgba[(sy * SLIDE_W + sx) * 4 + 3];
+      const a = inMask ? Math.max(diffAlpha(originalRgb, cleanRgb, si3), ea >= 200 ? 255 : 0) : 0;
       const di = (y * w + x) * 4;
       out[di] = originalRgb[si3];
       out[di + 1] = originalRgb[si3 + 1];
@@ -433,6 +453,7 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
 
   const motifRgba = await sharp(motifPng).raw().toBuffer();
   const originalRgb = await sharp(image).removeAlpha().raw().toBuffer();
+  const cleanRgb = await sharp(cleanPng).removeAlpha().raw().toBuffer();
   const comps = findComponentsFine(motifRgba);
   if (comps.length === 0) throw new Error("could not detect any motif");
 
@@ -447,7 +468,7 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
     const { groups, leftover } = assignCellsToObjects(comps, objects);
     const cut = await Promise.all(
       [...groups.entries()].map(async ([objIndex, group]) => {
-        const layer = await cutLayer(originalRgb, motifRgba, [group]);
+        const layer = await cutLayer(originalRgb, cleanRgb, motifRgba, [group]);
         if (!layer) return null;
         const o = objects[objIndex];
         const url = await saveAsset(`cut-${uid()}`, layer.png);
@@ -473,7 +494,7 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
     }
     // どのオブジェクトにも帰属しなかった残り(あれば)を1レイヤーに
     if (leftover) {
-      const layer = await cutLayer(originalRgb, motifRgba, [leftover]);
+      const layer = await cutLayer(originalRgb, cleanRgb, motifRgba, [leftover]);
       if (layer) {
         const url = await saveAsset(`cut-${uid()}`, layer.png);
         motifs.push({ url, x: layer.x, y: layer.y, w: layer.w, h: layer.h, depth: 99 });
@@ -487,7 +508,7 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
     const top = [...comps].sort((a, b) => b.size - a.size).slice(0, 8);
     const cut = await Promise.all(
       top.map(async (c, i) => {
-        const layer = await cutLayer(originalRgb, motifRgba, [c]);
+        const layer = await cutLayer(originalRgb, cleanRgb, motifRgba, [c]);
         if (!layer) return null;
         const url = await saveAsset(`cut-${uid()}`, layer.png);
         return { comp: c, motif: { url, x: layer.x, y: layer.y, w: layer.w, h: layer.h, depth: i } };
@@ -507,7 +528,6 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
 
   // 合成保存性: レイヤーが覆う領域だけをクリーン画素に、それ以外は元画素を残す。
   // これにより「背景を消したのにレイヤーにも無い=モチーフ消失」が原理的に起きない
-  const cleanRgb = await sharp(cleanPng).removeAlpha().raw().toBuffer();
   const mergedBg = await buildCleanBackground(originalRgb, cleanRgb, usedComps);
   const background = await saveAsset(`bg-${uid()}`, mergedBg);
   return { background, motifs };

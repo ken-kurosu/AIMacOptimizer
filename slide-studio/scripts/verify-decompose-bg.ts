@@ -4,7 +4,7 @@
 // これにより「背景を消したのにレイヤーにも無い=消失」が起きないことを保証する。
 //   npx tsx scripts/verify-decompose-bg.ts
 import sharp from "sharp";
-import { buildCleanBackground } from "../lib/decompose";
+import { buildCleanBackground, diffAlpha } from "../lib/decompose";
 import { SLIDE_H, SLIDE_W } from "../lib/types";
 
 const GRID_W = 256;
@@ -49,6 +49,14 @@ async function main() {
   check("レイヤー外は元画素を保持(消失しない)", farCorner[0] === 200 && farCorner[1] === 40, farCorner.join(","));
   const farRight = px(250, 140);
   check("離れた領域も元画素を保持", farRight[0] === 200, farRight.join(","));
+
+  // アルファは差分ベース: モチーフ本体(背景と色が違う)は完全不透明=褪せない
+  const mk = (r: number, g: number, b: number) => Buffer.from([r, g, b]);
+  const white = mk(255, 255, 255);
+  check("モチーフ本体(濃色 on 白)は完全不透明", diffAlpha(mk(20, 60, 160), white, 0) === 255, String(diffAlpha(mk(20, 60, 160), white, 0)));
+  check("背景と同色は透明(差分なし)", diffAlpha(mk(252, 252, 252), white, 0) === 0, String(diffAlpha(mk(252, 252, 252), white, 0)));
+  const mid = diffAlpha(mk(255, 255, 180), white, 0); // 黄系の淡い差: 中間
+  check("淡い差は中間アルファ(縁のフェザー)", mid > 0 && mid < 255, String(mid));
 
   console.log(failed === 0 ? "\nすべて合格" : `\n${failed}件失敗`);
   process.exit(failed === 0 ? 0 : 1);

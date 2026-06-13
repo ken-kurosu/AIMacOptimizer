@@ -106,7 +106,7 @@ export async function POST(req: Request) {
       if (brief.research && !brief.plan?.pages?.length && brief.topic) {
         try {
           const r = await researchTopic(await pickTextModel(), brief.topic);
-          brief.notes = [brief.notes, `Web調査で確認できた事実(正確に反映する):\n${r.summary}`]
+          brief.notes = [brief.notes, `Web調査で確認できた事実(内容は正確に反映する。ただしこれは内部メモであり、「公式ページでは〜と記載」「〜によると」のような出典言及・伝聞調をスライド本文に書いてはいけない。事実は断定文に直して使う):\n${r.summary}`]
             .filter(Boolean)
             .join("\n\n");
         } catch (e) {

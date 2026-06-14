@@ -2,17 +2,16 @@
 
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { useEditor } from "@/lib/store";
+import { useT } from "@/lib/i18n";
 import { TopBar } from "./TopBar";
 import { SlideList } from "./SlideList";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { ThemePanel } from "./ThemePanel";
-import { useT } from "@/lib/i18n";
 
 const emptySubscribe = () => () => {};
 
 export function Editor() {
-  const t = useT();
   // localStorageからの復元とSSRの不一致を避けるため、マウント後に描画
   // (effect内setStateを避けるため、ハイドレーション判定はuseSyncExternalStoreで行う)
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
@@ -37,14 +36,15 @@ export function Editor() {
 
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
-  const deleteElement = useEditor((s) => s.deleteElement);
-  const duplicateElement = useEditor((s) => s.duplicateElement);
-  const selectedElementId = useEditor((s) => s.selectedElementId);
+  const deleteElements = useEditor((s) => s.deleteElements);
+  const duplicateElements = useEditor((s) => s.duplicateElements);
+  const selectedElementIds = useEditor((s) => s.selectedElementIds);
   const editingElementId = useEditor((s) => s.editingElementId);
   const beginTransient = useEditor((s) => s.beginTransient);
   const transient = useEditor((s) => s.transient);
   const selectedSlideId = useEditor((s) => s.selectedSlideId);
   const [tab, setTab] = useState<"slides" | "theme">("slides");
+  const t = useT();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,30 +66,31 @@ export function Editor() {
         else undo();
         return;
       }
-      if (mod && e.key.toLowerCase() === "d" && selectedElementId) {
+      if (mod && e.key.toLowerCase() === "d" && selectedElementIds.length) {
         e.preventDefault();
-        duplicateElement(selectedElementId);
+        duplicateElements(selectedElementIds);
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedElementId) {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedElementIds.length) {
         e.preventDefault();
-        deleteElement(selectedElementId);
+        deleteElements(selectedElementIds);
         return;
       }
-      if (selectedElementId && e.key.startsWith("Arrow")) {
+      if (selectedElementIds.length && e.key.startsWith("Arrow")) {
         e.preventDefault();
         const d = e.shiftKey ? 10 : 1;
         const dx = e.key === "ArrowLeft" ? -d : e.key === "ArrowRight" ? d : 0;
         const dy = e.key === "ArrowUp" ? -d : e.key === "ArrowDown" ? d : 0;
+        const ids = new Set(selectedElementIds);
         beginTransient();
         transient((deck) => {
-          const el = deck.slides
-            .find((s) => s.id === selectedSlideId)
-            ?.elements.find((x) => x.id === selectedElementId);
-          if (el) {
-            el.x += dx;
-            el.y += dy;
-          }
+          const els = deck.slides.find((s) => s.id === selectedSlideId)?.elements;
+          els?.forEach((el) => {
+            if (ids.has(el.id)) {
+              el.x += dx;
+              el.y += dy;
+            }
+          });
         });
       }
     };
@@ -98,9 +99,9 @@ export function Editor() {
   }, [
     undo,
     redo,
-    deleteElement,
-    duplicateElement,
-    selectedElementId,
+    deleteElements,
+    duplicateElements,
+    selectedElementIds,
     editingElementId,
     beginTransient,
     transient,

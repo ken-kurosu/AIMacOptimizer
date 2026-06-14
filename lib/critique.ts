@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import sharp from "sharp";
 import { chromium } from "playwright-core";
-import { Deck, Slide, Theme, uid } from "./types";
+import { Deck, Slide, TextEl, Theme, uid } from "./types";
 import { findChrome } from "./exportPdf";
 import { readAsset } from "./assets";
 import { applyContrast, sanitizeZone, typesetZone } from "./image2Pipeline";
@@ -77,17 +77,25 @@ async function screenshotDeck(origin: string, deck: Deck): Promise<Buffer[] | nu
   }
 }
 
-// 問題ありと判定されたページを、新しいゾーンで組み直す(画像は再生成しない)
+// 問題ありと判定されたページを、新しいゾーンで組み直す(画像は再生成しない)。
+// モチーフのレイヤー画像と結論帯(band+takeaway)は崩れの原因にならないので保持し、
+// それ以外のテキスト+スクリムだけを組み直す
 async function refitSlide(slide: Slide, zone: NonNullable<ReturnType<typeof sanitizeZone>>, theme: Theme): Promise<boolean> {
   const assetId = slide.background.image?.match(/^\/api\/assets\/([a-zA-Z0-9_-]+)$/)?.[1];
   if (!assetId) return false;
   const bg = await readAsset(assetId);
   if (!bg) return false;
+  const layers = slide.elements.filter((e) => e.type === "image");
+  const band = slide.elements.filter(
+    (e) => (e.type === "shape" && e.name === "band") || (e.type === "text" && e.name === "takeaway"),
+  );
   const texts = slide.elements
-    .filter((e) => e.type === "text")
+    .filter((e): e is TextEl => e.type === "text" && e.name !== "takeaway")
     .map((e) => ({ role: e.name ?? "body", text: e.text }));
   if (texts.length === 0) return false;
-  slide.elements = await applyContrast(typesetZone(texts, zone), texts, bg, theme);
+  // 結論帯があるページは帯の領域を避けて組む
+  const fitZone = band.length > 0 ? { ...zone, h: Math.min(zone.h, Math.max(200, 616 - zone.y)) } : zone;
+  slide.elements = [...layers, ...(await applyContrast(typesetZone(texts, fitZone), texts, bg, theme)), ...band];
   return true;
 }
 

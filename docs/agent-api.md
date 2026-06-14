@@ -27,7 +27,7 @@ Request:
 }
 ```
 
-Response (60–90 s):
+Response (1–2 min):
 
 ```json
 {
@@ -54,7 +54,9 @@ user, pass their comments through as `feedback` without over-interpreting.
 { "plan": { ...approved plan... } }
 ```
 
-Response (~1 min/page; allow a 900 s timeout):
+Response (~1 min/page, i.e. ~10 min for a 10-page deck — includes the
+render-and-inspect QA pass; layer decomposition is opt-in via the editor button
+or AUTO_DECOMPOSE_LAYERS=1; allow a 900 s timeout):
 
 ```json
 { "id": "…", "editUrl": "http://host:3100/?deck=…&token=…", "title": "…", "pages": 5 }

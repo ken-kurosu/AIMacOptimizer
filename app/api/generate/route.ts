@@ -3,9 +3,10 @@ import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
 import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2Pipeline";
 import { critiqueAndFixDeck } from "@/lib/critique";
+import { autoDecomposeEnabled, decomposeDeckLayers } from "@/lib/decompose";
 import { openaiAvailable, pickTextModel } from "@/lib/openai";
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 interface Brief {
   topic: string;
@@ -111,6 +112,17 @@ export async function POST(req: Request) {
         if (checked > 0) console.log(`critique: ${checked} slides checked, ${fixed} refit`);
       } catch (e) {
         console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
+      }
+      // 自動レイヤー分解(既定オフ)。AUTO_DECOMPOSE_LAYERS=1 で有効化すると、
+      // 編集開始時点で各ページが「無地背景 + 動かせるモチーフレイヤー」になる。
+      // 既定では分解はユーザーが「✦ レイヤーに分解」を押した時だけ行う(コスト削減)
+      if (autoDecomposeEnabled()) {
+        try {
+          const layered = await decomposeDeckLayers(deck, brief.lang === "en" ? "en" : "ja");
+          if (layered > 0) console.log(`auto-decompose: ${layered}/${deck.slides.length} slides layered`);
+        } catch (e) {
+          console.warn("auto-decompose skipped:", e instanceof Error ? e.message : e);
+        }
       }
       return Response.json({ mode: "image2", deck });
     } catch (e) {

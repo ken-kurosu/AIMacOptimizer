@@ -10,12 +10,17 @@ export const STORAGE_KEY = "compdeck-deck";
 interface EditorState {
   deck: Deck;
   selectedSlideId: string;
-  selectedElementId: string | null;
+  selectedElementId: string | null; // 主選択(Inspectorが編集する対象)
+  selectedElementIds: string[]; // 複数選択の集合(主選択を含む)
   editingElementId: string | null; // インラインテキスト編集中
   past: Deck[];
   future: Deck[];
 
   select: (slideId: string, elementId?: string | null) => void;
+  // 修飾キー(Cmd/Shift)+クリック用: 選択集合に追加/解除する
+  toggleSelect: (slideId: string, elementId: string) => void;
+  // 範囲選択など、まとめて選択する
+  selectMany: (slideId: string, ids: string[]) => void;
   setEditing: (id: string | null) => void;
 
   // 履歴に積む構造変更
@@ -37,7 +42,9 @@ interface EditorState {
   addElement: (el: SlideElement) => void;
   updateElement: (id: string, patch: Partial<SlideElement>) => void;
   deleteElement: (id: string) => void;
+  deleteElements: (ids: string[]) => void;
   duplicateElement: (id: string) => void;
+  duplicateElements: (ids: string[]) => void;
   reorderElement: (id: string, dir: -1 | 1) => void;
   updateTheme: (patch: Partial<Theme>) => void;
 
@@ -70,6 +77,7 @@ export const useEditor = create<EditorState>()(
       deck: initialDeck,
       selectedSlideId: initialDeck.slides[0].id,
       selectedElementId: null,
+      selectedElementIds: [],
       editingElementId: null,
       past: [],
       future: [],
@@ -77,7 +85,32 @@ export const useEditor = create<EditorState>()(
       // 注意: editingElementId はここでは消さない。
       // インライン編集の確定は contentEditable の blur(finishTextEdit)が担う。
       select: (slideId, elementId = null) =>
-        set({ selectedSlideId: slideId, selectedElementId: elementId }),
+        set({
+          selectedSlideId: slideId,
+          selectedElementId: elementId,
+          selectedElementIds: elementId ? [elementId] : [],
+        }),
+
+      toggleSelect: (slideId, elementId) => {
+        const { selectedSlideId, selectedElementIds } = get();
+        // 別スライドに切り替わったら選択をその要素だけにする
+        if (slideId !== selectedSlideId) {
+          set({ selectedSlideId: slideId, selectedElementId: elementId, selectedElementIds: [elementId] });
+          return;
+        }
+        const has = selectedElementIds.includes(elementId);
+        const ids = has
+          ? selectedElementIds.filter((x) => x !== elementId)
+          : [...selectedElementIds, elementId];
+        set({ selectedElementIds: ids, selectedElementId: ids[ids.length - 1] ?? null });
+      },
+
+      selectMany: (slideId, ids) =>
+        set({
+          selectedSlideId: slideId,
+          selectedElementIds: ids,
+          selectedElementId: ids[ids.length - 1] ?? null,
+        }),
 
       setEditing: (id) => set({ editingElementId: id }),
 
@@ -111,6 +144,7 @@ export const useEditor = create<EditorState>()(
             ? get().selectedSlideId
             : prev.slides[0].id,
           selectedElementId: null,
+          selectedElementIds: [],
           editingElementId: null,
         });
       },
@@ -127,6 +161,7 @@ export const useEditor = create<EditorState>()(
             ? get().selectedSlideId
             : next.slides[0].id,
           selectedElementId: null,
+          selectedElementIds: [],
           editingElementId: null,
         });
       },
@@ -139,6 +174,7 @@ export const useEditor = create<EditorState>()(
           future: [],
           selectedSlideId: deck.slides[0]?.id ?? "",
           selectedElementId: null,
+          selectedElementIds: [],
           editingElementId: null,
         });
       },
@@ -155,7 +191,7 @@ export const useEditor = create<EditorState>()(
           if (idx >= 0) deck.slides.splice(idx + 1, 0, s);
           else deck.slides.push(s);
         });
-        set({ selectedSlideId: s.id, selectedElementId: null });
+        set({ selectedSlideId: s.id, selectedElementId: null, selectedElementIds: [] });
       },
 
       replaceSlide: (id, slide) => {
@@ -163,7 +199,7 @@ export const useEditor = create<EditorState>()(
           const i = deck.slides.findIndex((s) => s.id === id);
           if (i >= 0) deck.slides[i] = { ...slide, id };
         });
-        set({ selectedElementId: null, editingElementId: null });
+        set({ selectedElementId: null, selectedElementIds: [], editingElementId: null });
       },
 
       duplicateSlide: (id) => {
@@ -187,6 +223,7 @@ export const useEditor = create<EditorState>()(
         set({
           selectedSlideId: slides[Math.min(idx, slides.length - 1)].id,
           selectedElementId: null,
+          selectedElementIds: [],
         });
       },
 
@@ -204,7 +241,7 @@ export const useEditor = create<EditorState>()(
         get().commit((deck) => {
           deck.slides.find((s) => s.id === slideId)?.elements.push(el);
         });
-        set({ selectedElementId: el.id });
+        set({ selectedElementId: el.id, selectedElementIds: [el.id] });
       },
 
       updateElement: (id, patch) => {
@@ -223,7 +260,17 @@ export const useEditor = create<EditorState>()(
           const slide = deck.slides.find((s) => s.id === slideId);
           if (slide) slide.elements = slide.elements.filter((e) => e.id !== id);
         });
-        set({ selectedElementId: null, editingElementId: null });
+        set({ selectedElementId: null, selectedElementIds: [], editingElementId: null });
+      },
+
+      deleteElements: (ids) => {
+        const slideId = get().selectedSlideId;
+        const idset = new Set(ids);
+        get().commit((deck) => {
+          const slide = deck.slides.find((s) => s.id === slideId);
+          if (slide) slide.elements = slide.elements.filter((e) => !idset.has(e.id));
+        });
+        set({ selectedElementId: null, selectedElementIds: [], editingElementId: null });
       },
 
       duplicateElement: (id) => {
@@ -239,7 +286,27 @@ export const useEditor = create<EditorState>()(
           copy.y += 24;
           slide.elements.push(copy);
         });
-        set({ selectedElementId: newId });
+        set({ selectedElementId: newId, selectedElementIds: [newId] });
+      },
+
+      duplicateElements: (ids) => {
+        const slideId = get().selectedSlideId;
+        const idset = new Set(ids);
+        const newIds: string[] = [];
+        get().commit((deck) => {
+          const slide = deck.slides.find((s) => s.id === slideId);
+          if (!slide) return;
+          // 元の重なり順を保ったまま複製する
+          for (const src of slide.elements.filter((e) => idset.has(e.id))) {
+            const copy = structuredClone(src);
+            copy.id = uid();
+            copy.x += 24;
+            copy.y += 24;
+            newIds.push(copy.id);
+            slide.elements.push(copy);
+          }
+        });
+        if (newIds.length) set({ selectedElementId: newIds[newIds.length - 1], selectedElementIds: newIds });
       },
 
       reorderElement: (id, dir) => {

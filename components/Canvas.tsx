@@ -12,16 +12,37 @@ const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 interface DragState {
   mode: "move" | Handle;
-  elId: string;
+  elId: string; // つかんだ要素(スナップ・リサイズの基準)
   startX: number; // pointer (slide coords)
   startY: number;
   orig: { x: number; y: number; w: number; h: number };
+  // 複数選択時のグループ移動用: 選択中の全要素の開始位置
+  group: { id: string; x: number; y: number }[];
   moved: boolean;
+}
+
+// 背景ドラッグでの範囲選択(ラバーバンド)
+interface MarqueeState {
+  startX: number;
+  startY: number;
+  additive: boolean; // Shift/Cmd併用で既存選択に追加
+  moved: boolean;
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 interface Guides {
   v: number | null;
   h: number | null;
+}
+
+function rectsIntersect(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 const SNAP = 8;
@@ -32,8 +53,11 @@ export function Canvas() {
   const slide = useSelectedSlide();
   const theme = useEditor((s) => s.deck.theme);
   const selectedElementId = useEditor((s) => s.selectedElementId);
+  const selectedElementIds = useEditor((s) => s.selectedElementIds);
   const editingElementId = useEditor((s) => s.editingElementId);
   const select = useEditor((s) => s.select);
+  const toggleSelect = useEditor((s) => s.toggleSelect);
+  const selectMany = useEditor((s) => s.selectMany);
   const setEditing = useEditor((s) => s.setEditing);
   const beginTransient = useEditor((s) => s.beginTransient);
   const transient = useEditor((s) => s.transient);
@@ -46,6 +70,8 @@ export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.5);
   const dragRef = useRef<DragState | null>(null);
+  const marqueeRef = useRef<MarqueeState | null>(null);
+  const [marquee, setMarquee] = useState<Rect | null>(null);
   const [guides, setGuides] = useState<Guides>({ v: null, h: null });
 
   useEffect(() => {
@@ -75,10 +101,28 @@ export function Canvas() {
     [scale],
   );
 
+  // 選択中の全要素の開始位置を集めてグループ移動の素にする
+  const groupOrigFor = (ids: string[]) =>
+    (slide?.elements ?? [])
+      .filter((e) => ids.includes(e.id))
+      .map((e) => ({ id: e.id, x: e.x, y: e.y }));
+
   const onElementPointerDown = (e: React.PointerEvent, el: SlideElement) => {
     if (editingElementId === el.id) return; // テキスト編集中はドラッグしない
     e.stopPropagation();
-    select(selectedSlideId, el.id);
+
+    // Cmd/Ctrl/Shift + クリックは選択集合への追加/解除のみ(ドラッグしない)
+    if (e.metaKey || e.ctrlKey || e.shiftKey) {
+      toggleSelect(selectedSlideId, el.id);
+      return;
+    }
+
+    // すでに複数選択に含まれている要素をつかんだらグループごと動かす。
+    // そうでなければその要素だけを選択して動かす
+    const alreadyInGroup = selectedElementIds.length > 1 && selectedElementIds.includes(el.id);
+    const ids = alreadyInGroup ? selectedElementIds : [el.id];
+    if (!alreadyInGroup) select(selectedSlideId, el.id);
+
     const p = toSlideCoords(e);
     dragRef.current = {
       mode: "move",
@@ -86,6 +130,7 @@ export function Canvas() {
       startX: p.x,
       startY: p.y,
       orig: { x: el.x, y: el.y, w: el.w, h: el.h },
+      group: groupOrigFor(ids),
       moved: false,
     };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -100,6 +145,7 @@ export function Canvas() {
       startX: p.x,
       startY: p.y,
       orig: { x: el.x, y: el.y, w: el.w, h: el.h },
+      group: [],
       moved: false,
     };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -107,6 +153,21 @@ export function Canvas() {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      // 範囲選択(背景ドラッグ)中
+      const mq = marqueeRef.current;
+      if (mq && !dragRef.current) {
+        const p = toSlideCoords(e);
+        if (!mq.moved && Math.abs(p.x - mq.startX) < 3 && Math.abs(p.y - mq.startY) < 3) return;
+        mq.moved = true;
+        setMarquee({
+          x: Math.min(mq.startX, p.x),
+          y: Math.min(mq.startY, p.y),
+          w: Math.abs(p.x - mq.startX),
+          h: Math.abs(p.y - mq.startY),
+        });
+        return;
+      }
+
       const drag = dragRef.current;
       if (!drag) return;
       const p = toSlideCoords(e);
@@ -123,7 +184,7 @@ export function Canvas() {
       if (drag.mode === "move") {
         let nx = orig.x + dx;
         let ny = orig.y + dy;
-        // スナップ: 左端/中央/右端 を候補ラインに合わせる
+        // スナップ: つかんだ要素の 左端/中央/右端 を候補ラインに合わせる
         for (const t of V_TARGETS) {
           if (Math.abs(nx - t) < SNAP) { nx = t; g.v = t; break; }
           if (Math.abs(nx + orig.w / 2 - t) < SNAP) { nx = t - orig.w / 2; g.v = t; break; }
@@ -135,13 +196,19 @@ export function Canvas() {
           if (Math.abs(ny + orig.h - t) < SNAP) { ny = t - orig.h; g.h = t; break; }
         }
         setGuides(g);
+        // スナップ後の実移動量を全選択要素へ適用(グループ移動)
+        const mdx = Math.round(nx - orig.x);
+        const mdy = Math.round(ny - orig.y);
         transient((deck) => {
-          const el = deck.slides
-            .find((s) => s.id === selectedSlideId)
-            ?.elements.find((x) => x.id === drag.elId);
-          if (el) {
-            el.x = Math.round(nx);
-            el.y = Math.round(ny);
+          const els = deck.slides.find((s) => s.id === selectedSlideId)?.elements;
+          if (!els) return;
+          const group = drag.group.length ? drag.group : [{ id: drag.elId, x: orig.x, y: orig.y }];
+          for (const go of group) {
+            const el = els.find((x) => x.id === go.id);
+            if (el) {
+              el.x = go.x + mdx;
+              el.y = go.y + mdy;
+            }
           }
         });
       } else {
@@ -176,6 +243,24 @@ export function Canvas() {
     const onUp = () => {
       dragRef.current = null;
       setGuides({ v: null, h: null });
+      // 範囲選択の確定
+      const mq = marqueeRef.current;
+      marqueeRef.current = null;
+      if (mq?.moved && marquee) {
+        const hit = (slide?.elements ?? [])
+          .filter((el) => rectsIntersect(marquee, { x: el.x, y: el.y, w: el.w, h: el.h }))
+          .map((el) => el.id);
+        if (mq.additive) {
+          const merged = Array.from(new Set([...selectedElementIds, ...hit]));
+          selectMany(selectedSlideId, merged);
+        } else {
+          selectMany(selectedSlideId, hit);
+        }
+      } else if (mq && !mq.moved && !mq.additive) {
+        // 背景の素のクリックは選択解除
+        select(selectedSlideId, null);
+      }
+      setMarquee(null);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -183,7 +268,17 @@ export function Canvas() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [toSlideCoords, transient, beginTransient, selectedSlideId]);
+  }, [
+    toSlideCoords,
+    transient,
+    beginTransient,
+    selectedSlideId,
+    selectedElementIds,
+    selectMany,
+    select,
+    slide,
+    marquee,
+  ]);
 
   const finishTextEdit = (el: SlideElement, node: HTMLElement) => {
     const value = node.innerText.replace(/\n$/, "");
@@ -228,7 +323,16 @@ export function Canvas() {
     <div
       ref={containerRef}
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-neutral-200"
-      onPointerDown={() => select(selectedSlideId, null)}
+      onPointerDown={(e) => {
+        // 背景でのpointerdownは範囲選択の開始(クリックなら離した時に選択解除)
+        const p = toSlideCoords(e);
+        marqueeRef.current = {
+          startX: p.x,
+          startY: p.y,
+          additive: e.shiftKey || e.metaKey || e.ctrlKey,
+          moved: false,
+        };
+      }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
     >
@@ -262,10 +366,11 @@ export function Canvas() {
                     ? `${fxPopIds.indexOf(el.id) * 90}ms`
                     : undefined,
                   cursor: isEditing ? "text" : "move",
-                  outline:
-                    selectedElementId === el.id
+                  outline: selectedElementIds.includes(el.id)
+                    ? selectedElementId === el.id
                       ? "1.5px solid #2b7fff"
-                      : undefined,
+                      : "1.5px solid #7db1ff" // 副選択は淡い青
+                    : undefined,
                   outlineOffset: 0,
                 }}
                 onPointerDown={(e) => onElementPointerDown(e, el)}
@@ -341,10 +446,25 @@ export function Canvas() {
               style={{ top: guides.h, left: 0, height: 1, width: SLIDE_W, background: "#ff4d8d" }}
             />
           )}
+
+          {/* 範囲選択の矩形 */}
+          {marquee && (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left: marquee.x,
+                top: marquee.y,
+                width: marquee.w,
+                height: marquee.h,
+                border: "1px solid #2b7fff",
+                background: "rgba(43,127,255,0.08)",
+              }}
+            />
+          )}
         </div>
 
-        {/* リサイズハンドル(スケール外に置いて常に同サイズで表示) */}
-        {selected && editingElementId !== selected.id && (
+        {/* リサイズハンドル(単一選択時のみ。スケール外に置いて常に同サイズ) */}
+        {selected && selectedElementIds.length === 1 && editingElementId !== selected.id && (
           <>
             {HANDLES.map((h) => {
               const cx =

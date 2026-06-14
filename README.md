@@ -17,6 +17,7 @@ One free-text prompt ("what do you want to tell, to whom") goes through a multi-
 3. **Comp** — gpt-image renders each page as a full-bleed background design with deliberate negative space and *no text* (text-in-image artifacts are detected by a vision model and regenerated automatically).
 4. **Typeset** — a vision model only locates the cleanest empty region; the actual typesetting (sizes, line counts, spacing, alignment, orphan-line avoidance) is deterministic, using full-width/half-width-aware line metrics. Contrast is guaranteed by *measuring* background luminance under every text block — colors flip automatically and translucent scrims appear over busy areas.
 5. **Critique** — the finished pages are rendered in headless Chrome and inspected by a vision model; pages with real defects (overlap, overflow, unreadable contrast) are re-typeset automatically.
+6. **Layers** *(on demand)* — decompose a page into editable layers (clean backdrop + movable, semantically named motif images) with the ✦ button; the composite is pixel-identical, but everything becomes draggable. Set `AUTO_DECOMPOSE_LAYERS=1` to run this for every page at generation time.
 
 | | | |
 |---|---|---|
@@ -32,7 +33,7 @@ One free-text prompt ("what do you want to tell, to whom") goes through a multi-
 - Drag, resize (8 handles + numeric), inline-edit any element; snap guides, undo/redo, design tokens (change a theme color, every page follows)
 - **Per-element AI edits** — rewrite one text block ("shorter, punchier") at constant layout, or regenerate one image in place
 - **Per-page regeneration** — redo a page's background and layout while keeping its content; or add a new AI-designed page matching the deck's theme
-- **Background decomposition** — split a generated background into *movable motif parts* + a clean backdrop (alpha connected-component analysis), so you can recompose the art itself
+- **Background decomposition** — split any generated background into a clean backdrop + movable, semantically named motif layers with the ✦ button (per page, on demand). Set `AUTO_DECOMPOSE_LAYERS=1` to do it automatically for every page at generation time (off by default — it adds ~2 gpt-image edits per page)
 - **Image tools** — upload (or drag & drop) images, AI-generate transparent illustration parts, AI background removal
 - **PDF in** — feed it an image-only slide PDF (e.g. NotebookLM output) and it reverse-engineers each page into clean background + editable text
 - **PDF out** — one click, server-side via your installed Chrome: vector text, edge-to-edge 16:9, and hyperlinks that survive

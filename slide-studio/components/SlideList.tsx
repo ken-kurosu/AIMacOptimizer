@@ -196,7 +196,7 @@ function AiAddDialog({
             disabled={loading || !description.trim()}
             className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
           >
-            {loading ? "生成中…(2〜3分)" : "生成して追加"}
+            {loading ? "生成中…(1〜2分)" : "生成して追加"}
           </button>
         </div>
       </div>

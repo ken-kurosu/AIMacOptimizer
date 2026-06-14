@@ -342,7 +342,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                   disabled={busy}
                   className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
                 >
-                  {loading ? "生成中…(1ページ約2〜3分。レイヤー分解まで自動で行います)" : "この構成で生成する"}
+                  {loading ? "生成中…(1ページ約1分)" : "この構成で生成する"}
                 </button>
               </div>
             </div>

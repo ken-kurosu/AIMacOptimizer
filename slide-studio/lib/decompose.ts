@@ -533,6 +533,15 @@ export async function decomposeBackground(image: Buffer, lang: "ja" | "en" = "ja
   return { background, motifs };
 }
 
+// 生成直後にデッキ全ページを自動分解するか(既定オフ=コスト削減)。
+// 既定では、ユーザーがスライド設定の「✦ レイヤーに分解」を押した時だけ分解する。
+// 自動分解はページごとに gpt-image を2回(モチーフ抽出+クリーン背景)追加で叩くため、
+// デッキ生成の画像コストが約2倍になる。AUTO_DECOMPOSE_LAYERS=1 で有効化できる。
+export function autoDecomposeEnabled(): boolean {
+  const v = process.env.AUTO_DECOMPOSE_LAYERS;
+  return v === "1" || v === "true";
+}
+
 // 生成直後のデッキ全ページを自動でレイヤー分解する。
 // 「ユーザーが編集を始める時点で、初めからレイヤーが分解されている」ための工程。
 // 分解は見た目を変えない(合成結果≈元画像)ので、批評ループの後に安全に実行できる。

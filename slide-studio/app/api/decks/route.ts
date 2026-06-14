@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2Pipeline";
 import { critiqueAndFixDeck } from "@/lib/critique";
-import { decomposeDeckLayers } from "@/lib/decompose";
+import { autoDecomposeEnabled, decomposeDeckLayers } from "@/lib/decompose";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
 import { openaiAvailable, pickTextModel, researchTopic } from "@/lib/openai";
@@ -121,12 +121,15 @@ export async function POST(req: Request) {
       } catch (e) {
         console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
       }
-      // 編集URLを開いた時点でレイヤーが分解済みになっているようにする
-      try {
-        const layered = await decomposeDeckLayers(deck, brief.lang === "en" ? "en" : "ja");
-        if (layered > 0) console.log(`auto-decompose: ${layered}/${deck.slides.length} slides layered`);
-      } catch (e) {
-        console.warn("auto-decompose skipped:", e instanceof Error ? e.message : e);
+      // 自動分解は既定オフ(コスト削減)。AUTO_DECOMPOSE_LAYERS=1 で有効化すると
+      // 編集URLを開いた時点で各ページがレイヤー分解済みになる
+      if (autoDecomposeEnabled()) {
+        try {
+          const layered = await decomposeDeckLayers(deck, brief.lang === "en" ? "en" : "ja");
+          if (layered > 0) console.log(`auto-decompose: ${layered}/${deck.slides.length} slides layered`);
+        } catch (e) {
+          console.warn("auto-decompose skipped:", e instanceof Error ? e.message : e);
+        }
       }
     } else {
       deck = generateMockDeck({ topic: brief.topic || brief.plan?.title || "資料", pages: pages ?? 6 });

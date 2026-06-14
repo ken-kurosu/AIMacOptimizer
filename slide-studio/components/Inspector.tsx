@@ -320,7 +320,7 @@ export function Inspector() {
                 <button
                   onClick={decompose}
                   disabled={decomposing}
-                  title="背景をオブジェクト単位の編集可能なレイヤーに分解します(2〜3分)"
+                  title="背景をオブジェクト単位の編集可能なレイヤーに分解します(1〜2分)"
                   className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
                 >
                   {decomposing ? "分解中…" : "✦ レイヤーに分解"}

@@ -241,7 +241,7 @@ export function GenerateDialog({ onClose }: { onClose: () => void }) {
                 disabled={busy || !topic.trim()}
                 className="rounded-lg bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
               >
-                {planning ? (research && !researchNotes ? "Webで調べています…(1〜2分)" : "構成を考えています…(30秒〜1分)") : loading ? "生成中…" : "構成案を見る"}
+                {planning ? (research && !researchNotes ? "Webで調べています…(1〜2分)" : "構成を考えています…(1〜2分)") : loading ? "生成中…" : "構成案を見る"}
               </button>
             </div>
           </>

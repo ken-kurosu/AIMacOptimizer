@@ -2,12 +2,13 @@ import { promises as fs } from "fs";
 import path from "path";
 import { DeckPlan, generateDeckFromPlan, generateImage2Deck } from "@/lib/image2Pipeline";
 import { critiqueAndFixDeck } from "@/lib/critique";
+import { autoDecomposeEnabled, decomposeDeckLayers } from "@/lib/decompose";
 import { generateMockDeck } from "@/lib/mock";
 import { normalizeDeck } from "@/lib/normalize";
 import { openaiAvailable, pickTextModel, researchTopic } from "@/lib/openai";
 import { Deck, uid } from "@/lib/types";
 
-export const maxDuration = 600;
+export const maxDuration = 900;
 
 // デッキの保存・一覧と、外部連携用(Slackエージェント等)の生成API。
 //
@@ -31,6 +32,7 @@ interface DeckBrief {
   deck?: unknown; // 既存デッキの保存のみ(共有リンク作成)
   research?: boolean; // topicからの一発生成時にWeb検索で事実を集める
   title?: string;
+  lang?: string; // レイヤー名などの言語(ja/en)
 }
 
 function editUrlFor(origin: string, id: string): string {
@@ -104,7 +106,7 @@ export async function POST(req: Request) {
       if (brief.research && !brief.plan?.pages?.length && brief.topic) {
         try {
           const r = await researchTopic(await pickTextModel(), brief.topic);
-          brief.notes = [brief.notes, `Web調査で確認できた事実(正確に反映する):\n${r.summary}`]
+          brief.notes = [brief.notes, `Web調査で確認できた事実(内容は正確に反映する。ただしこれは内部メモであり、「公式ページでは〜と記載」「〜によると」のような出典言及・伝聞調をスライド本文に書いてはいけない。事実は断定文に直して使う):\n${r.summary}`]
             .filter(Boolean)
             .join("\n\n");
         } catch (e) {
@@ -118,6 +120,16 @@ export async function POST(req: Request) {
         await critiqueAndFixDeck(origin, deck, await pickTextModel());
       } catch (e) {
         console.warn("critique loop skipped:", e instanceof Error ? e.message : e);
+      }
+      // 自動分解は既定オフ(コスト削減)。AUTO_DECOMPOSE_LAYERS=1 で有効化すると
+      // 編集URLを開いた時点で各ページがレイヤー分解済みになる
+      if (autoDecomposeEnabled()) {
+        try {
+          const layered = await decomposeDeckLayers(deck, brief.lang === "en" ? "en" : "ja");
+          if (layered > 0) console.log(`auto-decompose: ${layered}/${deck.slides.length} slides layered`);
+        } catch (e) {
+          console.warn("auto-decompose skipped:", e instanceof Error ? e.message : e);
+        }
       }
     } else {
       deck = generateMockDeck({ topic: brief.topic || brief.plan?.title || "資料", pages: pages ?? 6 });

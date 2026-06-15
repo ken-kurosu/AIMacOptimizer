@@ -158,10 +158,10 @@ export function DeckLibraryDialog({ onClose }: { onClose: () => void }) {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            title="JSONはそのまま、PDFは「背景画像+編集できるテキスト」に分解して取り込みます"
+            title="JSONはそのまま、PDFは編集可能なデッキに分解。テキストPDFは文字を元の位置・サイズ・フォントのまま打ち直せます(画像のみPDFはAIで文字を読み取り)"
             className="rounded-lg border border-neutral-300 px-3 py-2 text-xs text-neutral-700 hover:bg-neutral-100 disabled:opacity-40"
           >
-            {importing ? "PDFを分解中…(ページ数×1分)" : "ファイルから開く (JSON / PDF)"}
+            {importing ? "PDFを分解中…(ページ数×最大1分)" : "ファイルから開く (JSON / PDF)"}
           </button>
           <input
             ref={fileRef}

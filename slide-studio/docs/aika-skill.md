@@ -20,7 +20,8 @@ AIka側の開発セッションには次のように依頼すればよい:
 1. ユーザー「◯◯のスライド作って」
 2. AIka が要件(内容・ページ数)を整理して **構成案を作成** → Slackに整形して投稿し、OK/修正を聞く
 3. 修正コメントが来たら feedback を付けて構成案を作り直し(何往復でも)
-4. **goが出たら生成**(3〜10分かかるので「作ってます」と先に返す) → 完成したら **編集URLを投稿**
+4. **goが出たら生成**(5〜15分かかるので「作ってます」と先に返す) → 完成したら **編集URLを投稿**
+   (各ページのモチーフは編集画面の「✦ レイヤーに分解」で必要に応じて分離できる)
 
 ## API
 
@@ -34,7 +35,7 @@ HEADERS = {
 }
 
 def make_plan(topic: str, pages: int | None = None, feedback: str | None = None, previous_plan: dict | None = None) -> dict:
-    """構成案を作る(修正時は feedback + previous_plan を渡す)。60-90秒。
+    """構成案を作る(修正時は feedback + previous_plan を渡す)。1〜2分(research付きは+1分程度)。
     pages は省略するとAIが内容量から適切な枚数を提案する(ユーザーが枚数を指定した時だけ渡す)。
     research=True を渡すと、構成前にWeb検索で事実(料金・実績・正式名称)を集めて反映する(+30-60秒)。
     レスポンスの sources(参照URL一覧)はSlackの構成案投稿に添えるとよい。"""
@@ -46,9 +47,10 @@ def make_plan(topic: str, pages: int | None = None, feedback: str | None = None,
     return r.json()["plan"]
 
 def create_deck(plan: dict) -> dict:
-    """承認済みの構成案から生成して保存。1ページ約1分。
+    """承認済みの構成案から生成して保存。1ページ約1分、10ページで10分前後
+    (デザイン生成+品質検査込み。レイヤー分解は編集画面のボタンで任意)。
     返り値: { id, editUrl, title, pages } — editUrl をSlackに投稿する(認証トークン込み)"""
-    r = requests.post(f"{BASE}/api/decks", headers=HEADERS, json={"plan": plan}, timeout=900)
+    r = requests.post(f"{BASE}/api/decks", headers=HEADERS, json={"plan": plan}, timeout=1800)
     r.raise_for_status()
     return r.json()
 ```
@@ -69,7 +71,7 @@ def format_plan(plan: dict) -> str:
 
 | エンドポイント | 用途 | 所要時間 |
 |---|---|---|
-| `POST /api/generate/plan` | 構成案の作成・修正(`topic`,`pages`任意で`feedback`+`previousPlan`) | 60〜90秒 |
+| `POST /api/generate/plan` | 構成案の作成・修正(`topic`,`pages`任意で`feedback`+`previousPlan`) | 1〜2分 |
 | `POST /api/decks` | `{"plan": <承認済みplan>}` で生成+保存 → `{id, editUrl, title, pages}` | 1ページ約1分 |
 | `GET /api/decks` | 保存済みデッキ一覧(「前作ったやつ開いて」用) | 即時 |
 
@@ -80,11 +82,11 @@ def format_plan(plan: dict) -> str:
 
 ## 会話設計の注意
 
-- 生成は長い(3〜10分)。`create_deck` は先に「生成を始めました(◯分くらい)」と返してから呼ぶ
+- 生成は長い(5〜15分)。`create_deck` は先に「生成を始めました(◯分くらい)」と返してから呼ぶ。目安は ページ数×1分
 - 構成案はユーザーが修正を何往復もできる。直前のplanを会話状態に保持し、
   修正コメントはそのまま `feedback` に渡す(解釈しすぎない)
 - `editUrl` には閲覧用トークンが含まれる。社内チャンネル以外には貼らない
-- タイムアウトは plan: 180秒 / decks: 900秒 を目安に
+- タイムアウトは plan: 300秒 / decks: 1800秒 を目安に
 
 ## 完了チェックリスト
 

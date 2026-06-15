@@ -312,16 +312,23 @@ export function Inspector() {
               />
             </Row>
             {slide.background.image?.startsWith("/api/assets/") && (
-              <Row label={t("aiEdit")}>
+              <div className="pt-1">
                 <button
                   onClick={decompose}
                   disabled={decomposing}
                   title={t("decomposeTitle")}
-                  className="rounded border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50"
                 >
-                  {decomposing ? t("decomposing") : t("decompose")}
+                  {decomposing ? (
+                    <>
+                      <span className="cd-spin">✦</span> {t("decomposing")}
+                    </>
+                  ) : (
+                    <>{t("decompose")}</>
+                  )}
                 </button>
-              </Row>
+                <p className="mt-1 px-0.5 text-[10px] leading-snug text-neutral-400">{t("decomposeHint")}</p>
+              </div>
             )}
           </Section>
           <Section title={t("slideName")}>

@@ -1,15 +1,12 @@
 import { importPdfDeck } from "@/lib/importPdf";
-import { openaiAvailable } from "@/lib/openai";
 
 export const maxDuration = 600;
 
-// 画像だけのPDF資料を編集可能なデッキへ分解する
+// PDF資料を編集可能なデッキへ分解する。
+// テキストレイヤーのあるPDFはOpenAIキー無しでも分解可能(画像のみPDFはビジョンを使う)。
 const MAX_BYTES = 40 * 1024 * 1024;
 
 export async function POST(req: Request) {
-  if (!openaiAvailable()) {
-    return Response.json({ error: "PDFの分解には OPENAI_API_KEY が必要です" }, { status: 400 });
-  }
   const buf = Buffer.from(await req.arrayBuffer());
   if (buf.length === 0) return Response.json({ error: "empty body" }, { status: 400 });
   if (buf.length > MAX_BYTES) {

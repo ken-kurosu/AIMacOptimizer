@@ -35,7 +35,7 @@ One free-text prompt ("what do you want to tell, to whom") goes through a multi-
 - **Per-page regeneration** — redo a page's background and layout while keeping its content; or add a new AI-designed page matching the deck's theme
 - **Background decomposition** — split any generated background into a clean backdrop + movable, semantically named motif layers with the ✦ button (per page, on demand). Set `AUTO_DECOMPOSE_LAYERS=1` to do it automatically for every page at generation time (off by default — it adds ~2 gpt-image edits per page)
 - **Image tools** — upload (or drag & drop) images, AI-generate transparent illustration parts, AI background removal
-- **PDF in** — feed it an image-only slide PDF (e.g. NotebookLM output) and it reverse-engineers each page into clean background + editable text
+- **PDF in** — decompose a slide PDF into clean background + editable text, per page. Text PDFs (PowerPoint/Keynote/Google Slides exports) keep each line's **original position, size and font** so you just retype (no API key, free); image-only PDFs (e.g. NotebookLM) are OCR'd by AI. Decompose the background further with the ✦ button
 - **PDF out** — one click, server-side via your installed Chrome: vector text, edge-to-edge 16:9, and hyperlinks that survive
 
 ## Quick start
@@ -83,7 +83,7 @@ See [docs/agent-api.md](docs/agent-api.md) for the full contract.
 
 - `lib/image2Pipeline.ts` — the comp-first pipeline. The design decision that makes output reliable: **vision models are only asked questions they can answer well** (where is the empty space? is there stray text?), while everything precision-critical (line breaking, sizing, spacing, contrast) is deterministic and unit-tested (`npm run test:typeset`, `npm run test:contrast`).
 - `lib/critique.ts` — render-and-inspect QA loop, reusing the PDF export's headless Chrome.
-- `lib/importPdf.ts` — PDF → editable deck (pdfjs rasterization + vision text extraction + gpt-image text removal + the same typesetting engine).
+- `lib/importPdf.ts` — PDF → editable deck. Per page it branches: text-layer PDFs use pdfjs to place each line at its exact position/size/font (text removed by deterministic paint-over, no API key); image-only PDFs fall back to vision OCR + gpt-image text removal.
 - 1280×720 fixed coordinate system; decks are plain JSON; themes are 9 color tokens + a font pair; the five Japanese-capable font families are self-hosted via Fontsource so output renders identically offline.
 
 ## License

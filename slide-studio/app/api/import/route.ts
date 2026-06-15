@@ -20,9 +20,11 @@ export async function POST(req: Request) {
     return Response.json({ deck });
   } catch (e) {
     console.error("pdf import failed:", e);
-    return Response.json(
-      { error: e instanceof Error ? e.message : "pdf import failed" },
-      { status: 502 },
-    );
+    const msg = e instanceof Error ? e.message : "pdf import failed";
+    // pdfjsの構造エラーは、本文の途中切れ(サイズ上限)や壊れたPDFが原因のことが多い
+    const friendly = /invalid pdf|structure|xref|startxref|corrupt/i.test(msg)
+      ? "PDFを読み込めませんでした(ファイルが壊れているか、途中で切れている可能性があります)。別のPDFでお試しください。"
+      : msg;
+    return Response.json({ error: friendly }, { status: 502 });
   }
 }

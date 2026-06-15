@@ -20,9 +20,11 @@ export async function POST(req: Request) {
     return Response.json({ deck });
   } catch (e) {
     console.error("pdf import failed:", e);
-    return Response.json(
-      { error: e instanceof Error ? e.message : "pdf import failed" },
-      { status: 502 },
-    );
+    const msg = e instanceof Error ? e.message : "pdf import failed";
+    // A pdfjs structure error usually means a truncated (size limit) or corrupt PDF
+    const friendly = /invalid pdf|structure|xref|startxref|corrupt/i.test(msg)
+      ? "Could not read the PDF (it may be corrupt or truncated). Try a different file."
+      : msg;
+    return Response.json({ error: friendly }, { status: 502 });
   }
 }

@@ -1463,11 +1463,22 @@ struct AppUninstallRow: View {
     @State private var isExpanded = false
     @State private var resultMessage: String?
     @State private var pendingAction: PendingUninstallAction?
+    /// チェックを外した残留パス（既定は全選択）
+    @State private var deselected: Set<String> = []
 
     /// 確認待ちの破壊的操作
     private enum PendingUninstallAction: Equatable {
         case leftoversOnly  // 残留削除
         case uninstall      // アンインストール
+    }
+
+    /// 残留削除で実際に消す対象（選択中のパス）
+    private var selectedLeftoverPaths: [String] {
+        app.leftovers.map(\.path).filter { !deselected.contains($0) }
+    }
+
+    private func leftoverRiskColor(_ risk: LeftoverRisk) -> Color {
+        risk == .medium ? .orange : .green
     }
 
     var body: some View {
@@ -1517,19 +1528,46 @@ struct AppUninstallRow: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if !app.leftoverPaths.isEmpty {
-                        Text("残留ファイル（\(app.leftoverPaths.count)件 / \(formatSize(app.leftoverSizeMB))）:")
+                    if !app.leftovers.isEmpty {
+                        Text("残留ファイル（\(app.leftovers.count)件 / \(formatSize(app.leftoverSizeMB))） — 項目ごとに種類・リスクが違います。残すものはチェックを外してください")
                             .font(.system(size: 10, weight: .medium))
-                        ForEach(app.leftoverPaths.prefix(5), id: \.self) { p in
-                            Text(p.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        if app.leftoverPaths.count > 5 {
-                            Text("... 他\(app.leftoverPaths.count - 5)件")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(app.leftovers) { item in
+                            let isOn = !deselected.contains(item.path)
+                            Button(action: {
+                                if isOn { deselected.insert(item.path) } else { deselected.remove(item.path) }
+                            }) {
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(isOn ? .blue : .gray)
+                                        .padding(.top, 1)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        HStack(spacing: 4) {
+                                            Text(item.category)
+                                                .font(.system(size: 10, weight: .medium))
+                                            Text("リスク\(item.risk.rawValue)")
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(leftoverRiskColor(item.risk))
+                                            Spacer()
+                                            Text(item.sizeFormatted)
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Text(item.reason)
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Text(item.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
 
@@ -1624,7 +1662,7 @@ struct AppUninstallRow: View {
             }
             Text(isUninstall
                 ? "「\(app.name)」の本体と残留ファイルをゴミ箱へ移動します。アプリは使えなくなります（再び使うには再インストールが必要）。"
-                : "「\(app.name)」の残留ファイルだけをゴミ箱へ移動します。アプリ本体は残り、引き続き使えます。")
+                : "選択した残留 \(selectedLeftoverPaths.count)件 をゴミ箱へ移動します。アプリ本体は残り、引き続き使えます。チェックを外した項目は削除しません。")
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1655,7 +1693,7 @@ struct AppUninstallRow: View {
     private func executeAction(_ pending: PendingUninstallAction) {
         switch pending {
         case .leftoversOnly:
-            let result = uninstaller.removeLeftoversOnly(app)
+            let result = uninstaller.removeLeftovers(paths: selectedLeftoverPaths)
             resultMessage = "残留ファイル \(result.removedCount)件をゴミ箱へ移動（約\(formatSize(result.freedMB))）"
                 + (result.errors.isEmpty ? "" : "／一部失敗 \(result.errors.count)件")
         case .uninstall:

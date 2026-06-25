@@ -3,6 +3,29 @@ import SwiftUI
 
 // MARK: - Models
 
+/// 残留ファイルの削除リスク
+enum LeftoverRisk: String {
+    case low = "低"
+    case medium = "中"
+}
+
+/// 個々の残留ファイル/フォルダ（種類・リスク・理由・サイズ付き）
+struct LeftoverFile: Identifiable, Equatable {
+    let id = UUID()
+    let path: String
+    let sizeMB: Double
+    let category: String   // 表示用カテゴリ名
+    let risk: LeftoverRisk
+    let reason: String     // 消すとどうなるか
+    var isSelected: Bool = true
+
+    static func == (lhs: LeftoverFile, rhs: LeftoverFile) -> Bool { lhs.path == rhs.path }
+
+    var sizeFormatted: String {
+        sizeMB >= 1024 ? String(format: "%.1f GB", sizeMB / 1024) : String(format: "%.0f MB", sizeMB)
+    }
+}
+
 struct InstalledApp: Identifiable, Equatable {
     let id: String // bundleIdentifier
     let name: String
@@ -12,8 +35,11 @@ struct InstalledApp: Identifiable, Equatable {
     let totalSizeMB: Double
     let appSizeMB: Double
     let leftoverSizeMB: Double
-    let leftoverPaths: [String]
+    let leftovers: [LeftoverFile]
     let lastUsed: Date?
+
+    /// 互換用: 全残留パス
+    var leftoverPaths: [String] { leftovers.map(\.path) }
 
     static func == (lhs: InstalledApp, rhs: InstalledApp) -> Bool {
         lhs.id == rhs.id
@@ -84,11 +110,16 @@ class AppUninstaller: ObservableObject {
 
     /// Removes only leftover files associated with an app, keeping the app itself
     func removeLeftoversOnly(_ app: InstalledApp) -> UninstallResult {
+        return removeLeftovers(paths: app.leftoverPaths)
+    }
+
+    /// 指定したパスの残留だけをゴミ箱へ（ユーザーが選んだ項目のみ削除）
+    func removeLeftovers(paths: [String]) -> UninstallResult {
         var removedCount = 0
         var freedMB: Double = 0
         var errors: [String] = []
 
-        for leftoverPath in app.leftoverPaths {
+        for leftoverPath in paths {
             let leftoverSize = getDirectorySizeMB(leftoverPath)
             do {
                 try fileManager.trashItem(at: URL(fileURLWithPath: leftoverPath), resultingItemURL: nil)
@@ -176,8 +207,8 @@ class AppUninstaller: ObservableObject {
 
         let iconPath = getAppIconPath(appPath: appPath)
         let appSizeMB = getDirectorySizeMB(appPath)
-        let leftoverPaths = findLeftoverPaths(bundleIdentifier: bundleIdentifier, appName: displayName)
-        let leftoverSizeMB = leftoverPaths.reduce(0) { $0 + getDirectorySizeMB($1) }
+        let leftovers = findLeftovers(bundleIdentifier: bundleIdentifier, appName: displayName)
+        let leftoverSizeMB = leftovers.reduce(0) { $0 + $1.sizeMB }
         let totalSizeMB = appSizeMB + leftoverSizeMB
         let lastUsed = getLastUsedDate(bundleIdentifier: bundleIdentifier)
 
@@ -190,7 +221,7 @@ class AppUninstaller: ObservableObject {
             totalSizeMB: totalSizeMB,
             appSizeMB: appSizeMB,
             leftoverSizeMB: leftoverSizeMB,
-            leftoverPaths: leftoverPaths,
+            leftovers: leftovers,
             lastUsed: lastUsed
         )
     }
@@ -215,8 +246,32 @@ class AppUninstaller: ObservableObject {
         return ""
     }
 
-    private func findLeftoverPaths(bundleIdentifier: String, appName: String) -> [String] {
-        var leftoverPaths: [String] = []
+    /// 保存場所ごとの分類・リスク・理由（場所によって意味が大きく異なるため項目別に説明する）
+    private func classifyLeftover(locationName: String) -> (category: String, risk: LeftoverRisk, reason: String) {
+        switch locationName {
+        case "Application Support", "Containers":
+            return ("アプリデータ", .medium,
+                    "設定・拡張機能・履歴などアプリのデータです。削除すると設定が初期化されます（アプリ自体は使えます／再インストール不要）。容量の大半がキャッシュのこともあります。")
+        case "Caches", "HTTPStorages", "WebKit":
+            return ("キャッシュ", .low,
+                    "再生成される一時データです。削除しても支障ありません。")
+        case "Preferences":
+            return ("設定ファイル", .low,
+                    "環境設定です。削除すると次回起動時に設定が初期値へ戻ります。")
+        case "Logs":
+            return ("ログ", .low,
+                    "動作ログです。削除して問題ありません。")
+        case "Saved Application State":
+            return ("ウィンドウ状態", .low,
+                    "前回のウィンドウ配置などです。削除すると次回起動時に初期化されます。")
+        default:
+            return ("その他", .medium,
+                    "用途を特定できないデータです。不安な場合はスキップしてください。")
+        }
+    }
+
+    private func findLeftovers(bundleIdentifier: String, appName: String) -> [LeftoverFile] {
+        var leftovers: [LeftoverFile] = []
         let homeDir = fileManager.homeDirectoryForCurrentUser.path
         let libraryPath = (homeDir as NSString).appendingPathComponent("Library")
 
@@ -231,19 +286,28 @@ class AppUninstaller: ObservableObject {
             ("WebKit", [bundleIdentifier]),
         ]
 
+        var seen = Set<String>()
         for (locationName, searchPatterns) in leftoverLocations {
             let locationPath = (libraryPath as NSString).appendingPathComponent(locationName)
             guard fileManager.fileExists(atPath: locationPath) else { continue }
 
+            let info = classifyLeftover(locationName: locationName)
             for pattern in searchPatterns {
                 let itemPath = (locationPath as NSString).appendingPathComponent(pattern)
-                if fileManager.fileExists(atPath: itemPath) {
-                    leftoverPaths.append(itemPath)
-                }
+                guard fileManager.fileExists(atPath: itemPath), !seen.contains(itemPath) else { continue }
+                seen.insert(itemPath)
+                leftovers.append(LeftoverFile(
+                    path: itemPath,
+                    sizeMB: getDirectorySizeMB(itemPath),
+                    category: info.category,
+                    risk: info.risk,
+                    reason: info.reason
+                ))
             }
         }
 
-        return leftoverPaths
+        // 大きい順に並べる（どれが容量を食っているか分かりやすく）
+        return leftovers.sorted { $0.sizeMB > $1.sizeMB }
     }
 
     private func getLastUsedDate(bundleIdentifier: String) -> Date? {

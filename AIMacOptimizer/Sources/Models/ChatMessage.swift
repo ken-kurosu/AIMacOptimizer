@@ -24,6 +24,7 @@ struct ChatMessage: Identifiable, Codable {
 enum ChatActionType: String, Codable {
     case deleteCacheSafe   // キャッシュ/ログの安全削除
     case moveToTrash       // ゴミ箱へ移動（要確認のファイル）
+    case openURL           // 外部リンクを開く（おすすめ商品など）
 }
 
 /// チャットメッセージに添える「実行できる操作」の記述（ボタン化される）

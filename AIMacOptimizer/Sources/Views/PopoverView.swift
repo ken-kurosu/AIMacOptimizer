@@ -85,7 +85,7 @@ struct PopoverView: View {
             }
             Spacer()
             if !license.currentTier.isPro {
-                Button(action: openSettings) {
+                Button(action: { openSettings(initialTab: 1) }) {
                     Text("Pro にアップグレード")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.white)
@@ -324,7 +324,7 @@ struct MemoryTabView: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
 
-            Button(action: openSettings) {
+            Button(action: { openSettings(initialTab: 1) }) {
                 HStack(spacing: 4) {
                     Image(systemName: "crown.fill")
                         .font(.system(size: 10))
@@ -451,7 +451,7 @@ struct MemoryTabView: View {
             }
 
             HStack {
-                Button(action: openSettings) {
+                Button(action: { openSettings() }) {
                     Text(L10n.settings)
                 }
                 .font(.caption)
@@ -860,7 +860,7 @@ struct StorageTabView: View {
 
             Spacer()
 
-            Button(action: openSettings) {
+            Button(action: { openSettings(initialTab: 1) }) {
                 Text("Pro へ")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white)
@@ -1583,8 +1583,8 @@ struct AppUninstallRow: View {
 // MARK: - Settings Helper (macOS 13+ compatible)
 
 /// Open the Settings window using our own window controller
-private func openSettings() {
-    SettingsWindowController.shared.showSettings()
+private func openSettings(initialTab: Int? = nil) {
+    SettingsWindowController.shared.showSettings(initialTab: initialTab)
 }
 
 // MARK: - ViewModel

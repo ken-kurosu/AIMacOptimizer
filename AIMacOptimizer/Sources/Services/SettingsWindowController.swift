@@ -1,5 +1,13 @@
 import AppKit
 import SwiftUI
+import Combine
+
+/// 設定ウィンドウのタブ選択を共有する（ウィンドウ再利用時もタブ切替できるように）
+final class SettingsNavigation: ObservableObject {
+    static let shared = SettingsNavigation()
+    @Published var selectedTab: Int = 0
+    private init() {}
+}
 
 /// Manages a standalone settings window for MenuBarExtra apps
 final class SettingsWindowController {
@@ -9,7 +17,11 @@ final class SettingsWindowController {
 
     private init() {}
 
-    func showSettings() {
+    /// 設定を表示。initialTab を渡すとそのタブを開く（0:一般 1:ライセンス ...）。
+    func showSettings(initialTab: Int? = nil) {
+        if let initialTab = initialTab {
+            SettingsNavigation.shared.selectedTab = initialTab
+        }
         if let window = window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

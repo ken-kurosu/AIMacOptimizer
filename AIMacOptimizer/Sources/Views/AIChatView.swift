@@ -330,7 +330,7 @@ struct ChatBubble: View {
                         ForEach(message.actions) { action in
                             Button(action: { onAction?(action) }) {
                                 HStack(spacing: 5) {
-                                    Image(systemName: action.risk == "安全" ? "trash.fill" : "exclamationmark.triangle.fill")
+                                    Image(systemName: actionIcon(action))
                                         .font(.system(size: 9))
                                     Text(action.label)
                                         .font(.system(size: 11, weight: .medium))
@@ -338,8 +338,8 @@ struct ChatBubble: View {
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background((action.risk == "安全" ? Color.blue : Color.orange).opacity(0.12))
-                                .foregroundColor(action.risk == "安全" ? .blue : .orange)
+                                .background(actionColor(action).opacity(0.12))
+                                .foregroundColor(actionColor(action))
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
@@ -369,5 +369,21 @@ struct ChatBubble: View {
 
     private var bubbleColor: Color {
         message.role == .user ? .purple : Color.gray.opacity(0.12)
+    }
+
+    private func actionIcon(_ a: ChatActionDescriptor) -> String {
+        switch a.type {
+        case .openURL: return "arrow.up.right.square"
+        case .deleteCacheSafe: return "trash.fill"
+        case .moveToTrash: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func actionColor(_ a: ChatActionDescriptor) -> Color {
+        switch a.type {
+        case .openURL: return .green
+        case .deleteCacheSafe: return .blue
+        case .moveToTrash: return .orange
+        }
     }
 }

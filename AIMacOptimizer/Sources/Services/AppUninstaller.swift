@@ -104,21 +104,20 @@ class AppUninstaller: ObservableObject {
 
     /// Calculates the total size of a directory or file in MB
     func getDirectorySizeMB(_ path: String) -> Double {
-        guard fileManager.fileExists(atPath: path) else { return 0 }
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
 
-        do {
-            let attributes = try fileManager.attributesOfItem(atPath: path)
-            if let size = attributes[.size] as? NSNumber {
-                return Double(size.int64Value) / (1024 * 1024)
-            }
-        } catch {
-            // If it's a directory, calculate recursively
-            var isDir: ObjCBool = false
-            if fileManager.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
-                return calculateDirectorySizeRecursive(path)
-            }
+        // ディレクトリは中身を再帰集計する。
+        // （attributesOfItem はディレクトリでも例外を投げず、ディレクトリ自体の
+        //  数KBの値を返すだけなので、以前はフォルダが常に≒0MBになっていた）
+        if isDir.boolValue {
+            return calculateDirectorySizeRecursive(path)
         }
 
+        if let attributes = try? fileManager.attributesOfItem(atPath: path),
+           let size = attributes[.size] as? NSNumber {
+            return Double(size.int64Value) / (1024 * 1024)
+        }
         return 0
     }
 

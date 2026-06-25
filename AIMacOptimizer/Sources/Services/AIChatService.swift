@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// AI Chat Service — connects to OpenAI or Anthropic API using user's own API key
 /// Cost-conscious: uses GPT-4o-mini by default ($0.15/1M input tokens)
@@ -170,8 +171,8 @@ final class AIChatService: ObservableObject {
         guard !items.isEmpty else {
             lines.append("スキャンの結果、目立って大きい不要ファイルは見つかりませんでした。")
             lines.append("空きが少ない場合は、写真・動画・アプリ本体など個人ファイルの整理をご検討ください。")
-            appendSSDSuggestionIfTight(&lines, info: info, safeFreeableMB: 0)
-            return (lines.joined(separator: "\n"), [])
+            appendBoostText(&lines, info: info, safeFreeableMB: 0)
+            return (lines.joined(separator: "\n"), [storageBoostAction()])
         }
 
         lines.append("容量を使っている項目（大きい順）と安全度")
@@ -198,24 +199,43 @@ final class AIChatService: ObservableObject {
         }
         lines.append("")
         lines.append("下のボタンから、その場で削除できます。「安全」は消しても支障ありません。「要確認」は個人ファイルの可能性があるため、中身をご確認のうえ実行してください。")
-        appendSSDSuggestionIfTight(&lines, info: info, safeFreeableMB: safeFreeableMB)
+        appendBoostText(&lines, info: info, safeFreeableMB: safeFreeableMB)
+        // 容量を増やす方法（おすすめリンク）を常に最後に添える
+        actions.append(storageBoostAction())
         return (lines.joined(separator: "\n"), actions)
     }
 
-    /// 削除で空けきれない見込みのとき、外付けSSDの増設を根本策として提案する
-    private func appendSSDSuggestionIfTight(_ lines: inout [String], info: StorageInfo, safeFreeableMB: Double) {
-        // 安全に空けられる量を足しても空きが20GB未満なら「空けきれない」と判断
+    /// 削除で空けきれない見込みのときだけ、補足テキストを添える
+    private func appendBoostText(_ lines: inout [String], info: StorageInfo, safeFreeableMB: Double) {
         let projectedFreeGB = info.freeGB + safeFreeableMB / 1024
         guard projectedFreeGB < 20 else { return }
         lines.append("")
         lines.append("――――――")
-        lines.append("これだけでは空きが足りない見込みです（削除しても約\(String(format: "%.0f", projectedFreeGB))GB）。")
-        lines.append("根本的に解決するなら外付けSSDの増設がおすすめです。写真・動画・古いプロジェクトを退避でき、内蔵ストレージを軽くできます。")
-        lines.append("ツールやストレージ画面の「おすすめ」から製品を確認できます（Samsung T7/T9・SanDisk Extreme・Crucial X9 などが定番）。")
+        lines.append("これだけでは空きが足りない見込みです（削除しても約\(String(format: "%.0f", projectedFreeGB))GB）。内蔵を軽くするなら、写真・動画・古い資料を外付けに退避するのが手軽です。")
     }
 
-    /// チャット上のアクション（削除/ゴミ箱）を実行し、結果メッセージを追加する
+    /// 「ストレージ容量を増やす方法」を開くアクション（おすすめ商品ページ）
+    private func storageBoostAction() -> ChatActionDescriptor {
+        let url = AffiliateManager.amazonSearch("%E5%A4%96%E4%BB%98%E3%81%91SSD")
+        return ChatActionDescriptor(
+            label: "ストレージ容量を増やす方法を見る",
+            type: .openURL,
+            path: url,
+            sizeMB: 0,
+            risk: "リンク"
+        )
+    }
+
+    /// チャット上のアクション（削除/ゴミ箱/リンク）を実行し、結果メッセージを追加する
     func performChatAction(_ action: ChatActionDescriptor) async {
+        // リンクを開くアクション（おすすめ商品など）は別処理
+        if action.type == .openURL {
+            if let url = URL(string: action.path) {
+                NSWorkspace.shared.open(url)
+            }
+            return
+        }
+
         let item = StorageItem(
             path: action.path,
             name: (action.path as NSString).lastPathComponent,
@@ -229,6 +249,8 @@ final class AIChatService: ObservableObject {
             ok = storage.clearCache(item)
         case .moveToTrash:
             ok = storage.moveToTrash(item)
+        case .openURL:
+            ok = false
         }
         let sizeStr = action.sizeMB >= 1024 ? String(format: "%.1f GB", action.sizeMB / 1024) : String(format: "%.0f MB", action.sizeMB)
         let msg = ok

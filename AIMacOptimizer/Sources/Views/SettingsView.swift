@@ -12,7 +12,7 @@ struct SettingsView: View {
 
     @StateObject private var license = LicenseManager.shared
     @ObservedObject private var diskGuard = DiskGuard.shared
-    @State private var selectedTab = 0
+    @ObservedObject private var nav = SettingsNavigation.shared
     @State private var scheduleEnabled = false
     @State private var scheduleInterval = 60
 
@@ -39,19 +39,19 @@ struct SettingsView: View {
             // 左サイドバー（グローバルメニューを常時表示）
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(settingsTabs) { tab in
-                    Button(action: { selectedTab = tab.id }) {
+                    Button(action: { nav.selectedTab = tab.id }) {
                         HStack(spacing: 8) {
                             Image(systemName: tab.icon)
                                 .font(.system(size: 13))
                                 .frame(width: 18)
                             Text(tab.title)
-                                .font(.system(size: 12, weight: selectedTab == tab.id ? .semibold : .regular))
+                                .font(.system(size: 12, weight: nav.selectedTab == tab.id ? .semibold : .regular))
                             Spacer()
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
-                        .background(selectedTab == tab.id ? Color.blue.opacity(0.15) : Color.clear)
-                        .foregroundColor(selectedTab == tab.id ? .blue : .primary)
+                        .background(nav.selectedTab == tab.id ? Color.blue.opacity(0.15) : Color.clear)
+                        .foregroundColor(nav.selectedTab == tab.id ? .blue : .primary)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
@@ -76,7 +76,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var settingsContent: some View {
-        switch selectedTab {
+        switch nav.selectedTab {
         case 0: generalTab
         case 1: licenseTab
         case 2: monitoringTab
@@ -480,7 +480,7 @@ struct SettingsView: View {
                             .multilineTextAlignment(.center)
 
                         Button("ライセンスタブで確認") {
-                            selectedTab = 1
+                            nav.selectedTab = 1
                         }
                         .buttonStyle(.borderedProminent)
                     }

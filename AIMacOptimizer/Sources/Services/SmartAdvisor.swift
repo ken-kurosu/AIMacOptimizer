@@ -198,7 +198,6 @@ final class SmartAdvisor {
         let extensions = optimizer.getChromeExtensions()
         let heavyExtensions = extensions.filter { $0.sizeMB > 5 }
         if !heavyExtensions.isEmpty {
-            let totalExtMB = heavyExtensions.reduce(0.0) { $0 + $1.sizeMB }
             // Each extension also uses ~30-100MB RAM at runtime
             let runtimeEstimate = Double(heavyExtensions.count) * 50
             let extDetails = heavyExtensions.map { ext -> SuggestionDetailItem in

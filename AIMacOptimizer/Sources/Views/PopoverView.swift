@@ -1401,7 +1401,11 @@ struct AppUninstallRow: View {
                             
                             Button(action: {
                                 let result = uninstaller.uninstallApp(app)
-                                resultMessage = "アプリをゴミ箱に移動しました"
+                                if result.errors.isEmpty {
+                                    resultMessage = "アプリをゴミ箱に移動しました（\(result.removedCount)項目・約\(String(format: "%.0f", result.freedMB))MB解放）"
+                                } else {
+                                    resultMessage = "一部失敗しました（成功 \(result.removedCount)項目／エラー \(result.errors.count)件）"
+                                }
                             }) {
                                 Text("アンインストール")
                                     .font(.system(size: 10, weight: .medium))

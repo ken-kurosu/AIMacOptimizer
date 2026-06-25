@@ -58,28 +58,24 @@ class AppUninstaller: ObservableObject {
         var freedMB: Double = 0
         var errors: [String] = []
 
-        // Remove main app
+        // Remove main app（trashItem は同期かつ throwing なので失敗を確実に検知できる）
         do {
-            var recycled = false
-            do {
-                try NSWorkspace.shared.recycle([URL(fileURLWithPath: app.appPath)])
-                recycled = true
-                removedCount += 1
-                freedMB += app.appSizeMB
-            } catch {
-                errors.append("Failed to recycle app at \(app.appPath): \(error.localizedDescription)")
-            }
+            try fileManager.trashItem(at: URL(fileURLWithPath: app.appPath), resultingItemURL: nil)
+            removedCount += 1
+            freedMB += app.appSizeMB
+        } catch {
+            errors.append("Failed to recycle app at \(app.appPath): \(error.localizedDescription)")
+        }
 
-            // Remove leftover files
-            for leftoverPath in app.leftoverPaths {
-                let leftoverSize = getDirectorySizeMB(leftoverPath)
-                do {
-                    try NSWorkspace.shared.recycle([URL(fileURLWithPath: leftoverPath)])
-                    removedCount += 1
-                    freedMB += leftoverSize
-                } catch {
-                    errors.append("Failed to recycle leftover at \(leftoverPath): \(error.localizedDescription)")
-                }
+        // Remove leftover files
+        for leftoverPath in app.leftoverPaths {
+            let leftoverSize = getDirectorySizeMB(leftoverPath)
+            do {
+                try fileManager.trashItem(at: URL(fileURLWithPath: leftoverPath), resultingItemURL: nil)
+                removedCount += 1
+                freedMB += leftoverSize
+            } catch {
+                errors.append("Failed to recycle leftover at \(leftoverPath): \(error.localizedDescription)")
             }
         }
 
@@ -95,7 +91,7 @@ class AppUninstaller: ObservableObject {
         for leftoverPath in app.leftoverPaths {
             let leftoverSize = getDirectorySizeMB(leftoverPath)
             do {
-                try NSWorkspace.shared.recycle([URL(fileURLWithPath: leftoverPath)])
+                try fileManager.trashItem(at: URL(fileURLWithPath: leftoverPath), resultingItemURL: nil)
                 removedCount += 1
                 freedMB += leftoverSize
             } catch {
@@ -252,13 +248,7 @@ class AppUninstaller: ObservableObject {
     }
 
     private func getLastUsedDate(bundleIdentifier: String) -> Date? {
-        let homeDir = fileManager.homeDirectoryForCurrentUser.path
-        let launchServicesPath = (homeDir as NSString)
-            .appendingPathComponent("Library/Application Support/com.apple.LaunchServices/com.apple.LaunchServices.QuarantineResolver")
-
-        // Try to get from Launch Services database (simplified approach)
-        // For a complete implementation, you'd need to query the Launch Services database
-        // For now, return nil as this requires more complex database access
+        // Launch Services データベースの照会が必要なため未実装。現状は nil を返す。
         return nil
     }
 

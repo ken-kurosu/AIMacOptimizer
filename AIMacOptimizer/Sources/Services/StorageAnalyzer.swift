@@ -47,10 +47,11 @@ final class StorageAnalyzer: ObservableObject {
         results.append(contentsOf: installers)
         results.append(contentsOf: largeFiles)
         results.sort(by: >)
+        let finalResults = results  // 並行クロージャに渡すため不変コピーを作る（Swift 6対応）
 
         await MainActor.run {
             self.storageInfo = getStorageInfo()
-            self.items = results
+            self.items = finalResults
             self.isScanning = false
         }
     }

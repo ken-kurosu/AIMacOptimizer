@@ -40,7 +40,7 @@ final class BatteryMonitor: ObservableObject {
     
     private func startRefreshTimer() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+            Task { @MainActor in self?.refresh() }
         }
     }
     
@@ -64,7 +64,7 @@ final class BatteryMonitor: ObservableObject {
         
         defer { IOObjectRelease(iterator) }
         
-        var battery = IOIteratorNext(iterator)
+        let battery = IOIteratorNext(iterator)
         guard battery != MACH_PORT_NULL else {
             await updateAvailability(false)
             return

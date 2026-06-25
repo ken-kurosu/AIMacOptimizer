@@ -22,7 +22,11 @@ struct LeftoverFile: Identifiable, Equatable {
     static func == (lhs: LeftoverFile, rhs: LeftoverFile) -> Bool { lhs.path == rhs.path }
 
     var sizeFormatted: String {
-        sizeMB >= 1024 ? String(format: "%.1f GB", sizeMB / 1024) : String(format: "%.0f MB", sizeMB)
+        if sizeMB >= 1024 { return String(format: "%.1f GB", sizeMB / 1024) }
+        if sizeMB >= 1 { return String(format: "%.0f MB", sizeMB) }
+        // 1MB未満は KB で表示（"0 MB" だと空に見えるため）
+        let kb = sizeMB * 1024
+        return kb >= 1 ? String(format: "%.0f KB", kb) : "1 KB未満"
     }
 }
 

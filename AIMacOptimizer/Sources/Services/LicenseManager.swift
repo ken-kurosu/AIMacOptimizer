@@ -166,7 +166,8 @@ final class LicenseManager: ObservableObject {
 
     /// Activate a license key received after purchase
     func activateLicenseKey() {
-        let key = licenseKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        // 署名付きキーは base64url（大文字小文字を区別）のため uppercased しない
+        let key = licenseKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !key.isEmpty else {
             licenseKeyMessage = "ライセンスキーを入力してください"
@@ -182,27 +183,11 @@ final class LicenseManager: ObservableObject {
             return
         }
 
-        // Validate license key format: AIMAC-XXXX-XXXX-XXXX
-        if validateLicenseKeyFormat(key) {
-            // If server validation URL is configured, validate online
-            if let validationURL = PurchaseConfig.licenseValidationURL {
-                Task {
-                    let isValid = await validateLicenseOnline(key: key, url: validationURL)
-                    if isValid {
-                        applyLicenseKey(key, tier: .proLifetime)
-                    } else {
-                        licenseKeyMessage = "無効なライセンスキーです。購入確認メールをご確認ください。"
-                        licenseKeySuccess = false
-                    }
-                }
-            } else {
-                // Offline validation: accept valid format keys
-                // Determine tier from key prefix
-                let tier: LicenseTier = key.contains("LIFE") ? .proLifetime : .pro
-                applyLicenseKey(key, tier: tier)
-            }
+        // 署名付きライセンスキーを検証（秘密鍵を持つ発行者が署名したキーのみ有効＝偽造不可・オフライン検証）
+        if let tier = SignedLicense.verify(key) {
+            applyLicenseKey(key, tier: tier)
         } else {
-            licenseKeyMessage = "無効なキー形式です。形式: AIMAC-XXXX-XXXX-XXXX"
+            licenseKeyMessage = "無効なライセンスキーです。購入確認メールのキーをそのまま貼り付けてください。"
             licenseKeySuccess = false
         }
     }

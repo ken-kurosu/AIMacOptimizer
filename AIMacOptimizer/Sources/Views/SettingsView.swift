@@ -360,6 +360,21 @@ struct SettingsView: View {
                         Slider(value: $diskGuard.settings.thresholdPercent, in: 80...95, step: 1)
                     }
 
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("圧迫とみなす空き容量")
+                            Spacer()
+                            Text("\(Int(diskGuard.settings.minFreeGB))GB 未満")
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $diskGuard.settings.minFreeGB, in: 5...50, step: 1)
+                    }
+
+                    Text("使用率か空き容量のどちらかが上記に達すると圧迫とみなします。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
                     Toggle("圧迫時は自動で空ける（通知のみ）", isOn: $diskGuard.settings.autoClean)
 
                     Text(diskGuard.settings.autoClean

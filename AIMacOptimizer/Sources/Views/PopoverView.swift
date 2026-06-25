@@ -614,6 +614,34 @@ struct StorageTabView: View {
                 diskPressureBanner(plan)
             }
 
+            // 自動削除が有効なときは常に状態と「停止」を表示（後から止められるように）
+            if diskGuard.settings.autoClean {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.badge.automatic.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.blue)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("ディスク自動削除: 有効")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("圧迫時に安全なキャッシュ/ログを自動削除し通知します")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button("停止") {
+                        diskGuard.settings.autoClean = false
+                    }
+                    .font(.system(size: 10, weight: .medium))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .background(Color.blue.opacity(0.06))
+                .cornerRadius(8)
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+            }
+
             // Inline confirmation banner (replaces .alert to keep popover open)
             if let action = confirmAction, !confirmSubItems.isEmpty {
                 VStack(spacing: 8) {

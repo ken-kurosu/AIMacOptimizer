@@ -4,7 +4,7 @@ import ServiceManagement
 /// Settings window for the app
 struct SettingsView: View {
     @AppStorage("refreshInterval") private var refreshInterval: Double = 2.0
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @AppStorage("launchAtLogin") private var launchAtLogin = true
     @AppStorage("autoOptimizeThreshold") private var autoOptimizeThreshold: Double = 90
     @AppStorage("enableNotifications") private var enableNotifications = true
     @AppStorage("notifyThreshold") private var notifyThreshold: Double = 80

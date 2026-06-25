@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 import Combine
+import ServiceManagement
+import UserNotifications
 
 // MARK: - App Entry Point
 
@@ -53,11 +55,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Request notification permissions
         NotificationService.shared.requestPermission()
-        
+
         // Start periodic notification checks (every 60 seconds)
         startNotificationTimer()
-        
+
+        // 初回起動はログイン項目に自動登録（既定ON）。以降はユーザー設定を尊重
+        setupLaunchAtLoginDefault()
+
+        // 起動時に現在の状態を軽く通知して、存在を忘れられないようにする
+        scheduleLaunchSummaryNotification()
+
         print("=== AI Mac Optimizer started ===")
+    }
+
+    // MARK: - Launch at Login（既定ON）
+
+    private func setupLaunchAtLoginDefault() {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "launchAtLogin") == nil {
+            // 初回起動：既定でログイン時起動を有効化
+            defaults.set(true, forKey: "launchAtLogin")
+            try? SMAppService.mainApp.register()
+        } else if defaults.bool(forKey: "launchAtLogin") {
+            // 有効設定なのに未登録なら登録し直す
+            if SMAppService.mainApp.status != .enabled {
+                try? SMAppService.mainApp.register()
+            }
+        }
+    }
+
+    // MARK: - 起動サマリ通知
+
+    private func scheduleLaunchSummaryNotification() {
+        // monitor の初回計測が入るまで少し待ってから通知（メモリ値が 0 のままになるのを防ぐ）
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self = self else { return }
+            guard UserDefaults.standard.object(forKey: "enableNotifications") == nil
+                    || UserDefaults.standard.bool(forKey: "enableNotifications") else { return }
+
+            let mem = self.monitor.systemMemory
+            let storage = StorageAnalyzer().getStorageInfo()
+
+            // 軽いヘルスチェック（重い Deep Diagnosis は走らせない）
+            var health = "良好"
+            if mem.severity == .high || storage.freeGB < 10 { health = "要注意" }
+            else if mem.severity == .medium || storage.usagePercent > 85 { health = "やや注意" }
+
+            let body = "メモリ \(Int(mem.usagePercent))% ・ ディスク空き \(String(format: "%.0f", storage.freeGB))GB ・ 状態: \(health)"
+
+            let content = UNMutableNotificationContent()
+            content.title = "AI Mac Optimizer 起動中"
+            content.body = body
+            content.subtitle = "メニューバーから詳しい診断・最適化ができます"
+            content.sound = nil
+            let request = UNNotificationRequest(identifier: "launch-summary-\(Int(Date().timeIntervalSince1970))",
+                                                content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

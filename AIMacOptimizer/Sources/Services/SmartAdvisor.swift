@@ -433,9 +433,6 @@ final class SmartAdvisor {
         if name.contains("log") || name.contains("ログ") {
             return "\(sizePart)。アプリやシステムのログ。トラブル調査中でなければ安全に削除できます"
         }
-        if name.contains("var/folders") {
-            return "\(sizePart)。macOS一時作業フォルダ。古いファイルは安全に削除できます"
-        }
         // Default
         return "\(temp.description) — \(sizePart)。通常は安全に削除できますが、心配な場合はスキップしても問題ありません"
     }

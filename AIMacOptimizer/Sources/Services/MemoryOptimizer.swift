@@ -120,11 +120,12 @@ final class MemoryOptimizer {
         var items: [(path: String, name: String, sizeMB: Double, description: String)] = []
         let home = NSHomeDirectory()
 
+        // 安全に削除できる、明確に一時的なものだけを対象にする。
+        // ・/var/folders は除外: macOS 管理の作業領域で稼働中アプリが使用中。OSが自動整理する
+        // ・キャッシュ/ログは「ストレージ」タブで個別に確認・削除できるためここでは扱わない
+        //   （メモリタブからの一括削除で意図せず消えるのを防ぐ）
         let tempDirs: [(path: String, name: String, desc: String)] = [
-            ("/tmp", "システム一時ファイル (/tmp)", "OS やアプリが一時的に使用するファイル"),
-            ("/var/folders", "一時キャッシュ (/var/folders)", "macOS が自動生成する一時キャッシュ"),
-            ("\(home)/Library/Caches", "ユーザーキャッシュ", "アプリケーションのキャッシュデータ"),
-            ("\(home)/Library/Logs", "ユーザーログ", "アプリケーションのログファイル"),
+            ("/tmp", "システム一時ファイル (/tmp)", "1時間以上前の一時ファイルのみ削除（安全）"),
             ("\(home)/.Trash", "ゴミ箱", "削除済みファイル（完全に消去可能）"),
         ]
 
@@ -138,25 +139,27 @@ final class MemoryOptimizer {
         return items.sorted { $0.sizeMB > $1.sizeMB }
     }
 
-    /// Clear temporary files from /tmp and user caches
+    /// 一時ファイルを実際に削除する。表示一覧と一致する安全な対象のみ削除する。
+    /// （/var/folders やキャッシュ/ログは対象外）
     func clearTempFiles() async -> Double {
         var freedMB: Double = 0
 
-        // Clear /tmp (safe files only — skip active sockets/locks)
+        // /tmp: 1時間以上前のものだけ（使用中のソケット/ロックを避ける）
         let tmpPath = "/tmp"
         if let contents = try? fileManager.contentsOfDirectory(atPath: tmpPath) {
             for item in contents {
                 let fullPath = "\(tmpPath)/\(item)"
-                // Only remove regular files and directories older than 1 hour
                 if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
                    let modDate = attrs[.modificationDate] as? Date,
                    Date().timeIntervalSince(modDate) > 3600 {
                     let size = getItemSizeMB(fullPath)
-                    try? fileManager.removeItem(atPath: fullPath)
-                    freedMB += size
+                    if (try? fileManager.removeItem(atPath: fullPath)) != nil { freedMB += size }
                 }
             }
         }
+
+        // ゴミ箱を空にする
+        freedMB += await emptyTrash()
 
         return freedMB
     }

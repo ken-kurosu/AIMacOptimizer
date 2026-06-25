@@ -29,7 +29,6 @@ struct SettingsView: View {
             .init(id: 1, title: "ライセンス", icon: "crown"),
             .init(id: 2, title: L10n.monitoring, icon: "gauge.medium"),
             .init(id: 3, title: L10n.autoOptimization, icon: "clock.arrow.2.circlepath"),
-            .init(id: 4, title: "AIチャット", icon: "bubble.left.and.bubble.right"),
             .init(id: 5, title: L10n.notifications, icon: "bell"),
             .init(id: 6, title: L10n.about, icon: "info.circle"),
         ]
@@ -82,7 +81,6 @@ struct SettingsView: View {
         case 1: licenseTab
         case 2: monitoringTab
         case 3: scheduleTab
-        case 4: aiChatTab
         case 5: notificationTab
         default: aboutTab
         }
@@ -543,90 +541,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    // MARK: - AI Chat Settings Tab
-
-    @StateObject private var chatSettingsService = AIChatService()
-
-    private var aiChatTab: some View {
-        Form {
-            Section {
-                Picker("AIプロバイダー", selection: $chatSettingsService.settings.provider) {
-                    ForEach(AIProvider.allCases, id: \.self) { provider in
-                        Text(provider.displayName).tag(provider)
-                    }
-                }
-
-                // API系プロバイダのときだけキー/モデル欄を表示
-                if chatSettingsService.settings.provider.requiresAPIKey {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("API キー")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        SecureField("sk-...", text: $chatSettingsService.settings.apiKey)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("モデル（空欄でデフォルト）")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        TextField(chatSettingsService.settings.provider.defaultModel, text: $chatSettingsService.settings.model)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-
-                HStack {
-                    Text("状態")
-                    Spacer()
-                    statusLabel
-                }
-
-                Button("保存") {
-                    chatSettingsService.saveSettings()
-                }
-                .buttonStyle(.borderedProminent)
-            } header: {
-                Text("AI設定")
-            }
-
-            Section {
-                Text("ローカル解析 / オンデバイスAI は無料・キー不要・オフラインで動作し、データは外部に送信されません。まずはこれで十分な助言が得られます。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("より自由な対話が必要な場合のみ、上級モードとして OpenAI / Anthropic の API キー（従量課金・Keychain保存）を設定できます。")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } header: {
-                Text("コストについて")
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    /// プロバイダ種別に応じた状態表示
-    @ViewBuilder
-    private var statusLabel: some View {
-        let provider = chatSettingsService.settings.provider
-        if provider == .local {
-            Label("無料・すぐ使えます", systemImage: "checkmark.circle.fill")
-                .foregroundColor(.green).font(.caption)
-        } else if provider == .appleOnDevice {
-            if AppleIntelligence.isAvailable {
-                Label("無料・利用可能", systemImage: "checkmark.circle.fill")
-                    .foregroundColor(.green).font(.caption)
-            } else {
-                Label("この Mac では非対応（ローカル解析に自動切替）", systemImage: "exclamationmark.circle")
-                    .foregroundColor(.orange).font(.caption)
-            }
-        } else if chatSettingsService.settings.isConfigured {
-            Label("設定済み", systemImage: "checkmark.circle.fill")
-                .foregroundColor(.green).font(.caption)
-        } else {
-            Label("APIキー未設定", systemImage: "exclamationmark.circle")
-                .foregroundColor(.orange).font(.caption)
-        }
-    }
+    // AI設定はチャット画面側に一本化したため、設定タブからは削除（プロバイダ切替・APIキーはチャットで完結）
 
     // MARK: - About Tab
 

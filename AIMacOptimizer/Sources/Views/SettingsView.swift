@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.system.rawValue
 
     @StateObject private var license = LicenseManager.shared
+    @ObservedObject private var diskGuard = DiskGuard.shared
     @State private var selectedTab = 0
     @State private var scheduleEnabled = false
     @State private var scheduleInterval = 60
@@ -342,6 +343,33 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("メモリ監視")
+            }
+
+            Section {
+                Toggle("ディスク圧迫を監視する", isOn: $diskGuard.settings.enabled)
+
+                if diskGuard.settings.enabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("圧迫とみなす使用率")
+                            Spacer()
+                            Text("\(Int(diskGuard.settings.thresholdPercent))%")
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $diskGuard.settings.thresholdPercent, in: 80...95, step: 1)
+                    }
+
+                    Toggle("圧迫時は自動で空ける（通知のみ）", isOn: $diskGuard.settings.autoClean)
+
+                    Text(diskGuard.settings.autoClean
+                        ? "ディスクが圧迫したら、リスクのないキャッシュ/ログを自動削除し、結果を通知でお知らせします。"
+                        : "ディスクが圧迫したら、何を消すか・安全度を提示して、ワンボタンで空けられるよう提案します。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            } header: {
+                Text("ディスク自動ガード")
             }
 
             Section {

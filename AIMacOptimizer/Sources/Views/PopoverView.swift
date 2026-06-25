@@ -599,14 +599,21 @@ struct SuggestionDetailRow: View {
 struct StorageTabView: View {
     @StateObject private var analyzer = StorageAnalyzer()
     @ObservedObject var license: LicenseManager
+    @ObservedObject private var diskGuard = DiskGuard.shared
     @State private var confirmSubItems: [StorageSubItem] = []
     @State private var confirmParentName: String = ""
     @State private var confirmAction: StorageAction?
     @State private var confirmCategory: StorageCategory?
     @State private var cleanupMessage: String?
+    @State private var enableAutoFromNow = false
 
     var body: some View {
         VStack(spacing: 0) {
+            // ディスク圧迫検知時の「安全に空ける」提案バナー
+            if let plan = diskGuard.pendingPlan, !plan.isEmpty {
+                diskPressureBanner(plan)
+            }
+
             // Inline confirmation banner (replaces .alert to keep popover open)
             if let action = confirmAction, !confirmSubItems.isEmpty {
                 VStack(spacing: 8) {
@@ -704,6 +711,106 @@ struct StorageTabView: View {
                         }
                     }
             }
+        }
+    }
+
+    // MARK: - ディスク圧迫「安全に空ける」提案バナー
+
+    @ViewBuilder
+    private func diskPressureBanner(_ plan: SafeCleanupPlan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "internaldrive.fill")
+                    .foregroundColor(.orange)
+                    .font(.system(size: 14))
+                Text("ディスク圧迫を検知")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Spacer()
+                Text("使用 \(Int(plan.usagePercentBefore))% / 空き \(String(format: "%.1f", plan.freeGBBefore))GB")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+
+            Text("リスクのないキャッシュ/ログを約 \(plan.totalFormatted) 安全に削除できます。")
+                .font(.system(size: 11))
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // 何を消すか + 安全度の内訳
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(plan.candidates) { item in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: item.safety.icon)
+                                .font(.system(size: 9))
+                                .foregroundColor(safetyColor(item.safety))
+                                .padding(.top, 1)
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 4) {
+                                    Text(item.name)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .lineLimit(1)
+                                    Text(item.safety.rawValue)
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundColor(safetyColor(item.safety))
+                                    Spacer()
+                                    Text(item.sizeFormatted)
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.secondary)
+                                }
+                                Text(item.reason)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 110)
+
+            Toggle(isOn: $enableAutoFromNow) {
+                Text("今後、圧迫を検知したら自動で空ける（通知のみ）")
+                    .font(.system(size: 10))
+            }
+            .toggleStyle(.checkbox)
+
+            HStack(spacing: 10) {
+                Button {
+                    diskGuard.dismissPendingPlan()
+                } label: {
+                    Text("後で")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer()
+
+                Button {
+                    diskGuard.approvePendingPlan(enableAutoFromNow: enableAutoFromNow)
+                    cleanupMessage = "ディスクを安全に空けました（約\(plan.totalFormatted)）"
+                } label: {
+                    Text("今すぐ安全に空ける（\(plan.totalFormatted)）")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .background(Color.blue.opacity(0.08))
+        .cornerRadius(8)
+        .padding(.horizontal, 8)
+        .padding(.top, 4)
+    }
+
+    private func safetyColor(_ safety: CleanupSafety) -> Color {
+        switch safety {
+        case .safe: return .green
+        case .caution: return .orange
         }
     }
 

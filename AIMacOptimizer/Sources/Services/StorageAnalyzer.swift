@@ -56,6 +56,15 @@ final class StorageAnalyzer: ObservableObject {
         }
     }
 
+    /// 圧迫回避向けに「安全に削除できる」キャッシュ/ログのみを返す。
+    /// フォント等の保護対象は除外済みなので、そのまま提案・自動削除に使える。
+    func findSafeCleanupItems() -> [StorageItem] {
+        let items = scanCaches() + scanLogs()
+        return items
+            .filter { !isProtectedPath($0.name) && !isProtectedPath($0.path) }
+            .sorted(by: >)
+    }
+
     // MARK: - Cache Scanning
 
     private func scanCaches() -> [StorageItem] {

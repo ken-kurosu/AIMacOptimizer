@@ -175,6 +175,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             let memPercent = self.monitor.systemMemory.usagePercent
             let storage = StorageAnalyzer().getStorageInfo()
             NotificationService.shared.checkAndNotify(memoryPercent: memPercent, diskFreeGB: storage.freeGB)
+            // ディスク圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
+            Task { @MainActor in DiskGuard.shared.evaluate() }
         }
     }
     

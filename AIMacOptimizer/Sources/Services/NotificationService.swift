@@ -1,0 +1,125 @@
+import Foundation
+import UserNotifications
+
+class NotificationService {
+    static let shared = NotificationService()
+    
+    private let defaults = UserDefaults.standard
+    private let lastNotificationTimestamps = NSMutableDictionary()
+    private let notificationCooldownInterval: TimeInterval = 30 * 60 // 30 minutes
+    
+    // UserDefaults keys
+    private let enableNotificationsKey = "enableNotifications"
+    private let notifyThresholdKey = "notifyThreshold"
+    private let lastMemoryAlertKey = "lastMemoryAlertTimestamp"
+    private let lastDiskAlertKey = "lastDiskAlertTimestamp"
+    
+    private init() {
+        setupDefaults()
+    }
+    
+    // MARK: - Setup
+    
+    private func setupDefaults() {
+        if defaults.object(forKey: enableNotificationsKey) == nil {
+            defaults.set(true, forKey: enableNotificationsKey)
+        }
+        if defaults.object(forKey: notifyThresholdKey) == nil {
+            defaults.set(80, forKey: notifyThresholdKey)
+        }
+    }
+    
+    // MARK: - Public Methods
+    
+    func requestPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+                return
+            }
+            if granted {
+                print("Notification permissions granted")
+            } else {
+                print("Notification permissions denied")
+            }
+        }
+    }
+    
+    func checkAndNotify(memoryPercent: Double, diskFreeGB: Double) {
+        let notificationsEnabled = defaults.bool(forKey: enableNotificationsKey)
+        guard notificationsEnabled else { return }
+        
+        let threshold = defaults.double(forKey: notifyThresholdKey)
+        let actualThreshold = threshold > 0 ? threshold : 80
+        
+        checkMemoryAlert(memoryPercent: memoryPercent, threshold: actualThreshold)
+        checkDiskAlert(diskFreeGB: diskFreeGB)
+    }
+    
+    // MARK: - Private Methods
+    
+    private func checkMemoryAlert(memoryPercent: Double, threshold: Double) {
+        guard memoryPercent >= threshold else { return }
+        
+        if shouldSendNotification(type: "memory") {
+            let title = "メモリ警告"
+            let body = "メモリ使用率が\(Int(memoryPercent))%に達しました"
+            let suggestion = "不要なアプリを終了するか、メモリタブから最適化してください"
+            
+            sendNotification(title: title, body: body, suggestion: suggestion)
+            updateNotificationTimestamp(type: "memory")
+        }
+    }
+    
+    private func checkDiskAlert(diskFreeGB: Double) {
+        let freeSpaceThreshold: Double = 10.0 // GB
+        guard diskFreeGB < freeSpaceThreshold else { return }
+        
+        if shouldSendNotification(type: "disk") {
+            let title = "ディスク空き容量警告"
+            let body = "ディスク空き容量が\(String(format: "%.1f", diskFreeGB))GBです"
+            let suggestion = "ストレージタブで不要ファイルを整理してください"
+            
+            sendNotification(title: title, body: body, suggestion: suggestion)
+            updateNotificationTimestamp(type: "disk")
+        }
+    }
+    
+    private func shouldSendNotification(type: String) -> Bool {
+        let key = type == "memory" ? lastMemoryAlertKey : lastDiskAlertKey
+        guard let lastTimestamp = defaults.object(forKey: key) as? TimeInterval else {
+            return true
+        }
+        
+        let timeSinceLastNotification = Date().timeIntervalSince1970 - lastTimestamp
+        return timeSinceLastNotification >= notificationCooldownInterval
+    }
+    
+    private func updateNotificationTimestamp(type: String) {
+        let key = type == "memory" ? lastMemoryAlertKey : lastDiskAlertKey
+        defaults.set(Date().timeIntervalSince1970, forKey: key)
+    }
+    
+    private func sendNotification(title: String, body: String, suggestion: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.badge = NSNumber(value: 1)
+        
+        // Add subtitle with the suggestion
+        content.subtitle = suggestion
+        
+        // Create a unique identifier for this notification
+        let identifier = UUID().uuidString
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Failed to send notification: \(error.localizedDescription)")
+            } else {
+                print("Notification sent: \(title)")
+            }
+        }
+    }
+}

@@ -1,0 +1,16 @@
+# Swift / Xcode build artifacts
+build/
+.build/
+.swiftpm/
+DerivedData/
+*.dmg
+*.app
+*.dSYM/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# secrets
+.env
+.env.local

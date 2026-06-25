@@ -582,11 +582,63 @@ struct SettingsView: View {
 
             Divider()
 
+            // 不具合・バグ・要望の報告（環境情報を添えてメール作成）
+            VStack(spacing: 6) {
+                Button(action: reportBug) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "ladybug.fill")
+                        Text("不具合・バグを報告")
+                            .fontWeight(.medium)
+                    }
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                }
+                .buttonStyle(.bordered)
+                Text("環境情報（バージョン・macOS）を添えてメールが開きます")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
             Text("© 2026 AI Mac Optimizer")
                 .font(.caption2)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// サポート連絡先（実際の運用に合わせて差し替え可能）
+    private let supportEmail = "kurosu@i-kasa.com"
+
+    /// 不具合報告メールを作成（環境情報を自動添付）
+    private func reportBug() {
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        let arch: String
+        #if arch(arm64)
+        arch = "Apple Silicon"
+        #else
+        arch = "Intel"
+        #endif
+        let body = """
+        （ここに不具合の内容・再現手順・期待する動作をご記入ください）
+
+
+
+        --- 環境情報（自動入力。消さないでください） ---
+        アプリ: AI Mac Optimizer 2.0.0
+        macOS: \(osVersion)
+        機種: \(arch)
+        """
+        var comps = URLComponents()
+        comps.scheme = "mailto"
+        comps.path = supportEmail
+        comps.queryItems = [
+            URLQueryItem(name: "subject", value: "【不具合報告】AI Mac Optimizer"),
+            URLQueryItem(name: "body", value: body),
+        ]
+        if let url = comps.url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Helpers

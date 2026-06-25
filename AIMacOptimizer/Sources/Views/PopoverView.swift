@@ -1634,16 +1634,20 @@ final class PopoverViewModel: ObservableObject {
         isOptimizing = true
         lastResult = nil
 
-        optimizingStatus = L10n.analyzing
-        await loadSuggestions(systemMemory: systemMemory, processes: processes, license: license)
+        // 表示中の候補と選択をそのまま実行する。
+        // （以前はここで loadSuggestions を呼び直しており、推定値の再計算と選択リセットで
+        //  画面の表示値とボタン下の結果がズレていた）
+        if suggestions.isEmpty {
+            optimizingStatus = L10n.analyzing
+            await loadSuggestions(systemMemory: systemMemory, processes: processes, license: license)
+        }
 
-        // Track which types have selected items to be executed
-        let executedTypes = Set(suggestions.filter { suggestion in
-            suggestion.detailItems.contains(where: \.isSelected)
-        }.map(\.type))
+        // 実行対象＝選択ありの候補のみ
+        let toExecute = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
+        let executedTypes = Set(toExecute.map(\.type))
 
-        optimizingStatus = L10n.optimizing(count: suggestions.count)
-        lastResult = await optimizer.executeOptimizations(suggestions)
+        optimizingStatus = L10n.optimizing(count: toExecute.count)
+        lastResult = await optimizer.executeOptimizations(toExecute)
 
         // Mark executed types as recently optimized
         recentlyOptimizedTypes = executedTypes

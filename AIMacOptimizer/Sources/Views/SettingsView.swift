@@ -503,35 +503,30 @@ struct SettingsView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("API キー")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    SecureField("sk-...", text: $chatSettingsService.settings.apiKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.body, design: .monospaced))
-                }
+                // API系プロバイダのときだけキー/モデル欄を表示
+                if chatSettingsService.settings.provider.requiresAPIKey {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("API キー")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        SecureField("sk-...", text: $chatSettingsService.settings.apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.body, design: .monospaced))
+                    }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("モデル（空欄でデフォルト）")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    TextField(chatSettingsService.settings.provider.defaultModel, text: $chatSettingsService.settings.model)
-                        .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("モデル（空欄でデフォルト）")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField(chatSettingsService.settings.provider.defaultModel, text: $chatSettingsService.settings.model)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
 
                 HStack {
                     Text("状態")
                     Spacer()
-                    if chatSettingsService.settings.isConfigured {
-                        Label("設定済み", systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                    } else {
-                        Label("未設定", systemImage: "exclamationmark.circle")
-                            .foregroundColor(.orange)
-                            .font(.caption)
-                    }
+                    statusLabel
                 }
 
                 Button("保存") {
@@ -539,24 +534,45 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.borderedProminent)
             } header: {
-                Text("AI API設定")
+                Text("AI設定")
             }
 
             Section {
-                Text("推奨: OpenAI GPT-4o-mini（最安: 入力 $0.15/1Mトークン）")
+                Text("ローカル解析 / オンデバイスAI は無料・キー不要・オフラインで動作し、データは外部に送信されません。まずはこれで十分な助言が得られます。")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("APIキーはお使いのMacのKeychainに安全に保存されます。外部に送信されることはありません。")
+                Text("より自由な対話が必要な場合のみ、上級モードとして OpenAI / Anthropic の API キー（従量課金・Keychain保存）を設定できます。")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("AIチャットはPro機能です。診断レポートの閲覧はFreeでも利用できます。")
-                    .font(.caption)
-                    .foregroundColor(.orange)
             } header: {
                 Text("コストについて")
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// プロバイダ種別に応じた状態表示
+    @ViewBuilder
+    private var statusLabel: some View {
+        let provider = chatSettingsService.settings.provider
+        if provider == .local {
+            Label("無料・すぐ使えます", systemImage: "checkmark.circle.fill")
+                .foregroundColor(.green).font(.caption)
+        } else if provider == .appleOnDevice {
+            if AppleIntelligence.isAvailable {
+                Label("無料・利用可能", systemImage: "checkmark.circle.fill")
+                    .foregroundColor(.green).font(.caption)
+            } else {
+                Label("この Mac では非対応（ローカル解析に自動切替）", systemImage: "exclamationmark.circle")
+                    .foregroundColor(.orange).font(.caption)
+            }
+        } else if chatSettingsService.settings.isConfigured {
+            Label("設定済み", systemImage: "checkmark.circle.fill")
+                .foregroundColor(.green).font(.caption)
+        } else {
+            Label("APIキー未設定", systemImage: "exclamationmark.circle")
+                .foregroundColor(.orange).font(.caption)
+        }
     }
 
     // MARK: - About Tab

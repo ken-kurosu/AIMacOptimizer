@@ -11,6 +11,9 @@ DerivedData/
 # macOS
 .DS_Store
 
+# Claude Code worktrees / local
+.claude/
+
 # secrets
 .env
 .env.local

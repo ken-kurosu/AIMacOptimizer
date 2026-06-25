@@ -11,6 +11,8 @@ final class AIChatService: ObservableObject {
 
     /// The diagnosis report to inject as context
     private var diagnosisContext: String = ""
+    /// 構造化された診断レポート（ローカル解析エンジンが実測値に基づき回答するのに使う）
+    private var diagnosisReport: DiagnosisReport?
 
     // Persistence keys
     private let providerKey = "ai_chat_provider"
@@ -69,6 +71,7 @@ final class AIChatService: ObservableObject {
     /// Set the diagnosis report as context for the AI chat
     func setDiagnosisContext(_ report: DiagnosisReport) {
         diagnosisContext = report.contextSummary()
+        diagnosisReport = report
     }
 
     // MARK: - System Prompt
@@ -99,8 +102,9 @@ final class AIChatService: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // API系プロバイダのみキーが必要。ローカル/オンデバイスはキー不要で常に利用可。
         guard settings.isConfigured else {
-            errorMessage = "APIキーが設定されていません。設定画面からAPIキーを入力してください。"
+            errorMessage = "APIキーが設定されていません。設定画面からAPIキーを入力するか、無料の『ローカル解析』に切り替えてください。"
             isLoading = false
             return
         }
@@ -108,6 +112,15 @@ final class AIChatService: ObservableObject {
         do {
             let response: String
             switch settings.provider {
+            case .local:
+                response = LocalAdvisor.shared.answer(question: content, report: diagnosisReport)
+            case .appleOnDevice:
+                // オンデバイスLLMが使えればそれを、ダメならローカル解析にフォールバック
+                if let r = await AppleIntelligence.respond(system: systemPrompt, prompt: content) {
+                    response = r
+                } else {
+                    response = LocalAdvisor.shared.answer(question: content, report: diagnosisReport)
+                }
             case .openAI:
                 response = try await callOpenAI(messages: messages)
             case .anthropic:

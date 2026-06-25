@@ -26,7 +26,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         let steps: [(String, () async -> [DiagnosisFinding])] = [
             ("CPU負荷を分析中...", diagnoseCPU),
             ("メモリ状態を分析中...", diagnoseMemory),
-            ("ディスク容量を分析中...", diagnoseDisk),
+            ("ストレージ容量を分析中...", diagnoseDisk),
             ("iCloud同期を確認中...", diagnoseICloudSync),
             ("セキュリティソフトを確認中...", diagnoseSecuritySoftware),
             ("開発ツールを確認中...", diagnoseDevTools),
@@ -318,7 +318,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         if freePercent < 5 {
             findings.append(DiagnosisFinding(
                 category: .disk, severity: .critical,
-                title: "ディスク容量がほぼ満杯",
+                title: "ストレージ容量がほぼ満杯",
                 detail: "空き \(storage.freeFormatted) / 全体 \(storage.totalFormatted) (\(String(format: "%.0f", freePercent))%空き)",
                 suggestion: "キャッシュ削除、不要ファイルの削除、大容量ファイルの移動を至急実施してください。",
                 rawData: ["disk_free_gb": String(format: "%.1f", storage.freeGB),
@@ -327,7 +327,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         } else if freePercent < 15 {
             findings.append(DiagnosisFinding(
                 category: .disk, severity: .warning,
-                title: "ディスク容量が少ない",
+                title: "ストレージ容量が少ない",
                 detail: "空き \(storage.freeFormatted) / 全体 \(storage.totalFormatted)",
                 suggestion: "ストレージタブでスキャンを実行し、不要ファイルを整理することを推奨します。",
                 rawData: ["disk_free_gb": String(format: "%.1f", storage.freeGB)]
@@ -335,7 +335,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         } else {
             findings.append(DiagnosisFinding(
                 category: .disk, severity: .good,
-                title: "ディスク容量は十分",
+                title: "ストレージ容量は十分",
                 detail: "空き \(storage.freeFormatted) / 全体 \(storage.totalFormatted)",
                 suggestion: "特に対処は不要です。"
             ))
@@ -603,7 +603,7 @@ final class DeepDiagnosisEngine: ObservableObject {
                 category: .browserApp, severity: .info,
                 title: "ブラウザキャッシュ合計 \(String(format: "%.0f MB", totalCacheMB))",
                 detail: browsers,
-                suggestion: "ブラウザキャッシュを削除するとディスクとメモリの両方が改善します。",
+                suggestion: "ブラウザキャッシュを削除するとストレージとメモリの両方が改善します。",
                 isAutoFixable: true, fixAction: .clearBrowserCache,
                 rawData: ["total_cache_mb": "\(Int(totalCacheMB))"]
             ))

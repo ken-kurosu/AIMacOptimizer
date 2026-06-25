@@ -76,8 +76,8 @@ class NotificationService {
         guard diskFreeGB < freeSpaceThreshold else { return }
         
         if shouldSendNotification(type: "disk") {
-            let title = "ディスク空き容量警告"
-            let body = "ディスク空き容量が\(String(format: "%.1f", diskFreeGB))GBです"
+            let title = "ストレージ空き容量警告"
+            let body = "ストレージ空き容量が\(String(format: "%.1f", diskFreeGB))GBです"
             let suggestion = "ストレージタブで不要ファイルを整理してください"
             
             sendNotification(title: title, body: body, suggestion: suggestion)

@@ -45,7 +45,7 @@ enum DiagnosisSeverity: String, Codable, Comparable {
 enum DiagnosisCategory: String, Codable {
     case cpu = "CPU負荷"
     case memory = "メモリ"
-    case disk = "ディスク"
+    case disk = "ストレージ"
     case icloudSync = "iCloud同期"
     case securitySoftware = "セキュリティソフト"
     case devTools = "開発ツール"
@@ -171,7 +171,7 @@ struct DiagnosisReport: Codable {
         lines.append("=== Mac診断レポート ===")
         lines.append("日時: \(ISO8601DateFormatter().string(from: timestamp))")
         lines.append("総合スコア: \(overallScore)/100")
-        lines.append("システム: RAM \(systemSnapshot.totalRAM_MB)MB, ディスク空き \(systemSnapshot.diskFreeGB)GB/\(systemSnapshot.diskTotalGB)GB")
+        lines.append("システム: RAM \(systemSnapshot.totalRAM_MB)MB, ストレージ空き \(systemSnapshot.diskFreeGB)GB/\(systemSnapshot.diskTotalGB)GB")
         lines.append("CPU Load Average: \(systemSnapshot.loadAverage)")
         lines.append("")
 

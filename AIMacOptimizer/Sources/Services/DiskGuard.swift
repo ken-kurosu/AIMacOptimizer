@@ -39,7 +39,7 @@ struct CleanupCandidate: Identifiable {
     }
 }
 
-/// ディスク圧迫時に提示する「安全に空ける」プラン
+/// ストレージ圧迫時に提示する「安全に空ける」プラン
 struct SafeCleanupPlan {
     let candidates: [CleanupCandidate]
     let usagePercentBefore: Double
@@ -52,7 +52,7 @@ struct SafeCleanupPlan {
     var isEmpty: Bool { candidates.isEmpty }
 }
 
-/// ディスク自動ガードの設定（UserDefaults に JSON 永続化）
+/// ストレージ自動ガードの設定（UserDefaults に JSON 永続化）
 struct DiskGuardSettings: Codable {
     /// 定期監視を行うか
     var enabled: Bool = true
@@ -131,7 +131,7 @@ final class DiskGuard: ObservableObject {
             // 手動 → 提案を UI に出し、気付けるよう通知
             pendingPlan = plan
             notify(
-                title: "ディスク圧迫を検知しました",
+                title: "ストレージ圧迫を検知しました",
                 body: "安全に空けられる項目が約\(plan.totalFormatted)あります。アプリを開いて確認してください。"
             )
         }
@@ -186,7 +186,7 @@ final class DiskGuard: ObservableObject {
 
         // 自動・手動どちらでも完了通知を出す（自動モードでは通知のみが唯一の通知手段）
         notify(
-            title: auto ? "ディスクを自動で空けました" : "ディスクを空けました",
+            title: auto ? "ストレージを自動で空けました" : "ストレージを空けました",
             body: summary
         )
     }

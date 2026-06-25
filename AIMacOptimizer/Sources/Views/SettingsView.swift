@@ -384,7 +384,7 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("ディスク圧迫を監視する", isOn: $diskGuard.settings.enabled)
+                Toggle("ストレージ圧迫を監視する", isOn: $diskGuard.settings.enabled)
 
                 if diskGuard.settings.enabled {
                     VStack(alignment: .leading, spacing: 8) {
@@ -416,13 +416,13 @@ struct SettingsView: View {
                     Toggle("圧迫時は自動で空ける（通知のみ）", isOn: $diskGuard.settings.autoClean)
 
                     Text(diskGuard.settings.autoClean
-                        ? "ディスクが圧迫したら、リスクのないキャッシュ/ログを自動削除し、結果を通知でお知らせします。"
-                        : "ディスクが圧迫したら、何を消すか・安全度を提示して、ワンボタンで空けられるよう提案します。")
+                        ? "ストレージが圧迫したら、リスクのないキャッシュ/ログを自動削除し、結果を通知でお知らせします。"
+                        : "ストレージが圧迫したら、何を消すか・安全度を提示して、ワンボタンで空けられるよう提案します。")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             } header: {
-                Text("ディスク自動ガード")
+                Text("ストレージ自動ガード")
             }
 
             Section {

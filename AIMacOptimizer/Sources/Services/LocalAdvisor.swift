@@ -18,7 +18,7 @@ struct LocalAdvisor {
         guard let report = report else {
             return """
             まず「Deep Diagnosis（詳細診断）」を実行してください。
-            実測データに基づいて、メモリ・ディスク・起動項目などの具体的な改善点をご案内します。
+            実測データに基づいて、メモリ・ストレージ・起動項目などの具体的な改善点をご案内します。
             """
         }
 
@@ -77,7 +77,7 @@ struct LocalAdvisor {
     private func diskAnswer(_ r: DiagnosisReport) -> String {
         let s = r.systemSnapshot
         let usedPct = s.diskTotalGB > 0 ? Int(Double(s.diskTotalGB - s.diskFreeGB) / Double(s.diskTotalGB) * 100) : 0
-        var out = ["【ディスクの状況】",
+        var out = ["【ストレージの状況】",
                    "・空き \(s.diskFreeGB)GB / 全体 \(s.diskTotalGB)GB（使用 約\(usedPct)%）"]
         if s.diskFreeGB < 10 {
             out.append("⚠️ 空きが少なめです。10GB を切ると動作不安定や更新失敗の原因になります。")
@@ -86,7 +86,7 @@ struct LocalAdvisor {
         out.append("")
         out.append("【リスクなく空ける手順】")
         out.append("1. ストレージタブでスキャン → キャッシュ/ログは安全に削除できます（自動再生成されます）")
-        out.append("2. 「ディスク自動ガード」を有効にすると、圧迫時に安全な項目をワンボタン提案、または自動削除＋通知にできます")
+        out.append("2. 「ストレージ自動ガード」を有効にすると、圧迫時に安全な項目をワンボタン提案、または自動削除＋通知にできます")
         out.append("3. Downloads の古いインストーラー（dmg/pkg）や大容量ファイルは中身を確認のうえ削除")
         return out.joined(separator: "\n")
     }
@@ -132,7 +132,7 @@ struct LocalAdvisor {
                    "リスクなく消せるのは主にキャッシュとログです（アプリが自動再生成するため動作に影響しません）。"]
         out.append("")
         out.append("1. ストレージタブでスキャン → キャッシュ/ログを削除")
-        out.append("2. 「ディスク自動ガード」をオンにすると、圧迫時に安全な項目を提案/自動削除（通知のみ）にできます")
+        out.append("2. 「ストレージ自動ガード」をオンにすると、圧迫時に安全な項目を提案/自動削除（通知のみ）にできます")
         out.append("3. フォント関連キャッシュは表示崩れ防止のため自動で保護・除外されます")
         out.append(contentsOf: findingsBlock(r, category: .disk))
         return out.joined(separator: "\n")
@@ -158,7 +158,7 @@ struct LocalAdvisor {
             }
         }
         out.append("")
-        out.append("具体的に知りたい分野（メモリ / ディスク / 起動 / CPU / バッテリー）を聞いてもらえれば、実測値に基づいて詳しくご案内します。")
+        out.append("具体的に知りたい分野（メモリ / ストレージ / 起動 / CPU / バッテリー）を聞いてもらえれば、実測値に基づいて詳しくご案内します。")
         return out.joined(separator: "\n")
     }
 

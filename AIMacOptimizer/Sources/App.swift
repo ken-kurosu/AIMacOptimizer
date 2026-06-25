@@ -101,7 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             if mem.severity == .high || storage.freeGB < 10 { health = "要注意" }
             else if mem.severity == .medium || storage.usagePercent > 85 { health = "やや注意" }
 
-            let body = "メモリ \(Int(mem.usagePercent))% ・ ディスク空き \(String(format: "%.0f", storage.freeGB))GB ・ 状態: \(health)"
+            let body = "メモリ \(Int(mem.usagePercent))% ・ ストレージ空き \(String(format: "%.0f", storage.freeGB))GB ・ 状態: \(health)"
 
             let content = UNMutableNotificationContent()
             content.title = "AI Mac Optimizer 起動中"
@@ -229,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             let memPercent = self.monitor.systemMemory.usagePercent
             let storage = StorageAnalyzer().getStorageInfo()
             NotificationService.shared.checkAndNotify(memoryPercent: memPercent, diskFreeGB: storage.freeGB)
-            // ディスク圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
+            // ストレージ圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
             Task { @MainActor in DiskGuard.shared.evaluate() }
         }
     }

@@ -35,7 +35,7 @@ struct DiagnosisView: View {
                 .foregroundColor(.blue)
             Text("Deep Diagnosis")
                 .font(.headline)
-            Text("CPU・メモリ・ディスク・iCloud同期など\n9項目を包括的に診断します")
+            Text("CPU・メモリ・ストレージ・iCloud同期など\n9項目を包括的に診断します")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

@@ -203,7 +203,7 @@ final class SmartAdvisor {
             let extDetails = heavyExtensions.map { ext -> SuggestionDetailItem in
                 SuggestionDetailItem(
                     name: ext.name,
-                    detail: "ディスク \(String(format: "%.0f MB", ext.sizeMB)) + ランタイムメモリ約50MB。ここでは自動削除しません。不要なら chrome://extensions で無効化できます",
+                    detail: "ストレージ \(String(format: "%.0f MB", ext.sizeMB)) + ランタイムメモリ約50MB。ここでは自動削除しません。不要なら chrome://extensions で無効化できます",
                     sizeMB: ext.sizeMB + 50,
                     isSelected: false, // don't auto-select — info only
                     isRecommended: ext.sizeMB > 20

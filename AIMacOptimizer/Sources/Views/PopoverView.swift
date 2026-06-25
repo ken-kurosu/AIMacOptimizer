@@ -609,7 +609,7 @@ struct StorageTabView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ディスク圧迫検知時の「安全に空ける」提案バナー
+            // ストレージ圧迫検知時の「安全に空ける」提案バナー
             if let plan = diskGuard.pendingPlan, !plan.isEmpty {
                 diskPressureBanner(plan)
             }
@@ -621,7 +621,7 @@ struct StorageTabView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.blue)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("ディスク自動削除: 有効")
+                        Text("ストレージ自動削除: 有効")
                             .font(.system(size: 11, weight: .semibold))
                         Text("圧迫時に安全なキャッシュ/ログを自動削除し通知します")
                             .font(.system(size: 9))
@@ -742,7 +742,7 @@ struct StorageTabView: View {
         }
     }
 
-    // MARK: - ディスク圧迫「安全に空ける」提案バナー
+    // MARK: - ストレージ圧迫「安全に空ける」提案バナー
 
     @ViewBuilder
     private func diskPressureBanner(_ plan: SafeCleanupPlan) -> some View {
@@ -751,7 +751,7 @@ struct StorageTabView: View {
                 Image(systemName: "internaldrive.fill")
                     .foregroundColor(.orange)
                     .font(.system(size: 14))
-                Text("ディスク圧迫を検知")
+                Text("ストレージ圧迫を検知")
                     .font(.caption)
                     .fontWeight(.semibold)
                 Spacer()
@@ -818,7 +818,7 @@ struct StorageTabView: View {
 
                 Button {
                     diskGuard.approvePendingPlan(enableAutoFromNow: enableAutoFromNow)
-                    cleanupMessage = "ディスクを安全に空けました（約\(plan.totalFormatted)）"
+                    cleanupMessage = "ストレージを安全に空けました（約\(plan.totalFormatted)）"
                 } label: {
                     Text("今すぐ安全に空ける（\(plan.totalFormatted)）")
                         .font(.system(size: 11, weight: .semibold))

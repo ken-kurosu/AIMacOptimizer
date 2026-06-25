@@ -163,18 +163,20 @@ final class AIChatService: ObservableObject {
         let items = storage.items // 大きい順にソート済み
 
         var lines: [String] = []
-        lines.append("このMacのディスク状況")
+        lines.append("このMacのストレージ状況")
         lines.append("空き \(info.freeFormatted) / 全体 \(info.totalFormatted)（使用 約\(Int(info.usagePercent))%）")
         lines.append("")
 
         guard !items.isEmpty else {
             lines.append("スキャンの結果、目立って大きい不要ファイルは見つかりませんでした。")
             lines.append("空きが少ない場合は、写真・動画・アプリ本体など個人ファイルの整理をご検討ください。")
+            appendSSDSuggestionIfTight(&lines, info: info, safeFreeableMB: 0)
             return (lines.joined(separator: "\n"), [])
         }
 
         lines.append("容量を使っている項目（大きい順）と安全度")
         var actions: [ChatActionDescriptor] = []
+        var safeFreeableMB: Double = 0
         for item in items.prefix(8) {
             let safe = (item.category == .cache || item.category == .log)
             let riskLabel = safe ? "安全" : "やや注意"
@@ -184,6 +186,7 @@ final class AIChatService: ObservableObject {
                 : "個人ファイルの可能性。中身を確認してから削除してください"
             lines.append("\(mark) \(item.name)　\(item.sizeFormatted)（\(riskLabel)）")
             lines.append("　\(reason)")
+            if safe { safeFreeableMB += item.sizeMB }
 
             actions.append(ChatActionDescriptor(
                 label: safe ? "削除 \(item.sizeFormatted)（安全）" : "ゴミ箱へ \(item.sizeFormatted)（要確認）",
@@ -195,7 +198,20 @@ final class AIChatService: ObservableObject {
         }
         lines.append("")
         lines.append("下のボタンから、その場で削除できます。「安全」は消しても支障ありません。「要確認」は個人ファイルの可能性があるため、中身をご確認のうえ実行してください。")
+        appendSSDSuggestionIfTight(&lines, info: info, safeFreeableMB: safeFreeableMB)
         return (lines.joined(separator: "\n"), actions)
+    }
+
+    /// 削除で空けきれない見込みのとき、外付けSSDの増設を根本策として提案する
+    private func appendSSDSuggestionIfTight(_ lines: inout [String], info: StorageInfo, safeFreeableMB: Double) {
+        // 安全に空けられる量を足しても空きが20GB未満なら「空けきれない」と判断
+        let projectedFreeGB = info.freeGB + safeFreeableMB / 1024
+        guard projectedFreeGB < 20 else { return }
+        lines.append("")
+        lines.append("――――――")
+        lines.append("これだけでは空きが足りない見込みです（削除しても約\(String(format: "%.0f", projectedFreeGB))GB）。")
+        lines.append("根本的に解決するなら外付けSSDの増設がおすすめです。写真・動画・古いプロジェクトを退避でき、内蔵ストレージを軽くできます。")
+        lines.append("ツールやストレージ画面の「おすすめ」から製品を確認できます（Samsung T7/T9・SanDisk Extreme・Crucial X9 などが定番）。")
     }
 
     /// チャット上のアクション（削除/ゴミ箱）を実行し、結果メッセージを追加する

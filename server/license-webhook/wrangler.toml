@@ -1,0 +1,9 @@
+name = "aimac-license-webhook"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# シークレットはコードに書かず、wrangler secret put で設定する:
+#   STRIPE_WEBHOOK_SECRET / PRIVATE_KEY_B64 / RESEND_API_KEY / FROM_EMAIL
+# 任意の公開変数:
+[vars]
+LIFETIME_AMOUNT = "4980"

@@ -1461,7 +1461,14 @@ struct AppUninstallRow: View {
     let isProUser: Bool
     @State private var isExpanded = false
     @State private var resultMessage: String?
-    
+    @State private var pendingAction: PendingUninstallAction?
+
+    /// 確認待ちの破壊的操作
+    private enum PendingUninstallAction: Equatable {
+        case leftoversOnly  // 残留削除
+        case uninstall      // アンインストール
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
@@ -1502,9 +1509,15 @@ struct AppUninstallRow: View {
             .padding(.vertical, 4)
             
             if isExpanded {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
+                    // 「残留ファイル」とは何かの説明
+                    Text("「残留ファイル」＝このアプリが残した設定・キャッシュ・ログなどの補助データです。アプリを消しても残りがちで、少しずつ容量を圧迫します。")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if !app.leftoverPaths.isEmpty {
-                        Text("残留ファイル:")
+                        Text("残留ファイル（\(app.leftoverPaths.count)件 / \(formatSize(app.leftoverSizeMB))）:")
                             .font(.system(size: 10, weight: .medium))
                         ForEach(app.leftoverPaths.prefix(5), id: \.self) { p in
                             Text(p.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
@@ -1518,36 +1531,30 @@ struct AppUninstallRow: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     if isProUser {
-                        HStack(spacing: 8) {
-                            if app.leftoverSizeMB > 0 {
-                                Button(action: {
-                                    let result = uninstaller.removeLeftoversOnly(app)
-                                    resultMessage = "\(result.removedCount)件削除、" + formatSize(result.freedMB) + "解放"
-                                }) {
-                                    Text("残留削除")
-                                        .font(.system(size: 10, weight: .medium))
+                        if let pending = pendingAction {
+                            confirmPanel(pending)
+                        } else {
+                            // 2つの選択肢を、効果とリスクつきで提示
+                            VStack(alignment: .leading, spacing: 8) {
+                                if app.leftoverSizeMB > 0 {
+                                    actionChoice(
+                                        title: "残留削除",
+                                        tint: .orange,
+                                        risk: "リスク低",
+                                        desc: "アプリ本体は残し、残留ファイルだけをゴミ箱へ。アプリは引き続き使えます。",
+                                        action: { pendingAction = .leftoversOnly }
+                                    )
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.orange)
-                                .controlSize(.small)
+                                actionChoice(
+                                    title: "アンインストール",
+                                    tint: .red,
+                                    risk: "リスク中",
+                                    desc: "アプリ本体＋残留ファイルをまとめてゴミ箱へ。このアプリは使えなくなります（再び使うには再インストールが必要）。",
+                                    action: { pendingAction = .uninstall }
+                                )
                             }
-                            
-                            Button(action: {
-                                let result = uninstaller.uninstallApp(app)
-                                if result.errors.isEmpty {
-                                    resultMessage = "アプリをゴミ箱に移動しました（\(result.removedCount)項目・約\(String(format: "%.0f", result.freedMB))MB解放）"
-                                } else {
-                                    resultMessage = "一部失敗しました（成功 \(result.removedCount)項目／エラー \(result.errors.count)件）"
-                                }
-                            }) {
-                                Text("アンインストール")
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
-                            .controlSize(.small)
                         }
                     } else {
                         HStack(spacing: 4) {
@@ -1558,11 +1565,12 @@ struct AppUninstallRow: View {
                         }
                         .foregroundColor(.orange)
                     }
-                    
+
                     if let msg = resultMessage {
                         Text(msg)
                             .font(.system(size: 10))
                             .foregroundColor(.green)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(.leading, 36)
@@ -1577,6 +1585,85 @@ struct AppUninstallRow: View {
     private func formatSize(_ mb: Double) -> String {
         if mb >= 1024 { return String(format: "%.1f GB", mb / 1024) }
         return String(format: "%.0f MB", mb)
+    }
+
+    /// 選択肢（ボタン＋リスク＋効果説明）
+    @ViewBuilder
+    private func actionChoice(title: String, tint: Color, risk: String, desc: String, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Button(action: action) {
+                    Text(title).font(.system(size: 10, weight: .medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+                .controlSize(.small)
+                Text(risk)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(tint)
+            }
+            Text(desc)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// 実行前の確認パネル（破壊的操作は理解・納得のうえ実行できるように）
+    @ViewBuilder
+    private func confirmPanel(_ pending: PendingUninstallAction) -> some View {
+        let isUninstall = (pending == .uninstall)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(isUninstall ? .red : .orange)
+                Text(isUninstall ? "アンインストールしますか？" : "残留ファイルを削除しますか？")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            Text(isUninstall
+                ? "「\(app.name)」の本体と残留ファイルをゴミ箱へ移動します。アプリは使えなくなります（再び使うには再インストールが必要）。"
+                : "「\(app.name)」の残留ファイルだけをゴミ箱へ移動します。アプリ本体は残り、引き続き使えます。")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("いずれもゴミ箱へ移動するだけなので、ゴミ箱を空にするまでは元に戻せます。")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+            HStack(spacing: 8) {
+                Button("キャンセル") { pendingAction = nil }
+                    .font(.system(size: 10, weight: .medium))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Spacer()
+                Button(isUninstall ? "アンインストールする" : "残留を削除する") {
+                    executeAction(pending)
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .buttonStyle(.borderedProminent)
+                .tint(isUninstall ? .red : .orange)
+                .controlSize(.small)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((isUninstall ? Color.red : Color.orange).opacity(0.08))
+        .cornerRadius(6)
+    }
+
+    private func executeAction(_ pending: PendingUninstallAction) {
+        switch pending {
+        case .leftoversOnly:
+            let result = uninstaller.removeLeftoversOnly(app)
+            resultMessage = "残留ファイル \(result.removedCount)件をゴミ箱へ移動（約\(formatSize(result.freedMB))）"
+                + (result.errors.isEmpty ? "" : "／一部失敗 \(result.errors.count)件")
+        case .uninstall:
+            let result = uninstaller.uninstallApp(app)
+            resultMessage = result.errors.isEmpty
+                ? "「\(app.name)」をゴミ箱へ移動しました（\(result.removedCount)項目・約\(formatSize(result.freedMB))）"
+                : "一部失敗しました（成功 \(result.removedCount)項目／エラー \(result.errors.count)件）"
+        }
+        pendingAction = nil
     }
 }
 

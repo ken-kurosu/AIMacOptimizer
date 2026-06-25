@@ -24,35 +24,83 @@ struct PopoverView: View {
             } else {
                 // Pro badge or Free tier indicator
                 tierBadge
+                Divider()
 
-                // Tab Selector (3 tabs)
-                Picker("", selection: $selectedTab) {
-                    Text(L10n.memoryUsage).tag(0)
-                    Text(L10n.storageUsage).tag(1)
-                    Text("ツール").tag(3)
-                    Text(L10n.diagnosis).tag(2)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                if selectedTab == 0 {
-                    MemoryTabView(monitor: monitor, license: license)
-                } else if selectedTab == 1 {
-                    StorageTabView(license: license)
-                } else if selectedTab == 3 {
-                    ToolsTabView(batteryMonitor: batteryMonitor, license: license)
-                } else {
-                    DiagnosisView(engine: diagnosisEngine, license: license, onOpenChat: {
-                        // Inject diagnosis context into chat
-                        if let report = diagnosisEngine.lastReport {
-                            chatService.setDiagnosisContext(report)
-                        }
-                        withAnimation { showChat = true }
-                    })
+                // 左サイドバー常設ナビ ＋ 右コンテンツ
+                HStack(spacing: 0) {
+                    sidebar
+                    Divider()
+                    contentArea
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
         .frame(width: 320, height: 580)
+    }
+
+    // MARK: - 左サイドバー（ナビゲーション常設）
+
+    private var sidebar: some View {
+        VStack(spacing: 4) {
+            sidebarItem(tag: 0, icon: "memorychip", label: "メモリ")
+            sidebarItem(tag: 1, icon: "internaldrive", label: "ストレージ")
+            sidebarItem(tag: 3, icon: "wrench.and.screwdriver", label: "ツール")
+            sidebarItem(tag: 2, icon: "stethoscope", label: "診断")
+            Spacer()
+            // 見つけづらかった設定をサイドバー下部に常設
+            Button(action: openSettings) {
+                VStack(spacing: 3) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 15))
+                    Text("設定")
+                        .font(.system(size: 9))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(width: 64)
+        .padding(.vertical, 8)
+        .background(Color.gray.opacity(0.04))
+    }
+
+    private func sidebarItem(tag: Int, icon: String, label: String) -> some View {
+        Button(action: { selectedTab = tag }) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                Text(label)
+                    .font(.system(size: 9, weight: selectedTab == tag ? .semibold : .regular))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(selectedTab == tag ? Color.blue.opacity(0.15) : Color.clear)
+            .foregroundColor(selectedTab == tag ? .blue : .secondary)
+            .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+    }
+
+    @ViewBuilder
+    private var contentArea: some View {
+        if selectedTab == 0 {
+            MemoryTabView(monitor: monitor, license: license)
+        } else if selectedTab == 1 {
+            StorageTabView(license: license)
+        } else if selectedTab == 3 {
+            ToolsTabView(batteryMonitor: batteryMonitor, license: license)
+        } else {
+            DiagnosisView(engine: diagnosisEngine, license: license, onOpenChat: {
+                // Inject diagnosis context into chat
+                if let report = diagnosisEngine.lastReport {
+                    chatService.setDiagnosisContext(report)
+                }
+                withAnimation { showChat = true }
+            })
+        }
     }
 
     private var tierBadge: some View {

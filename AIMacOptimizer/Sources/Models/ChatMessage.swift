@@ -8,13 +8,32 @@ struct ChatMessage: Identifiable, Codable {
     let role: ChatRole
     let content: String
     let timestamp: Date
+    /// このメッセージに紐づく実行可能アクション（削除提案など）
+    var actions: [ChatActionDescriptor]
 
-    init(role: ChatRole, content: String) {
+    init(role: ChatRole, content: String, actions: [ChatActionDescriptor] = []) {
         self.id = UUID()
         self.role = role
         self.content = content
         self.timestamp = Date()
+        self.actions = actions
     }
+}
+
+/// チャットから実行できるアクションの種類
+enum ChatActionType: String, Codable {
+    case deleteCacheSafe   // キャッシュ/ログの安全削除
+    case moveToTrash       // ゴミ箱へ移動（要確認のファイル）
+}
+
+/// チャットメッセージに添える「実行できる操作」の記述（ボタン化される）
+struct ChatActionDescriptor: Identifiable, Codable {
+    var id = UUID()
+    let label: String       // ボタン文言（例: "キャッシュを削除 (4.8GB)"）
+    let type: ChatActionType
+    let path: String        // 対象パス
+    let sizeMB: Double
+    let risk: String        // "安全" / "やや注意"
 }
 
 enum ChatRole: String, Codable {

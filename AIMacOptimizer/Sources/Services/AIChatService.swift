@@ -110,6 +110,15 @@ final class AIChatService: ObservableObject {
         }
 
         do {
+            // ディスク/容量に関する質問は、無料プロバイダなら実機をスキャンして
+            // 「大きい順・リスク付き・その場で削除できる」具体的な助言を返す
+            if !settings.provider.requiresAPIKey, isStorageQuestion(content) {
+                let (text, actions) = await buildStorageAdvice()
+                messages.append(ChatMessage(role: .assistant, content: text, actions: actions))
+                isLoading = false
+                return
+            }
+
             let response: String
             switch settings.provider {
             case .local:
@@ -134,6 +143,82 @@ final class AIChatService: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    // MARK: - ディスク相談（実機スキャン＋実行アクション）
+
+    private let storage = StorageAnalyzer()
+
+    private func isStorageQuestion(_ q: String) -> Bool {
+        let s = q.lowercased()
+        let kw = ["ディスク", "容量", "空き", "ストレージ", "大き", "disk", "storage",
+                  "空け", "削除", "消し", "消す", "掃除", "片付", "ファイル", "占有", "重い"]
+        return kw.contains { s.contains($0) }
+    }
+
+    /// 実機をスキャンして「何が容量を食っているか（大きい順）」と削除アクションを組み立てる
+    private func buildStorageAdvice() async -> (String, [ChatActionDescriptor]) {
+        await storage.scan()
+        let info = storage.getStorageInfo()
+        let items = storage.items // 大きい順にソート済み
+
+        var lines: [String] = []
+        lines.append("このMacのディスク状況")
+        lines.append("空き \(info.freeFormatted) / 全体 \(info.totalFormatted)（使用 約\(Int(info.usagePercent))%）")
+        lines.append("")
+
+        guard !items.isEmpty else {
+            lines.append("スキャンの結果、目立って大きい不要ファイルは見つかりませんでした。")
+            lines.append("空きが少ない場合は、写真・動画・アプリ本体など個人ファイルの整理をご検討ください。")
+            return (lines.joined(separator: "\n"), [])
+        }
+
+        lines.append("容量を使っている項目（大きい順）と安全度")
+        var actions: [ChatActionDescriptor] = []
+        for item in items.prefix(8) {
+            let safe = (item.category == .cache || item.category == .log)
+            let riskLabel = safe ? "安全" : "やや注意"
+            let mark = safe ? "✅" : "⚠️"
+            let reason = safe
+                ? "再生成されるキャッシュ/ログ。削除して問題ありません"
+                : "個人ファイルの可能性。中身を確認してから削除してください"
+            lines.append("\(mark) \(item.name)　\(item.sizeFormatted)（\(riskLabel)）")
+            lines.append("　\(reason)")
+
+            actions.append(ChatActionDescriptor(
+                label: safe ? "削除 \(item.sizeFormatted)（安全）" : "ゴミ箱へ \(item.sizeFormatted)（要確認）",
+                type: safe ? .deleteCacheSafe : .moveToTrash,
+                path: item.path,
+                sizeMB: item.sizeMB,
+                risk: riskLabel
+            ))
+        }
+        lines.append("")
+        lines.append("下のボタンから、その場で削除できます。「安全」は消しても支障ありません。「要確認」は個人ファイルの可能性があるため、中身をご確認のうえ実行してください。")
+        return (lines.joined(separator: "\n"), actions)
+    }
+
+    /// チャット上のアクション（削除/ゴミ箱）を実行し、結果メッセージを追加する
+    func performChatAction(_ action: ChatActionDescriptor) async {
+        let item = StorageItem(
+            path: action.path,
+            name: (action.path as NSString).lastPathComponent,
+            sizeMB: action.sizeMB,
+            category: action.type == .deleteCacheSafe ? .cache : .largeFile,
+            isDirectory: true
+        )
+        let ok: Bool
+        switch action.type {
+        case .deleteCacheSafe:
+            ok = storage.clearCache(item)
+        case .moveToTrash:
+            ok = storage.moveToTrash(item)
+        }
+        let sizeStr = action.sizeMB >= 1024 ? String(format: "%.1f GB", action.sizeMB / 1024) : String(format: "%.0f MB", action.sizeMB)
+        let msg = ok
+            ? "「\((action.path as NSString).lastPathComponent)」を処理しました（約\(sizeStr) 解放）。"
+            : "「\((action.path as NSString).lastPathComponent)」の処理に失敗しました。フォント保護や権限の都合でスキップされた可能性があります。"
+        messages.append(ChatMessage(role: .assistant, content: msg))
     }
 
     /// Clear conversation

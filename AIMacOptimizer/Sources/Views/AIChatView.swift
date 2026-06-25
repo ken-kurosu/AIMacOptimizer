@@ -48,6 +48,9 @@ struct AIChatView: View {
 
             Spacer()
 
+            // プロバイダ切替（無料/有料を常時表示し、誤って有料APIを使わないようにする）
+            providerMenu
+
             Button(action: { chatService.clearChat() }) {
                 Image(systemName: "trash")
                     .font(.system(size: 11))
@@ -60,6 +63,49 @@ struct AIChatView: View {
         .padding(.vertical, 8)
     }
 
+    /// 現在のAIモード（無料/有料）を表示し、いつでも切り替えられるメニュー
+    private var providerMenu: some View {
+        let current = chatService.settings.provider
+        return Menu {
+            Section("無料（推奨・キー不要）") {
+                ForEach(AIProvider.allCases.filter { $0.isFree }, id: \.self) { p in
+                    Button { switchProvider(p) } label: {
+                        Label(p.displayName, systemImage: current == p ? "checkmark" : "gift")
+                    }
+                }
+            }
+            Section("上級（従量課金・APIキー必要）") {
+                ForEach(AIProvider.allCases.filter { $0.requiresAPIKey }, id: \.self) { p in
+                    Button { switchProvider(p) } label: {
+                        Label(p.displayName, systemImage: current == p ? "checkmark" : "creditcard")
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: current.isFree ? "gift.fill" : "creditcard.fill")
+                    .font(.system(size: 9))
+                Text(current.isFree ? "無料モード" : "有料API")
+                    .font(.system(size: 10, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7))
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background((current.isFree ? Color.green : Color.orange).opacity(0.15))
+            .foregroundColor(current.isFree ? .green : .orange)
+            .cornerRadius(7)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("AIの種類を切り替え（無料/有料）")
+    }
+
+    private func switchProvider(_ p: AIProvider) {
+        chatService.settings.provider = p
+        chatService.saveSettings()
+    }
+
     // MARK: - API Key Setup
 
     private var apiKeySetupView: some View {
@@ -70,14 +116,29 @@ struct AIChatView: View {
                 .font(.system(size: 32))
                 .foregroundColor(.orange)
 
-            Text("APIキーを設定")
+            Text("これは有料モードです")
                 .font(.headline)
 
-            Text("AIチャットにはOpenAIまたはAnthropicのAPIキーが必要です。\nキーはお使いのMacのKeychain内に安全に保存されます。")
+            Text("OpenAI / Anthropic は従量課金の上級モードです。\n無料で使うなら「無料モードに戻る」を押してください（キー不要・このMac内で完結）。")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+
+            Button(action: { switchProvider(.local) }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "gift.fill")
+                    Text("無料モードに戻る")
+                        .fontWeight(.semibold)
+                }
+                .font(.system(size: 12))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.15))
+                .foregroundColor(.green)
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
 
             // Provider picker
             Picker("プロバイダー", selection: $chatService.settings.provider) {
@@ -140,8 +201,10 @@ struct AIChatView: View {
                     }
 
                     ForEach(chatService.messages) { message in
-                        ChatBubble(message: message)
-                            .id(message.id)
+                        ChatBubble(message: message, onAction: { action in
+                            Task { await chatService.performChatAction(action) }
+                        })
+                        .id(message.id)
                     }
 
                     if chatService.isLoading {
@@ -188,9 +251,9 @@ struct AIChatView: View {
 
             // Suggested questions
             let suggestions = [
+                "このMacで容量を食ってるものは？",
+                "安全に消せるものを教えて",
                 "一番深刻な問題は何？",
-                "メモリを節約するには？",
-                "ディスクの空きを増やすには？",
             ]
             ForEach(suggestions, id: \.self) { suggestion in
                 Button(action: {
@@ -244,13 +307,14 @@ struct AIChatView: View {
 
 struct ChatBubble: View {
     let message: ChatMessage
+    var onAction: ((ChatActionDescriptor) -> Void)? = nil
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
 
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 2) {
-                Text(message.content)
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                Text(attributedContent)
                     .font(.system(size: 12))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -258,6 +322,30 @@ struct ChatBubble: View {
                     .foregroundColor(message.role == .user ? .white : .primary)
                     .cornerRadius(12)
                     .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // 実行できるアクション（削除提案など）をボタン表示
+                if !message.actions.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(message.actions) { action in
+                            Button(action: { onAction?(action) }) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: action.risk == "安全" ? "trash.fill" : "exclamationmark.triangle.fill")
+                                        .font(.system(size: 9))
+                                    Text(action.label)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background((action.risk == "安全" ? Color.blue : Color.orange).opacity(0.12))
+                                .foregroundColor(action.risk == "安全" ? .blue : .orange)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
 
                 Text(message.timestamp, style: .time)
                     .font(.system(size: 8))
@@ -267,6 +355,16 @@ struct ChatBubble: View {
             if message.role == .assistant { Spacer(minLength: 40) }
         }
         .padding(.horizontal, 8)
+    }
+
+    /// マークダウンの **太字** 等を実際に装飾表示する（改行は保持）
+    private var attributedContent: AttributedString {
+        var options = AttributedString.MarkdownParsingOptions()
+        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+        if let a = try? AttributedString(markdown: message.content, options: options) {
+            return a
+        }
+        return AttributedString(message.content)
     }
 
     private var bubbleColor: Color {

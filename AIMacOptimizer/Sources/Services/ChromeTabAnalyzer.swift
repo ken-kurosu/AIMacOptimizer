@@ -46,8 +46,9 @@ final class ChromeTabAnalyzer {
 
             let windowIndex = Int(parts[0].trimmingCharacters(in: .whitespaces)) ?? 0
             let tabIndex = Int(parts[1].trimmingCharacters(in: .whitespaces)) ?? 0
-            let title = parts[2]
-            let url = parts[3]
+            // タイトルに区切り文字 "|||" が含まれてもURLを取り違えないよう、URLは末尾・タイトルは中間結合
+            let url = parts[parts.count - 1]
+            let title = parts[2..<(parts.count - 1)].joined(separator: "|||")
 
             var tab = ChromeTab(
                 id: index,

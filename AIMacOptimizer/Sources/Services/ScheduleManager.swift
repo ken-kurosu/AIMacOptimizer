@@ -94,11 +94,11 @@ final class ScheduleManager: ObservableObject {
 
         await MainActor.run { isAutoRunning = true }
 
-        // Get AI-powered suggestions from learned patterns
-        let suggestions = learner.getSmartSuggestions(
-            processes: monitor.processes,
-            systemMemory: monitor.systemMemory
-        )
+        // @Published（monitor/learner）はメインで読み、データ競合を避ける
+        let (snapMemory, suggestions): (SystemMemoryInfo, [OptimizationSuggestion]) = await MainActor.run {
+            (monitor.systemMemory,
+             learner.getSmartSuggestions(processes: monitor.processes, systemMemory: monitor.systemMemory))
+        }
 
         // Only auto-execute high-confidence, safe actions (up to maxAutoActions)
         var actionsExecuted = 0
@@ -112,25 +112,28 @@ final class ScheduleManager: ObservableObject {
                     .replacingOccurrences(of: "[中確度] ", with: "")
                     .replacingOccurrences(of: " を終了", with: "")
 
-                if let profile = learner.profiles[appName],
-                   profile.timesOptimized > 2, // User has optimized this at least 3 times
-                   profile.idleConfidence(atHour: hour) > 0.7 { // High confidence
+                // プロファイル判定（@Published profiles 読み取り）はメインで
+                let eligible = await MainActor.run { () -> Bool in
+                    guard let profile = learner.profiles[appName] else { return false }
+                    return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
+                }
+                if eligible {
                     let success = await suggestion.action()
                     if success {
                         actionsExecuted += 1
                         freedMB += suggestion.estimatedSavingMB
-                        learner.recordOptimized(appName: appName)
+                        await MainActor.run { learner.recordOptimized(appName: appName) }
                     }
                 }
             }
         }
 
         // Always try RAM purge if memory is high
-        if monitor.systemMemory.severity == .high {
+        if snapMemory.severity == .high {
             let purged = await optimizer.purgeRAM()
             if purged {
                 actionsExecuted += 1
-                freedMB += monitor.systemMemory.totalMB * 0.05
+                freedMB += snapMemory.totalMB * 0.05
             }
         }
 

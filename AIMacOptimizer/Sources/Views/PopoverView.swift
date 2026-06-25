@@ -818,7 +818,8 @@ struct StorageTabView: View {
 
                 Button {
                     diskGuard.approvePendingPlan(enableAutoFromNow: enableAutoFromNow)
-                    cleanupMessage = "ストレージを安全に空けました（約\(plan.totalFormatted)）"
+                    // 実際の解放量は削除完了後に通知でお知らせ（ここでは見込み値を断定しない）
+                    cleanupMessage = "ストレージの掃除を実行しました（結果は通知でお知らせします）"
                 } label: {
                     Text("今すぐ安全に空ける（\(plan.totalFormatted)）")
                         .font(.system(size: 11, weight: .semibold))

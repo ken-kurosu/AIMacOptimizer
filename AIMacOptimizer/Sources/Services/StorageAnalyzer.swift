@@ -102,9 +102,10 @@ final class StorageAnalyzer: ObservableObject {
         var results: [StorageItem] = []
         let home = NSHomeDirectory()
 
+        // /private/var/log はシステム管理・root所有・syslogd等が使用中のため対象外
+        //（/var/folders と同類。ユーザー領域の ~/Library/Logs のみ扱う）
         let logPaths = [
             "\(home)/Library/Logs",
-            "/private/var/log",
         ]
 
         for path in logPaths {
@@ -224,30 +225,43 @@ final class StorageAnalyzer: ObservableObject {
 
     /// Delete a cache or log directory (safe, no confirmation needed)
     /// ⚠️ Skips font-related caches to prevent browser font rendering issues
+    /// システム管理領域（削除してはいけない）かどうか
+    private func isSystemPath(_ path: String) -> Bool {
+        let denylist = ["/system", "/private/var/log", "/private/var/folders", "/var/folders", "/var/log", "/library/"]
+        let l = path.lowercased()
+        // ルート直下の /Library（ユーザーの ~/Library ではない）も保護
+        if l == "/library" || l.hasPrefix("/library/") { return true }
+        return denylist.contains { l.hasPrefix($0) }
+    }
+
+    /// キャッシュ/ログの安全削除。実際に削除できた時だけ true を返す（失敗時に空解放を報告しない）。
     func clearCache(_ item: StorageItem) -> Bool {
         guard item.category == .cache || item.category == .log else { return false }
 
-        // Block deletion of font-related caches entirely
+        // フォント関連・システム領域は削除しない
         if isProtectedPath(item.name) || isProtectedPath(item.path) {
             print("⚠️ Skipping protected path: \(item.path)")
             return false
         }
-
-        do {
-            let contents = try fileManager.contentsOfDirectory(atPath: item.path)
-            for file in contents {
-                // Skip font-related sub-items
-                if isProtectedPath(file) {
-                    print("⚠️ Skipping protected sub-item: \(file)")
-                    continue
-                }
-                try? fileManager.removeItem(atPath: "\(item.path)/\(file)")
-            }
-            return true
-        } catch {
-            print("Failed to clear cache: \(error)")
+        if isSystemPath(item.path) {
+            print("⚠️ Skipping system path: \(item.path)")
             return false
         }
+
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: item.path) else {
+            return false
+        }
+        var deleted = 0
+        for file in contents {
+            if isProtectedPath(file) { continue }
+            do {
+                try fileManager.removeItem(atPath: "\(item.path)/\(file)")
+                deleted += 1
+            } catch {
+                // 個別の失敗は無視するが、成功カウントには含めない
+            }
+        }
+        return deleted > 0
     }
 
     /// Move an item to Trash (requires user confirmation)

@@ -175,7 +175,8 @@ final class MemoryOptimizer {
             }
         }
 
-        return sizeBefore
+        // 実際に減った分だけを解放量として返す（ロック中等で消えなかった分は除外）
+        return max(0, sizeBefore - getDirectorySizeMB(trashPath))
     }
 
     // MARK: - Login Items Detection
@@ -323,7 +324,8 @@ final class MemoryOptimizer {
                 try? fileManager.removeItem(atPath: "\(path)/\(file)")
             }
         }
-        return sizeBefore
+        // 実際に減った分だけを返す
+        return max(0, sizeBefore - getDirectorySizeMB(path))
     }
 
     // MARK: - Safari Tab Analysis
@@ -358,7 +360,10 @@ final class MemoryOptimizer {
             guard parts.count >= 4 else { continue }
             let wIndex = Int(parts[0].trimmingCharacters(in: .whitespaces)) ?? 1
             let tIndex = Int(parts[1].trimmingCharacters(in: .whitespaces)) ?? 1
-            tabs.append((title: parts[2], url: parts[3], index: tIndex, windowIndex: wIndex))
+            // URLは末尾・タイトルは中間結合（タイトルに "|||" が含まれても取り違えない）
+            let url = parts[parts.count - 1]
+            let title = parts[2..<(parts.count - 1)].joined(separator: "|||")
+            tabs.append((title: title, url: url, index: tIndex, windowIndex: wIndex))
         }
         return tabs
     }

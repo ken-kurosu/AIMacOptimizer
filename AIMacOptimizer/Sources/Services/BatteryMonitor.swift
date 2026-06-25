@@ -88,13 +88,27 @@ final class BatteryMonitor: ObservableObject {
         let currentCapacity = (props["CurrentCapacity"] as? NSNumber)?.intValue ?? 0
         let maxCap = (props["MaxCapacity"] as? NSNumber)?.intValue ?? 0
         let designCap = (props["DesignCapacity"] as? NSNumber)?.intValue ?? 1 // Avoid division by zero
+        // Apple Silicon では MaxCapacity/CurrentCapacity が「設計比の%」で返るため、
+        // 健全度は生容量(mAh)同士で算出する。古いIntel機(mAh表記)とも両対応にする。
+        let rawMaxCap = (props["AppleRawMaxCapacity"] as? NSNumber)?.intValue ?? 0
         let cycleCount = (props["CycleCount"] as? NSNumber)?.intValue ?? 0
         let tempCentiDegrees = (props["Temperature"] as? NSNumber)?.intValue ?? 0
         let timeRemaining = (props["TimeRemaining"] as? NSNumber)?.intValue ?? -1
-        
+
         // Calculate values
-        let batteryLvl = maxCap > 0 ? (currentCapacity * 100) / maxCap : 0
-        let healthPercent = designCap > 0 ? (maxCap * 100) / designCap : 0
+        // バッテリー残量: CurrentCapacity が既に%（<=100）ならそのまま、mAh なら比率で算出
+        let batteryLvl: Int = currentCapacity <= 100
+            ? currentCapacity
+            : (maxCap > 0 ? (currentCapacity * 100) / maxCap : 0)
+        // 健全度（最大容量/設計容量）
+        let healthPercent: Int
+        if rawMaxCap > 0 && designCap > 100 {
+            healthPercent = min(100, (rawMaxCap * 100) / designCap) // mAh どうし（最も正確）
+        } else if maxCap <= 100 {
+            healthPercent = maxCap // Apple Silicon: MaxCapacity は既に設計比の%
+        } else {
+            healthPercent = designCap > 0 ? min(100, (maxCap * 100) / designCap) : 0 // 旧来(mAh)
+        }
         let temp = Double(tempCentiDegrees) / 100.0
         
         // Determine condition based on health

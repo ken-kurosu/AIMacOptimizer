@@ -268,7 +268,9 @@ final class AIChatService: ObservableObject {
     // MARK: - OpenAI API
 
     private func callOpenAI(messages: [ChatMessage]) async throws -> String {
-        let url = URL(string: settings.provider.apiEndpoint)!
+        guard let url = URL(string: settings.provider.apiEndpoint) else {
+            throw ChatError.invalidResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
@@ -318,7 +320,9 @@ final class AIChatService: ObservableObject {
     // MARK: - Anthropic API
 
     private func callAnthropic(messages: [ChatMessage]) async throws -> String {
-        let url = URL(string: settings.provider.apiEndpoint)!
+        guard let url = URL(string: settings.provider.apiEndpoint) else {
+            throw ChatError.invalidResponse
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(settings.apiKey, forHTTPHeaderField: "x-api-key")

@@ -41,9 +41,11 @@ final class SmartAdvisor {
                     description: "推定 \(Int(estimatedMB)) MB 解放可能",
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
-                    action: { [weak self] in
+                    action: { [weak self] selected in
                         guard let self else { return false }
-                        let closed = await self.chromeAnalyzer.closeTabs(tabsToClose)
+                        let targets = zip(tabsToClose, selected).filter { $0.1.isSelected }.map { $0.0 }
+                        guard !targets.isEmpty else { return false }
+                        let closed = await self.chromeAnalyzer.closeTabs(targets)
                         return closed > 0
                     }
                 ))
@@ -83,11 +85,13 @@ final class SmartAdvisor {
                     description: "推定 \(Int(estimatedMB)) MB 解放可能",
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
-                    action: { [weak self] in
+                    action: { [weak self] selected in
                         guard let self else { return false }
+                        let targets = zip(closeableSafari, selected).filter { $0.1.isSelected }.map { $0.0 }
+                        guard !targets.isEmpty else { return false }
                         var closed = 0
                         // Close in reverse order to avoid index shifting
-                        let sorted = closeableSafari.sorted { ($0.windowIndex, $0.index) > ($1.windowIndex, $1.index) }
+                        let sorted = targets.sorted { ($0.windowIndex, $0.index) > ($1.windowIndex, $1.index) }
                         for tab in sorted {
                             if await self.optimizer.closeSafariTab(windowIndex: tab.windowIndex, tabIndex: tab.index) {
                                 closed += 1
@@ -119,10 +123,11 @@ final class SmartAdvisor {
                 description: "推定 \(Int(totalMB)) MB 解放可能",
                 estimatedSavingMB: totalMB,
                 detailItems: appDetails,
-                action: { [weak self] in
+                action: { [weak self] selected in
                     guard let self else { return false }
+                    let targets = zip(backgroundApps, selected).filter { $0.1.isSelected }.map { $0.0 }
                     var success = false
-                    for app in backgroundApps {
+                    for app in targets {
                         if self.optimizer.quitApp(name: app.name) { success = true }
                     }
                     return success
@@ -156,8 +161,9 @@ final class SmartAdvisor {
                 description: "\(app.memoryFormatted) 使用中",
                 estimatedSavingMB: savingEstimate,
                 detailItems: details,
-                action: { [weak self] in
-                    await self?.optimizer.restartApp(name: app.name, bundleIdentifier: app.bundleIdentifier) ?? false
+                action: { [weak self] selected in
+                    guard selected.first?.isSelected ?? true else { return false }
+                    return await self?.optimizer.restartApp(name: app.name, bundleIdentifier: app.bundleIdentifier) ?? false
                 }
             ))
         }
@@ -182,10 +188,11 @@ final class SmartAdvisor {
                 description: "推定 \(Int(totalCacheMB)) MB 解放可能",
                 estimatedSavingMB: totalCacheMB,
                 detailItems: cacheDetails,
-                action: { [weak self] in
+                action: { [weak self] selected in
                     guard let self else { return false }
+                    let targets = zip(browserCaches, selected).filter { $0.1.isSelected }.map { $0.0 }
                     var cleared = false
-                    for cache in browserCaches {
+                    for cache in targets {
                         let freed = self.optimizer.clearBrowserCache(path: cache.path)
                         if freed > 0 { cleared = true }
                     }
@@ -216,7 +223,7 @@ final class SmartAdvisor {
                 description: "推定ランタイムメモリ \(Int(runtimeEstimate)) MB",
                 estimatedSavingMB: runtimeEstimate,
                 detailItems: extDetails,
-                action: { true } // Info-only — user manually disables in Chrome
+                action: { _ in true } // Info-only — user manually disables in Chrome
             ))
         }
 
@@ -242,7 +249,7 @@ final class SmartAdvisor {
                 description: "起動時に \(Int(totalLoginMB)) MB 使用",
                 estimatedSavingMB: totalLoginMB * 0.5, // Not all will be disabled
                 detailItems: loginDetails,
-                action: { true } // Info-only — user disables in System Settings
+                action: { _ in true } // Info-only — user disables in System Settings
             ))
         }
 
@@ -267,8 +274,9 @@ final class SmartAdvisor {
                     description: "推定 \(Int(totalTempMB)) MB 解放可能",
                     estimatedSavingMB: totalTempMB * 0.7, // Won't delete everything
                     detailItems: tempDetails,
-                    action: { [weak self] in
+                    action: { [weak self] selected in
                         guard let self else { return false }
+                        guard selected.contains(where: \.isSelected) else { return false }
                         let freed = await self.optimizer.clearTempFiles()
                         return freed > 0
                     }
@@ -301,12 +309,15 @@ final class SmartAdvisor {
             description: "推定 \(Int(dnsEstimate)) MB 解放可能",
             estimatedSavingMB: dnsEstimate,
             detailItems: dnsDetails,
-            action: { [weak self] in
+            action: { [weak self] selected in
                 guard let self else { return false }
-                let dns = await self.optimizer.flushDNSCache()
+                let dnsOn = selected.first?.isSelected ?? true
+                let fontOn = selected.count > 1 ? selected[1].isSelected : false
+                var ok = false
+                if dnsOn, await self.optimizer.flushDNSCache() { ok = true }
                 // Font cache: safe mode only (flush in-memory, no file deletion)
-                let font = await self.optimizer.clearFontCache(level: .safe)
-                return dns || font
+                if fontOn, await self.optimizer.clearFontCache(level: .safe) { ok = true }
+                return ok
             }
         ))
 
@@ -340,7 +351,7 @@ final class SmartAdvisor {
                 description: "\(String(format: "%.0f MB", swapInfo.usedMB)) のSwap使用中",
                 estimatedSavingMB: 0, // Info-only
                 detailItems: allDetails,
-                action: { true }
+                action: { _ in true }
             ))
         }
 
@@ -364,8 +375,9 @@ final class SmartAdvisor {
             description: "推定 \(Int(purgeEstimate)) MB 解放可能",
             estimatedSavingMB: purgeEstimate,
             detailItems: purgeDetails,
-            action: { [weak self] in
-                await self?.optimizer.purgeRAM() ?? false
+            action: { [weak self] selected in
+                guard selected.first?.isSelected ?? true else { return false }
+                return await self?.optimizer.purgeRAM() ?? false
             }
         ))
 

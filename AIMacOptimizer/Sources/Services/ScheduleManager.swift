@@ -118,7 +118,7 @@ final class ScheduleManager: ObservableObject {
                     return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
                 }
                 if eligible {
-                    let success = await suggestion.action()
+                    let success = await suggestion.action(suggestion.detailItems)
                     if success {
                         actionsExecuted += 1
                         freedMB += suggestion.estimatedSavingMB

@@ -459,9 +459,14 @@ final class MemoryOptimizer {
         var purged = false
 
         for suggestion in suggestions {
-            let success = await suggestion.action()
+            // 選択中の detailItems だけを処理対象にする
+            let success = await suggestion.action(suggestion.detailItems)
             if success {
-                freedMB += suggestion.estimatedSavingMB
+                // 解放量は「選択された項目」の合計で見積もる（チェックを外した分は加算しない）
+                let selected = suggestion.detailItems.filter(\.isSelected)
+                freedMB += suggestion.detailItems.isEmpty
+                    ? suggestion.estimatedSavingMB
+                    : selected.reduce(0) { $0 + $1.sizeMB }
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1

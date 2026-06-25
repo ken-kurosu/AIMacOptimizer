@@ -104,6 +104,15 @@ enum DiagnosisFixAction: String, Codable {
         case .none: return ""
         }
     }
+
+    /// リスクのある操作か（true の場合「全て修復」では自動実行せず個別承認を求める）。
+    /// アプリ/プロセスの終了は未保存データ消失などの恐れがあるため高リスク扱い。
+    var isRisky: Bool {
+        switch self {
+        case .quitApp: return true
+        default: return false
+        }
+    }
 }
 
 /// A single finding from a diagnosis engine

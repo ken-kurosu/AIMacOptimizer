@@ -9,6 +9,8 @@ struct DiagnosisView: View {
     @State private var fixResults: [String] = []
     @State private var isFixing = false
     @State private var showFixResults = false
+    @State private var pendingRisky: [DiagnosisFinding] = []
+    @State private var riskyResults: [String] = []
     
     var body: some View {
         ScrollView {
@@ -115,8 +117,10 @@ struct DiagnosisView: View {
                 Task {
                     isFixing = true
                     showFixResults = false
+                    riskyResults = []
                     let result = await engine.executeAllFixes()
                     fixResults = result.messages
+                    pendingRisky = result.pendingRisky
                     isFixing = false
                     showFixResults = true
                 }
@@ -164,6 +168,72 @@ struct DiagnosisView: View {
                 .buttonStyle(.plain)
             }
             ForEach(fixResults, id: \.self) { msg in
+                Text("• \(msg)")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+
+            // 高リスク項目（アプリ/プロセス終了）の個別承認
+            if !pendingRisky.isEmpty {
+                Divider().padding(.vertical, 2)
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.orange)
+                    Text("個別の承認が必要な操作")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.orange)
+                }
+                Text("以下はリスクがあるため自動実行していません。内容を確認して、実行するものだけ承認してください。")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+
+                ForEach(pendingRisky) { finding in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(finding.title)
+                            .font(.system(size: 11, weight: .medium))
+                        if let what = finding.rawData["what"] {
+                            Text(what)
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+                        if let risk = finding.rawData["risk"], let detail = finding.rawData["risk_detail"] {
+                            Text("終了リスク \(risk)：\(detail)")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        HStack(spacing: 8) {
+                            Spacer()
+                            Button("スキップ") {
+                                pendingRisky.removeAll { $0.id == finding.id }
+                            }
+                            .font(.system(size: 10, weight: .medium))
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            Button("承認して実行") {
+                                Task {
+                                    let msg = await engine.executeFix(for: finding)
+                                    riskyResults.append(msg)
+                                    pendingRisky.removeAll { $0.id == finding.id }
+                                }
+                            }
+                            .font(.system(size: 10, weight: .semibold))
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.orange.opacity(0.08))
+                    .cornerRadius(6)
+                }
+            }
+
+            ForEach(riskyResults, id: \.self) { msg in
                 Text("• \(msg)")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
@@ -317,7 +387,16 @@ struct FindingRow: View {
     @State private var isExpanded = false
     @State private var fixMessage: String?
     @State private var isFixingThis = false
-    
+    @State private var showProcessDetail = false
+
+    private func riskColor(_ risk: String) -> Color {
+        switch risk {
+        case "高": return .red
+        case "中": return .orange
+        default: return .green
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
@@ -371,7 +450,52 @@ struct FindingRow: View {
                             .font(.system(size: 11))
                             .foregroundColor(.primary)
                     }
-                    
+
+                    // プロセスの詳細説明（何のプロセスか・終了リスクと程度）
+                    if let what = finding.rawData["what"] {
+                        Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showProcessDetail.toggle() } }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 10))
+                                Text(showProcessDetail ? "詳細を閉じる" : "詳細を確認")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+
+                        if showProcessDetail {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(what)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if let risk = finding.rawData["risk"] {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.shield.fill")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(riskColor(risk))
+                                        Text("終了リスク: \(risk)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(riskColor(risk))
+                                    }
+                                }
+                                if let detail = finding.rawData["risk_detail"] {
+                                    Text(detail)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.08))
+                            .cornerRadius(6)
+                            .padding(.top, 2)
+                        }
+                    }
+
                     // Auto-fix button
                     if finding.isAutoFixable && finding.fixAction != .none {
                         Button(action: {

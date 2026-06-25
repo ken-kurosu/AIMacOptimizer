@@ -63,6 +63,13 @@ final class DeepDiagnosisEngine: ObservableObject {
 
     // MARK: - Auto-Fix Execution
 
+    /// フォント関連（削除すると表示崩れの恐れ）かどうか
+    private func isFontProtected(_ s: String) -> Bool {
+        let l = s.lowercased()
+        let tokens = ["font", "com.apple.fontregistry", "com.apple.ats", "fontvaliator", "fontd"]
+        return tokens.contains { l.contains($0) }
+    }
+
     /// Execute a fix action for a specific finding
     /// Returns a human-readable result message
     func executeFix(for finding: DiagnosisFinding) async -> String {
@@ -73,17 +80,30 @@ final class DeepDiagnosisEngine: ObservableObject {
 
         case .quitApp:
             let appName = finding.fixTarget
+            // pid があれば pid 指定で確実に終了（ヘルパー等 localizedName で引けないプロセスにも対応）
+            if let pidStr = finding.rawData["pid"], let pid = Int32(pidStr) {
+                if let app = NSRunningApplication(processIdentifier: pid) {
+                    let ok = app.terminate()
+                    return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+                }
+                let ok = kill(pid, SIGTERM) == 0
+                return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+            }
             let success = optimizer.quitApp(name: appName)
             return success ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
 
         case .clearCache:
             let path = finding.fixTarget
+            // フォント関連のキャッシュディレクトリ自体は触らない（表示崩れ防止）
+            if isFontProtected(path) {
+                return "フォント関連のため安全のためスキップしました。"
+            }
             let sizeBefore = optimizer.getDirectorySizeMB(path)
             let fm = FileManager.default
             if let contents = try? fm.contentsOfDirectory(atPath: path) {
                 for file in contents {
-                    // Font protection
-                    if file.lowercased().contains("font") { continue }
+                    // フォント関連ファイル/サブフォルダは保護（font, FontRegistry, ATS 等）
+                    if isFontProtected(file) { continue }
                     try? fm.removeItem(atPath: "\(path)/\(file)")
                 }
             }
@@ -135,23 +155,28 @@ final class DeepDiagnosisEngine: ObservableObject {
     }
 
     /// Execute all auto-fixable findings at once (one-click optimize from diagnosis)
-    func executeAllFixes() async -> (fixed: Int, totalFreedMB: Double, messages: [String]) {
-        guard let report = lastReport else { return (0, 0, ["診断を先に実行してください"]) }
+    /// リスクの低い項目のみ自動実行し、高リスク項目（アプリ/プロセス終了）は個別承認用に返す。
+    func executeAllFixes() async -> (fixed: Int, messages: [String], pendingRisky: [DiagnosisFinding]) {
+        guard let report = lastReport else { return (0, ["診断を先に実行してください"], []) }
+
+        let fixable = report.findings.filter { $0.isAutoFixable && $0.fixAction != .none }
+        let safe = fixable.filter { !$0.fixAction.isRisky }
+        let risky = fixable.filter { $0.fixAction.isRisky }
 
         var fixed = 0
         var messages: [String] = []
-        let fixableFindings = report.findings.filter { $0.isAutoFixable && $0.fixAction != .none }
-
-        for finding in fixableFindings {
-            let result = await executeFix(for: finding)
-            messages.append(result)
+        for finding in safe {
+            messages.append(await executeFix(for: finding))
             fixed += 1
         }
+        if !risky.isEmpty {
+            messages.append("リスクのある操作 \(risky.count) 件（アプリ/プロセスの終了）は自動実行していません。下で内容を確認し、個別に承認してください。")
+        }
 
-        // Re-run diagnosis to update score
+        // Re-run diagnosis to update score（安全な修復の反映）
         _ = await runFullDiagnosis()
 
-        return (fixed, 0, messages)
+        return (fixed, messages, risky)
     }
 
     // MARK: - 1. CPU Diagnosis
@@ -191,14 +216,28 @@ final class DeepDiagnosisEngine: ObservableObject {
 
         // Find high-CPU processes
         let highCPU = getHighCPUProcesses()
-        for (name, cpu) in highCPU {
+        for (pid, name, cpu) in highCPU {
+            let exp = ProcessCatalog.explain(name: name, pid: pid)
+            let suggestion = exp.quitRecommended
+                ? "不要であれば終了するとCPU負荷が軽減されます。終了前に「詳細を確認」でこのプロセスが何か・終了リスクをご確認ください。"
+                : "システム/重要プロセスのため終了は推奨しません。「詳細を確認」で内容と理由をご確認ください。"
             findings.append(DiagnosisFinding(
                 category: .cpu, severity: cpu > 100 ? .critical : .warning,
                 title: "\(name) が CPU \(String(format: "%.1f", cpu))% 使用",
                 detail: "このプロセスがCPUを大量に消費しています。",
-                suggestion: "不要であれば終了することでCPU負荷が軽減されます。",
-                isAutoFixable: true, fixAction: .quitApp, fixTarget: name,
-                rawData: ["process": name, "cpu_percent": String(format: "%.1f", cpu)]
+                suggestion: suggestion,
+                // 終了を提案してよいプロセスのみ自動修復対象（高リスクなので個別承認になる）
+                isAutoFixable: exp.quitRecommended,
+                fixAction: exp.quitRecommended ? .quitApp : .none,
+                fixTarget: name,
+                rawData: [
+                    "process": name,
+                    "pid": "\(pid)",
+                    "cpu_percent": String(format: "%.1f", cpu),
+                    "what": exp.whatItIs,
+                    "risk": exp.risk.label,
+                    "risk_detail": exp.riskDetail
+                ]
             ))
         }
 
@@ -339,13 +378,13 @@ final class DeepDiagnosisEngine: ObservableObject {
 
         // Check if fileproviderd or bird are using excessive CPU
         let highCPU = getHighCPUProcesses()
-        let icloudProcesses = highCPU.filter { name, _ in
-            ["fileproviderd", "bird", "cloudd", "nsurlsessiond"].contains(name)
+        let icloudProcesses = highCPU.filter {
+            ["fileproviderd", "bird", "cloudd", "nsurlsessiond"].contains($0.name)
         }
 
         if !icloudProcesses.isEmpty {
-            let totalCPU = icloudProcesses.reduce(0.0) { $0 + $1.1 }
-            let names = icloudProcesses.map { "\($0.0) (\(String(format: "%.0f", $0.1))%)" }.joined(separator: ", ")
+            let totalCPU = icloudProcesses.reduce(0.0) { $0 + $1.cpu }
+            let names = icloudProcesses.map { "\($0.name) (\(String(format: "%.0f", $0.cpu))%)" }.joined(separator: ", ")
             findings.append(DiagnosisFinding(
                 category: .icloudSync, severity: totalCPU > 100 ? .critical : .warning,
                 title: "iCloud同期がCPUを大量消費",
@@ -401,8 +440,8 @@ final class DeepDiagnosisEngine: ObservableObject {
         for proc in processMonitor.processes {
             for (keyword, name) in knownAV {
                 if proc.name.contains(keyword) {
-                    let highCPU = getHighCPUProcesses().first { $0.0.contains(keyword) }
-                    let cpuUsage = highCPU?.1 ?? 0
+                    let highCPU = getHighCPUProcesses().first { $0.name.contains(keyword) }
+                    let cpuUsage = highCPU?.cpu ?? 0
 
                     if cpuUsage > 20 {
                         findings.append(DiagnosisFinding(
@@ -705,10 +744,13 @@ final class DeepDiagnosisEngine: ObservableObject {
     }
 
     /// Get processes using high CPU via ps command
-    private func getHighCPUProcesses() -> [(String, Double)] {
+    private func getHighCPUProcesses() -> [(pid: Int32, name: String, cpu: Double)] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-eo", "comm,%cpu", "-r"]
+        // -c: 実行ファイル名のみ（フルパスではないので16文字切り詰めが起きない）
+        //     → "Aq"/"Library"/"kurosuken" のような誤名を防ぎ、正しいプロセス名を得る
+        // pid= %cpu= comm= : ヘッダ無しで pid・CPU・名前を出力
+        process.arguments = ["-eo", "pid=,%cpu=,comm=", "-c", "-r"]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
@@ -723,20 +765,20 @@ final class DeepDiagnosisEngine: ObservableObject {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         guard let output = String(data: data, encoding: .utf8) else { return [] }
 
-        var results: [(String, Double)] = []
-        for line in output.components(separatedBy: "\n").dropFirst() {
+        var results: [(pid: Int32, name: String, cpu: Double)] = []
+        for line in output.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
 
-            // Parse "COMM  %CPU" format
-            let parts = trimmed.components(separatedBy: " ").filter { !$0.isEmpty }
-            guard parts.count >= 2,
-                  let cpu = Double(parts.last ?? "0"),
+            // "PID %CPU COMM(空白を含みうる)" 形式。先頭2トークンが pid と %cpu、残りが名前。
+            let tokens = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            guard tokens.count >= 3,
+                  let pid = Int32(tokens[0]),
+                  let cpu = Double(tokens[1]),
                   cpu > 15 else { continue }
 
-            let name = parts.dropLast().joined(separator: " ")
-            let shortName = (name as NSString).lastPathComponent
-            results.append((shortName, cpu))
+            let name = tokens[2...].joined(separator: " ")
+            results.append((pid, name, cpu))
         }
 
         return Array(results.prefix(10))

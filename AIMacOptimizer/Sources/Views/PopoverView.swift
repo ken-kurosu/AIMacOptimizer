@@ -129,8 +129,8 @@ struct MemoryTabView: View {
                     Divider()
                 }
 
-                // Affiliate banner for Free users
-                if !license.currentTier.isPro {
+                // おすすめ（アフィリ）はPro/Free問わず、推奨がある時だけ表示
+                if !affiliateRecs.isEmpty {
                     affiliateBannerSection
                     Divider()
                 }
@@ -145,7 +145,8 @@ struct MemoryTabView: View {
                 license: license
             )
             // Load affiliate recommendations once (not on every re-render)
-            if affiliateRecs.isEmpty && !license.currentTier.isPro {
+            // Pro/Free 問わず表示する（おすすめ商品は有料ユーザーにも掲載してよい）
+            if affiliateRecs.isEmpty {
                 let storageInfo = StorageAnalyzer().getStorageInfo()
                 affiliateRecs = AffiliateManager.shared.getRecommendations(
                     memoryUsagePercent: monitor.systemMemory.usagePercent,

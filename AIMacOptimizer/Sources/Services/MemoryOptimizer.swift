@@ -453,20 +453,17 @@ final class MemoryOptimizer {
 
     /// Execute a list of optimization suggestions
     func executeOptimizations(_ suggestions: [OptimizationSuggestion]) async -> OptimizationResult {
-        var freedMB: Double = 0
         var closedTabs = 0
         var quitApps: [String] = []
         var purged = false
+
+        // 実際に解放されたメモリを測るため、実行前の空きを記録
+        let freeBefore = currentFreeMemoryMB()
 
         for suggestion in suggestions {
             // 選択中の detailItems だけを処理対象にする
             let success = await suggestion.action(suggestion.detailItems)
             if success {
-                // 解放量は「選択された項目」の合計で見積もる（チェックを外した分は加算しない）
-                let selected = suggestion.detailItems.filter(\.isSelected)
-                freedMB += suggestion.detailItems.isEmpty
-                    ? suggestion.estimatedSavingMB
-                    : selected.reduce(0) { $0 + $1.sizeMB }
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
@@ -480,12 +477,35 @@ final class MemoryOptimizer {
             }
         }
 
+        // アプリ終了等の解放が反映されるまで少し待ってから実測
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        let freeAfter = currentFreeMemoryMB()
+        // 推定ではなく「実際に増えた空きメモリ」を報告（負やノイズは0に丸める）
+        let freedMB = max(0, freeAfter - freeBefore)
+
         return OptimizationResult(
             freedMB: freedMB,
             closedTabs: closedTabs,
             quitApps: quitApps,
             purged: purged
         )
+    }
+
+    /// 現在の空きメモリ(MB)。最適化前後の差分で実解放量を測るのに使う。
+    func currentFreeMemoryMB() -> Double {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let host = mach_host_self()
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(host, HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        let pageSize = Double(vm_kernel_page_size)
+        let total = Double(ProcessInfo.processInfo.physicalMemory)
+        let used = (Double(stats.active_count) + Double(stats.wire_count) + Double(stats.compressor_page_count)) * pageSize
+        return max(0, (total - used) / 1024 / 1024)
     }
 
     // MARK: - Helpers

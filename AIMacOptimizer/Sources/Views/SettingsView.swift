@@ -16,38 +16,76 @@ struct SettingsView: View {
     @State private var scheduleEnabled = false
     @State private var scheduleInterval = 60
 
+    /// 設定タブの定義（左サイドバーに常時表示）
+    private struct SettingsTab: Identifiable {
+        let id: Int
+        let title: String
+        let icon: String
+    }
+
+    private var settingsTabs: [SettingsTab] {
+        [
+            .init(id: 0, title: L10n.general, icon: "gear"),
+            .init(id: 1, title: "ライセンス", icon: "crown"),
+            .init(id: 2, title: L10n.monitoring, icon: "gauge.medium"),
+            .init(id: 3, title: L10n.autoOptimization, icon: "clock.arrow.2.circlepath"),
+            .init(id: 4, title: "AIチャット", icon: "bubble.left.and.bubble.right"),
+            .init(id: 5, title: L10n.notifications, icon: "bell"),
+            .init(id: 6, title: L10n.about, icon: "info.circle"),
+        ]
+    }
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            generalTab
-                .tabItem { Label(L10n.general, systemImage: "gear") }
-                .tag(0)
+        HStack(spacing: 0) {
+            // 左サイドバー（グローバルメニューを常時表示）
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(settingsTabs) { tab in
+                    Button(action: { selectedTab = tab.id }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 13))
+                                .frame(width: 18)
+                            Text(tab.title)
+                                .font(.system(size: 12, weight: selectedTab == tab.id ? .semibold : .regular))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(selectedTab == tab.id ? Color.blue.opacity(0.15) : Color.clear)
+                        .foregroundColor(selectedTab == tab.id ? .blue : .primary)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .frame(width: 160)
+            .padding(8)
+            .background(Color.gray.opacity(0.06))
 
-            licenseTab
-                .tabItem { Label("ライセンス", systemImage: "crown") }
-                .tag(1)
+            Divider()
 
-            monitoringTab
-                .tabItem { Label(L10n.monitoring, systemImage: "gauge.medium") }
-                .tag(2)
-
-            scheduleTab
-                .tabItem { Label(L10n.autoOptimization, systemImage: "clock.arrow.2.circlepath") }
-                .tag(3)
-
-            aiChatTab
-                .tabItem { Label("AIチャット", systemImage: "bubble.left.and.bubble.right") }
-                .tag(4)
-
-            notificationTab
-                .tabItem { Label(L10n.notifications, systemImage: "bell") }
-                .tag(5)
-
-            aboutTab
-                .tabItem { Label(L10n.about, systemImage: "info.circle") }
-                .tag(6)
+            // 右コンテンツ
+            ScrollView {
+                settingsContent
+                    .padding(4)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 450, height: 400)
-        .padding()
+        .frame(width: 580, height: 420)
+    }
+
+    @ViewBuilder
+    private var settingsContent: some View {
+        switch selectedTab {
+        case 0: generalTab
+        case 1: licenseTab
+        case 2: monitoringTab
+        case 3: scheduleTab
+        case 4: aiChatTab
+        case 5: notificationTab
+        default: aboutTab
+        }
     }
 
     // MARK: - General Tab

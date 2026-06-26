@@ -115,6 +115,7 @@ struct MemoryTabView: View {
     @ObservedObject var license: LicenseManager
     @StateObject private var viewModel = PopoverViewModel()
     @State private var affiliateRecs: [AffiliateRecommendation] = []
+    @State private var showAllProcesses = false
 
     var body: some View {
         ScrollView {
@@ -233,8 +234,19 @@ struct MemoryTabView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
-            ForEach(monitor.topProcesses.prefix(5)) { process in
+            ForEach(showAllProcesses ? Array(monitor.topProcesses) : Array(monitor.topProcesses.prefix(8))) { process in
                 processRow(process)
+            }
+
+            if monitor.topProcesses.count > 8 {
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showAllProcesses.toggle() } }) {
+                    Text(showAllProcesses ? "閉じる" : "もっと見る（上位\(monitor.topProcesses.count)件）")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.top, 2)
             }
         }
         .padding(.bottom, 8)

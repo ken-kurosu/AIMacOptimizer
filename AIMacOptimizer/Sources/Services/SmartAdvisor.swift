@@ -324,34 +324,38 @@ final class SmartAdvisor {
         // 10. Swap warning (if excessive)
         let swapInfo = optimizer.getSwapInfo(systemMemory: systemMemory, processes: processes)
         if swapInfo.isExcessive {
-            let swapDetails = swapInfo.topSwappers.map { appName -> SuggestionDetailItem in
+            // 高メモリアプリを実メモリ付きで提示し、選択したものを実際に終了できるようにする
+            let swappers = swapInfo.topSwappers
+            let swapDetails = swappers.map { proc -> SuggestionDetailItem in
                 SuggestionDetailItem(
-                    name: appName,
-                    detail: "大量のメモリを使用しSwapの原因になっている可能性。終了すればSwapが減少しますが、作業中のデータを先に保存してください",
-                    sizeMB: 0,
+                    name: proc.name,
+                    detail: "メモリ \(proc.memoryFormatted) を使用。終了すればSwapが減り改善しますが、作業中のデータは先に保存してください",
+                    sizeMB: proc.memoryMB,
                     isSelected: false,
-                    isRecommended: true
+                    isRecommended: proc.memoryMB > 500
                 )
             }
-
-            var allDetails = [
-                SuggestionDetailItem(
-                    name: "Swap使用量: \(String(format: "%.0f MB", swapInfo.usedMB))",
-                    detail: "Swapが多いとディスクI/Oが増え全体が遅くなります。不要なアプリを閉じてメモリを解放すると改善します",
-                    sizeMB: swapInfo.usedMB,
-                    isSelected: false,
-                    isRecommended: true
-                )
-            ]
-            allDetails.append(contentsOf: swapDetails)
+            let swapUsedFmt = swapInfo.usedMB >= 1024
+                ? String(format: "%.1f GB", swapInfo.usedMB / 1024)
+                : String(format: "%.0f MB", swapInfo.usedMB)
+            let totalSwapperMB = swappers.reduce(0.0) { $0 + $1.memoryMB }
 
             suggestions.append(OptimizationSuggestion(
                 type: .swapWarning,
-                title: "⚠️ Swap使用量が高い",
-                description: "\(String(format: "%.0f MB", swapInfo.usedMB)) のSwap使用中",
-                estimatedSavingMB: 0, // Info-only
-                detailItems: allDetails,
-                action: { _ in true }
+                title: "⚠️ Swap使用量が高い (\(swapUsedFmt))",
+                description: "Swapが多いと動作が遅くなります。下記の高メモリアプリを終了するとメモリが空きSwapが減ります（チェックして実行）",
+                estimatedSavingMB: totalSwapperMB,
+                detailItems: swapDetails,
+                action: { [weak self] selected in
+                    guard let self else { return false }
+                    let targets = zip(swappers, selected).filter { $0.1.isSelected }.map { $0.0 }
+                    guard !targets.isEmpty else { return false }
+                    var ok = false
+                    for proc in targets {
+                        if self.optimizer.quitApp(name: proc.name) { ok = true }
+                    }
+                    return ok
+                }
             ))
         }
 

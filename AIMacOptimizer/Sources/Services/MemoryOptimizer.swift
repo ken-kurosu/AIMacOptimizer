@@ -391,7 +391,7 @@ final class MemoryOptimizer {
         let usedMB: Double
         let totalMB: Double
         let isExcessive: Bool   // > 2GB or > 50% of RAM
-        let topSwappers: [String]
+        let topSwappers: [ProcessMemoryInfo]  // 実メモリ付き（表示・終了対象に使う）
     }
 
     /// Get detailed swap usage info
@@ -399,12 +399,11 @@ final class MemoryOptimizer {
         let swapUsed = systemMemory.swapUsedMB
         let isExcessive = swapUsed > 2048 || swapUsed > systemMemory.totalMB * 0.5
 
-        // Processes most likely causing swap (high memory usage + compressed)
+        // Processes most likely causing swap (high memory usage)
         let topSwappers = processes
             .filter { !$0.isSystemProcess && $0.memoryMB > 200 }
             .sorted { $0.memoryMB > $1.memoryMB }
             .prefix(5)
-            .map { $0.name }
 
         return SwapInfo(
             usedMB: swapUsed,

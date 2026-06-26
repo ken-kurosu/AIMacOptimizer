@@ -41,7 +41,7 @@ final class ProcessMonitor: ObservableObject {
         Task { @MainActor in
             self.systemMemory = getSystemMemory()
             self.processes = getAllProcesses()
-            self.topProcesses = aggregateByApp(processes).prefix(10).map { $0 }
+            self.topProcesses = aggregateByApp(processes).prefix(20).map { $0 }
         }
     }
 

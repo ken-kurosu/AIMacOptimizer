@@ -22,6 +22,13 @@ struct DiagnosisView: View {
                 } else {
                     emptyView
                 }
+
+                // 健康状態の推移（過去24時間/7日。診断未実行でも常時表示）
+                if !engine.isRunning {
+                    Divider().padding(.vertical, 4)
+                    HealthTrendView()
+                        .padding(.bottom, 10)
+                }
             }
         }
     }

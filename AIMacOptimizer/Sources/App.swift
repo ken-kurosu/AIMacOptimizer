@@ -226,11 +226,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private func startNotificationTimer() {
         notificationTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            let memPercent = self.monitor.systemMemory.usagePercent
+            let mem = self.monitor.systemMemory
+            let memPercent = mem.usagePercent
             let storage = StorageAnalyzer().getStorageInfo()
             NotificationService.shared.checkAndNotify(memoryPercent: memPercent, diskFreeGB: storage.freeGB)
             // ストレージ圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
             Task { @MainActor in DiskGuard.shared.evaluate() }
+
+            // 健康状態の推移を記録（10分間隔・軽量。ここに相乗りして追加コストをほぼ0に）
+            var loads = [Double](repeating: 0, count: 3)
+            getloadavg(&loads, 3)
+            let diskFreePct = storage.totalGB > 0 ? storage.freeGB / storage.totalGB * 100 : 0
+            Task { @MainActor in
+                HealthHistory.shared.record(
+                    memUsedPercent: memPercent,
+                    swapMB: mem.swapUsedMB,
+                    diskFreePercent: diskFreePct,
+                    loadAvg1: loads[0]
+                )
+            }
         }
     }
     

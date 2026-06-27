@@ -74,9 +74,10 @@ struct HealthTrendView: View {
             } else {
                 // 実際にカバーしている範囲を明示。記録期間がまだ短いと「24時間」と「7日」で
                 // 同じデータになる（タブを変えても変化しない）ため、故障ではないと分かるようにする。
-                Text(coverageCaption(data))
+                Text(coverageCaption(data, requestedHours: rangeHours))
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 2)
 
                 metricRow("メモリ使用率", values: data.map(\.memUsedPercent), unit: "%", color: .blue)
@@ -96,24 +97,34 @@ struct HealthTrendView: View {
         let current = values.last ?? 0
         let minV = values.min() ?? 0
         let maxV = values.max() ?? 0
+        // 期間平均。24時間と7日で値が変わるのはここ（min/maxは安定しがちなので平均を主役にする）
+        let avg = values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
+        let unitSuffix = unit.isEmpty ? "" : unit
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
-                Text("最小\(fmt(minV)) / 最大\(fmt(maxV))\(unit.isEmpty ? "" : unit)")
+                Text("平均\(fmt(avg))\(unitSuffix) ・ \(fmt(minV))〜\(fmt(maxV))")
                     .font(.system(size: 8))
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-            .frame(width: 96, alignment: .leading)
+            .frame(width: 104, alignment: .leading)
 
             Sparkline(values: values, color: color)
                 .frame(height: 26)
 
-            Text("\(fmt(current))\(unit)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(color)
-                .frame(width: 48, alignment: .trailing)
-                .monospacedDigit()
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("\(fmt(current))\(unitSuffix)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(color)
+                    .monospacedDigit()
+                Text("現在")
+                    .font(.system(size: 7))
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 44, alignment: .trailing)
         }
     }
 
@@ -121,19 +132,24 @@ struct HealthTrendView: View {
         v >= 100 ? String(format: "%.0f", v) : String(format: "%.1f", v)
     }
 
-    /// 実データの範囲と件数を文章化（例: 「直近3.2時間 / 19件を表示（記録が増えると7日表示も変化します）」）
-    private func coverageCaption(_ data: [HealthSnapshot]) -> String {
+    /// 実データの範囲と件数を文章化し、選んだ期間分のデータがまだ無い場合はそれを明示する。
+    /// （データが1.5日分しか無いのに「7日」を選んでも中身は同じ＝故障ではない、と分かるように）
+    private func coverageCaption(_ data: [HealthSnapshot], requestedHours: Double) -> String {
         guard let first = data.first?.date, let last = data.last?.date else { return "" }
         let spanHours = last.timeIntervalSince(first) / 3600
         let spanText: String
         if spanHours >= 24 {
-            spanText = String(format: "直近%.1f日", spanHours / 24)
+            spanText = String(format: "実データ 直近%.1f日", spanHours / 24)
         } else if spanHours >= 1 {
-            spanText = String(format: "直近%.1f時間", spanHours)
+            spanText = String(format: "実データ 直近%.1f時間", spanHours)
         } else {
-            spanText = String(format: "直近%.0f分", spanHours * 60)
+            spanText = String(format: "実データ 直近%.0f分", spanHours * 60)
         }
-        let hint = spanHours < 24 ? "（記録が増えると7日表示も変化します）" : ""
-        return "\(spanText) / \(data.count)件を表示\(hint)"
+        // 選択期間に対してデータが足りているか（9割未満なら「まだ揃っていない」と案内）
+        let reqLabel = requestedHours >= 48 ? String(format: "%.0f日", requestedHours / 24) : "24時間"
+        if spanHours < requestedHours * 0.9 {
+            return "\(spanText) / \(data.count)件（まだ\(reqLabel)分そろっていません。記録が増えると差が出ます）"
+        }
+        return "\(spanText) / \(data.count)件を表示"
     }
 }

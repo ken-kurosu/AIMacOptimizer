@@ -42,11 +42,11 @@ final class SmartAdvisor {
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
                     action: { [weak self] selected in
-                        guard let self else { return false }
+                        guard let self else { return ActionOutcome(succeeded: false) }
                         let targets = zip(tabsToClose, selected).filter { $0.1.isSelected }.map { $0.0 }
-                        guard !targets.isEmpty else { return false }
+                        guard !targets.isEmpty else { return ActionOutcome(succeeded: false) }
                         let closed = await self.chromeAnalyzer.closeTabs(targets)
-                        return closed > 0
+                        return ActionOutcome(succeeded: closed > 0)
                     }
                 ))
             }
@@ -86,9 +86,9 @@ final class SmartAdvisor {
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
                     action: { [weak self] selected in
-                        guard let self else { return false }
+                        guard let self else { return ActionOutcome(succeeded: false) }
                         let targets = zip(closeableSafari, selected).filter { $0.1.isSelected }.map { $0.0 }
-                        guard !targets.isEmpty else { return false }
+                        guard !targets.isEmpty else { return ActionOutcome(succeeded: false) }
                         var closed = 0
                         // Close in reverse order to avoid index shifting
                         let sorted = targets.sorted { ($0.windowIndex, $0.index) > ($1.windowIndex, $1.index) }
@@ -97,7 +97,7 @@ final class SmartAdvisor {
                                 closed += 1
                             }
                         }
-                        return closed > 0
+                        return ActionOutcome(succeeded: closed > 0)
                     }
                 ))
             }
@@ -124,13 +124,13 @@ final class SmartAdvisor {
                 estimatedSavingMB: totalMB,
                 detailItems: appDetails,
                 action: { [weak self] selected in
-                    guard let self else { return false }
+                    guard let self else { return ActionOutcome(succeeded: false) }
                     let targets = zip(backgroundApps, selected).filter { $0.1.isSelected }.map { $0.0 }
                     var success = false
                     for app in targets {
                         if self.optimizer.quitApp(name: app.name) { success = true }
                     }
-                    return success
+                    return ActionOutcome(succeeded: success)
                 }
             ))
         }
@@ -162,8 +162,9 @@ final class SmartAdvisor {
                 estimatedSavingMB: savingEstimate,
                 detailItems: details,
                 action: { [weak self] selected in
-                    guard selected.first?.isSelected ?? true else { return false }
-                    return await self?.optimizer.restartApp(name: app.name, bundleIdentifier: app.bundleIdentifier) ?? false
+                    guard selected.first?.isSelected ?? true else { return ActionOutcome(succeeded: false) }
+                    let ok = await self?.optimizer.restartApp(name: app.name, bundleIdentifier: app.bundleIdentifier) ?? false
+                    return ActionOutcome(succeeded: ok)
                 }
             ))
         }
@@ -189,14 +190,14 @@ final class SmartAdvisor {
                 estimatedSavingMB: totalCacheMB,
                 detailItems: cacheDetails,
                 action: { [weak self] selected in
-                    guard let self else { return false }
+                    guard let self else { return ActionOutcome(succeeded: false) }
                     let targets = zip(browserCaches, selected).filter { $0.1.isSelected }.map { $0.0 }
-                    var cleared = false
+                    var totalFreed: Double = 0
                     for cache in targets {
-                        let freed = self.optimizer.clearBrowserCache(path: cache.path)
-                        if freed > 0 { cleared = true }
+                        totalFreed += self.optimizer.clearBrowserCache(path: cache.path)
                     }
-                    return cleared
+                    // キャッシュ削除はディスクを空ける（RAMではない）
+                    return ActionOutcome(succeeded: totalFreed > 0, freedDiskMB: totalFreed)
                 }
             ))
         }
@@ -223,7 +224,7 @@ final class SmartAdvisor {
                 description: "推定ランタイムメモリ \(Int(runtimeEstimate)) MB",
                 estimatedSavingMB: runtimeEstimate,
                 detailItems: extDetails,
-                action: { _ in true } // Info-only — user manually disables in Chrome
+                action: { _ in ActionOutcome(succeeded: true) } // Info-only — user manually disables in Chrome
             ))
         }
 
@@ -249,7 +250,7 @@ final class SmartAdvisor {
                 description: "起動時に \(Int(totalLoginMB)) MB 使用",
                 estimatedSavingMB: totalLoginMB * 0.5, // Not all will be disabled
                 detailItems: loginDetails,
-                action: { _ in true } // Info-only — user disables in System Settings
+                action: { _ in ActionOutcome(succeeded: true) } // Info-only — user disables in System Settings
             ))
         }
 
@@ -259,12 +260,15 @@ final class SmartAdvisor {
             let totalTempMB = tempFiles.reduce(0.0) { $0 + $1.sizeMB }
             if totalTempMB > 100 {
                 let tempDetails = tempFiles.map { temp -> SuggestionDetailItem in
-                    SuggestionDetailItem(
+                    let isTrash = temp.name.contains("ゴミ箱")
+                    return SuggestionDetailItem(
                         name: temp.name,
+                        // ゴミ箱を空にするのは取り消せない完全削除なので、デフォルトでは選択しない。
+                        // /tmp（再起動で消える一時ファイル）のみデフォルト選択。
                         detail: classifyTempFileDetail(temp),
                         sizeMB: temp.sizeMB,
-                        isSelected: temp.name.contains("ゴミ箱") || temp.name.contains("/tmp"),
-                        isRecommended: temp.sizeMB > 500
+                        isSelected: !isTrash && temp.name.contains("/tmp"),
+                        isRecommended: !isTrash && temp.sizeMB > 500
                     )
                 }
 
@@ -275,10 +279,16 @@ final class SmartAdvisor {
                     estimatedSavingMB: totalTempMB * 0.7, // Won't delete everything
                     detailItems: tempDetails,
                     action: { [weak self] selected in
-                        guard let self else { return false }
-                        guard selected.contains(where: \.isSelected) else { return false }
-                        let freed = await self.optimizer.clearTempFiles()
-                        return freed > 0
+                        guard let self else { return ActionOutcome(succeeded: false) }
+                        // チェックされた対象だけを削除する（ゴミ箱と/tmpを取り違えない）
+                        let clearTrash = zip(tempFiles, selected)
+                            .contains { $0.0.name.contains("ゴミ箱") && $0.1.isSelected }
+                        let clearTmp = zip(tempFiles, selected)
+                            .contains { $0.0.name.contains("/tmp") && $0.1.isSelected }
+                        guard clearTrash || clearTmp else { return ActionOutcome(succeeded: false) }
+                        let freed = await self.optimizer.clearTempFiles(clearTmp: clearTmp, clearTrash: clearTrash)
+                        // 一時ファイル/ゴミ箱の削除はディスクを空ける（RAMではない）
+                        return ActionOutcome(succeeded: freed > 0, freedDiskMB: freed)
                     }
                 ))
             }
@@ -310,14 +320,14 @@ final class SmartAdvisor {
             estimatedSavingMB: dnsEstimate,
             detailItems: dnsDetails,
             action: { [weak self] selected in
-                guard let self else { return false }
+                guard let self else { return ActionOutcome(succeeded: false) }
                 let dnsOn = selected.first?.isSelected ?? true
                 let fontOn = selected.count > 1 ? selected[1].isSelected : false
                 var ok = false
                 if dnsOn, await self.optimizer.flushDNSCache() { ok = true }
                 // Font cache: safe mode only (flush in-memory, no file deletion)
                 if fontOn, await self.optimizer.clearFontCache(level: .safe) { ok = true }
-                return ok
+                return ActionOutcome(succeeded: ok)
             }
         ))
 
@@ -347,26 +357,26 @@ final class SmartAdvisor {
                 estimatedSavingMB: totalSwapperMB,
                 detailItems: swapDetails,
                 action: { [weak self] selected in
-                    guard let self else { return false }
+                    guard let self else { return ActionOutcome(succeeded: false) }
                     let targets = zip(swappers, selected).filter { $0.1.isSelected }.map { $0.0 }
-                    guard !targets.isEmpty else { return false }
+                    guard !targets.isEmpty else { return ActionOutcome(succeeded: false) }
                     var ok = false
                     for proc in targets {
                         if self.optimizer.quitApp(name: proc.name) { ok = true }
                     }
-                    return ok
+                    return ActionOutcome(succeeded: ok)
                 }
             ))
         }
 
         // 11. RAM purge (always available)
-        let purgeEstimate = systemMemory.freeMB < systemMemory.totalMB * 0.3
-            ? systemMemory.totalMB * 0.1
-            : systemMemory.totalMB * 0.05
+        // 推定は「総RAMの固定%」をやめ、実際にパージで戻せるキャッシュ量(purgeable + file-backed)を上限にする。
+        // （以前は16GB機で常に約1.6GBと表示していたが、purgeの実効果はずっと小さく、過大表示だった）
+        let purgeEstimate = optimizer.purgeableMemoryMB()
         let purgeDetails = [
             SuggestionDetailItem(
-                name: "非アクティブメモリキャッシュ",
-                detail: "macOSが確保している未使用メモリを解放。安全に実行でき即座に空きが増加します。アプリの再読み込みが少し遅くなる場合があります",
+                name: "解放可能なファイルキャッシュ",
+                detail: "macOSがディスクキャッシュ用に保持しているメモリを解放します。安全に実行できますが、解放量は環境により小さい場合があり、アプリの再読み込みが少し遅くなることがあります",
                 sizeMB: purgeEstimate,
                 isSelected: true,
                 isRecommended: systemMemory.freePercent < 30
@@ -376,12 +386,13 @@ final class SmartAdvisor {
         suggestions.append(OptimizationSuggestion(
             type: .purgeRAM,
             title: "RAMキャッシュをパージ",
-            description: "推定 \(Int(purgeEstimate)) MB 解放可能",
+            description: purgeEstimate >= 1 ? "推定 最大 \(Int(purgeEstimate)) MB 解放可能" : "メモリ圧迫を緩和",
             estimatedSavingMB: purgeEstimate,
             detailItems: purgeDetails,
             action: { [weak self] selected in
-                guard selected.first?.isSelected ?? true else { return false }
-                return await self?.optimizer.purgeRAM() ?? false
+                guard selected.first?.isSelected ?? true else { return ActionOutcome(succeeded: false) }
+                let ok = await self?.optimizer.purgeRAM() ?? false
+                return ActionOutcome(succeeded: ok)
             }
         ))
 

@@ -453,9 +453,10 @@ struct MemoryTabView: View {
             .disabled(viewModel.isOptimizing)
 
             if let result = viewModel.lastResult {
-                Text("✅ " + L10n.freedMemory(mb: result.freedMB))
+                Text("✅ " + optimizeResultMessage(result))
                     .font(.caption)
                     .foregroundColor(.green)
+                    .fixedSize(horizontal: false, vertical: true)
                     .onAppear {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                             withAnimation { viewModel.lastResult = nil }
@@ -496,6 +497,22 @@ struct MemoryTabView: View {
         if memoryMB > 1024 { return .red }
         if memoryMB > 500 { return .orange }
         return .blue
+    }
+
+    /// RAM解放とディスク解放を分けて正直に表示する。
+    /// （キャッシュ/一時ファイル削除はディスクを空けるがRAMは増えないため、混同しない）
+    private func optimizeResultMessage(_ result: MemoryOptimizer.OptimizationResult) -> String {
+        func fmt(_ mb: Double) -> String {
+            mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb)
+        }
+        var parts: [String] = []
+        if result.freedMB >= 1 { parts.append("メモリ約 \(fmt(result.freedMB))") }
+        if result.freedDiskMB >= 1 { parts.append("ディスク約 \(fmt(result.freedDiskMB))") }
+        if parts.isEmpty {
+            // 実測の増分が誤差レベル（例: パージのみ）の場合は数値を断定しない
+            return "最適化を実行しました"
+        }
+        return parts.joined(separator: " ／ ") + " を解放しました"
     }
 }
 
@@ -1710,7 +1727,8 @@ struct AppUninstallRow: View {
             resultMessage = "残留ファイル \(result.removedCount)件をゴミ箱へ移動（約\(formatSize(result.freedMB))）"
                 + (result.errors.isEmpty ? "" : "／一部失敗 \(result.errors.count)件")
         case .uninstall:
-            let result = uninstaller.uninstallApp(app)
+            // チェックを外した残留は削除しない（leftoversOnly と同じ選択集合を渡す）
+            let result = uninstaller.uninstallApp(app, leftoverPaths: selectedLeftoverPaths)
             resultMessage = result.errors.isEmpty
                 ? "「\(app.name)」をゴミ箱へ移動しました（\(result.removedCount)項目・約\(formatSize(result.freedMB))）"
                 : "一部失敗しました（成功 \(result.removedCount)項目／エラー \(result.errors.count)件）"

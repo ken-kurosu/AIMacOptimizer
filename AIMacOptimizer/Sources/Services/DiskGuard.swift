@@ -169,8 +169,10 @@ final class DiskGuard: ObservableObject {
                     category: .cache,
                     isDirectory: true
                 )
-                if analyzer.clearCache(item) {
-                    freedMB += candidate.sizeMB
+                // スキャン時の満額ではなく、実際に減った容量を加算する（過大表示を防ぐ）
+                let actuallyFreed = analyzer.clearCacheMeasuringFreed(item)
+                if actuallyFreed > 0 {
+                    freedMB += actuallyFreed
                     cleared += 1
                 }
             }

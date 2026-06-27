@@ -87,7 +87,7 @@ final class PatternLearner: ObservableObject {
                 description: "\(app.memoryFormatted) 使用中。学習データに基づき、現在は使用されていない可能性が高いです。",
                 estimatedSavingMB: app.memoryMB,
                 action: { _ in
-                    optimizer.quitApp(name: app.name)
+                    ActionOutcome(succeeded: optimizer.quitApp(name: app.name))
                 }
             )
         }

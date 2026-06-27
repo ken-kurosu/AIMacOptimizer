@@ -82,8 +82,9 @@ class AppUninstaller: ObservableObject {
         }.value
     }
 
-    /// Uninstalls an app by moving it and all leftovers to trash
-    func uninstallApp(_ app: InstalledApp) -> UninstallResult {
+    /// Uninstalls an app by moving it and the selected leftovers to trash.
+    /// leftoverPaths を省略した場合のみ全残留を対象にする（ユーザーがチェックを外した残留は渡さない）。
+    func uninstallApp(_ app: InstalledApp, leftoverPaths: [String]? = nil) -> UninstallResult {
         var removedCount = 0
         var freedMB: Double = 0
         var errors: [String] = []
@@ -97,8 +98,8 @@ class AppUninstaller: ObservableObject {
             errors.append("Failed to recycle app at \(app.appPath): \(error.localizedDescription)")
         }
 
-        // Remove leftover files
-        for leftoverPath in app.leftoverPaths {
+        // Remove leftover files（選択された残留のみ。未指定なら全残留）
+        for leftoverPath in (leftoverPaths ?? app.leftoverPaths) {
             let leftoverSize = getDirectorySizeMB(leftoverPath)
             do {
                 try fileManager.trashItem(at: URL(fileURLWithPath: leftoverPath), resultingItemURL: nil)

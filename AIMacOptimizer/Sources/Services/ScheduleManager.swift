@@ -118,8 +118,8 @@ final class ScheduleManager: ObservableObject {
                     return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
                 }
                 if eligible {
-                    let success = await suggestion.action(suggestion.detailItems)
-                    if success {
+                    let outcome = await suggestion.action(suggestion.detailItems)
+                    if outcome.succeeded {
                         actionsExecuted += 1
                         freedMB += suggestion.estimatedSavingMB
                         await MainActor.run { learner.recordOptimized(appName: appName) }

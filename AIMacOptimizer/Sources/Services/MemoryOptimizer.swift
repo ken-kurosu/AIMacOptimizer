@@ -8,7 +8,8 @@ final class MemoryOptimizer {
 
     /// Results of an optimization run
     struct OptimizationResult {
-        let freedMB: Double
+        let freedMB: Double        // 実際に増えたRAM空き(MB)
+        let freedDiskMB: Double    // 実際に空けたディスク容量(MB)（キャッシュ/一時ファイル/ゴミ箱）
         let closedTabs: Int
         let quitApps: [String]
         let purged: Bool
@@ -141,25 +142,31 @@ final class MemoryOptimizer {
 
     /// 一時ファイルを実際に削除する。表示一覧と一致する安全な対象のみ削除する。
     /// （/var/folders やキャッシュ/ログは対象外）
-    func clearTempFiles() async -> Double {
+    /// ユーザーが選択した対象だけを削除する。clearTrash はゴミ箱を空にする（取り消し不可）ため
+    /// 明示的に true のときだけ実行する。
+    func clearTempFiles(clearTmp: Bool, clearTrash: Bool) async -> Double {
         var freedMB: Double = 0
 
         // /tmp: 1時間以上前のものだけ（使用中のソケット/ロックを避ける）
-        let tmpPath = "/tmp"
-        if let contents = try? fileManager.contentsOfDirectory(atPath: tmpPath) {
-            for item in contents {
-                let fullPath = "\(tmpPath)/\(item)"
-                if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-                   let modDate = attrs[.modificationDate] as? Date,
-                   Date().timeIntervalSince(modDate) > 3600 {
-                    let size = getItemSizeMB(fullPath)
-                    if (try? fileManager.removeItem(atPath: fullPath)) != nil { freedMB += size }
+        if clearTmp {
+            let tmpPath = "/tmp"
+            if let contents = try? fileManager.contentsOfDirectory(atPath: tmpPath) {
+                for item in contents {
+                    let fullPath = "\(tmpPath)/\(item)"
+                    if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
+                       let modDate = attrs[.modificationDate] as? Date,
+                       Date().timeIntervalSince(modDate) > 3600 {
+                        let size = getItemSizeMB(fullPath)
+                        if (try? fileManager.removeItem(atPath: fullPath)) != nil { freedMB += size }
+                    }
                 }
             }
         }
 
-        // ゴミ箱を空にする
-        freedMB += await emptyTrash()
+        // ゴミ箱を空にする（明示選択時のみ）
+        if clearTrash {
+            freedMB += await emptyTrash()
+        }
 
         return freedMB
     }
@@ -455,14 +462,17 @@ final class MemoryOptimizer {
         var closedTabs = 0
         var quitApps: [String] = []
         var purged = false
+        var freedDiskMB: Double = 0
 
         // 実際に解放されたメモリを測るため、実行前の空きを記録
         let freeBefore = currentFreeMemoryMB()
 
         for suggestion in suggestions {
             // 選択中の detailItems だけを処理対象にする
-            let success = await suggestion.action(suggestion.detailItems)
-            if success {
+            let outcome = await suggestion.action(suggestion.detailItems)
+            // キャッシュ/一時ファイル等が空けたディスク容量を実測ベースで積算
+            freedDiskMB += outcome.freedDiskMB
+            if outcome.succeeded {
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
@@ -484,6 +494,7 @@ final class MemoryOptimizer {
 
         return OptimizationResult(
             freedMB: freedMB,
+            freedDiskMB: freedDiskMB,
             closedTabs: closedTabs,
             quitApps: quitApps,
             purged: purged
@@ -505,6 +516,25 @@ final class MemoryOptimizer {
         let total = Double(ProcessInfo.processInfo.physicalMemory)
         let used = (Double(stats.active_count) + Double(stats.wire_count) + Double(stats.compressor_page_count)) * pageSize
         return max(0, (total - used) / 1024 / 1024)
+    }
+
+    /// purge で戻せる可能性のあるメモリ量(MB)の概算上限。
+    /// purgeable（破棄可能）＋ external（ファイルバック・再読込可能）ページが対象。
+    /// 「総RAMの固定%」のような過大推定を避け、実効に近い控えめな値を返す。
+    func purgeableMemoryMB() -> Double {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let host = mach_host_self()
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(host, HOST_VM_INFO64, $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        let pageSize = Double(vm_kernel_page_size)
+        let purgeable = Double(stats.purgeable_count) * pageSize
+        let external = Double(stats.external_page_count) * pageSize
+        return max(0, (purgeable + external) / 1024 / 1024)
     }
 
     // MARK: - Helpers

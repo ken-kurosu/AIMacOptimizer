@@ -72,6 +72,13 @@ struct HealthTrendView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 6)
             } else {
+                // 実際にカバーしている範囲を明示。記録期間がまだ短いと「24時間」と「7日」で
+                // 同じデータになる（タブを変えても変化しない）ため、故障ではないと分かるようにする。
+                Text(coverageCaption(data))
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 2)
+
                 metricRow("メモリ使用率", values: data.map(\.memUsedPercent), unit: "%", color: .blue)
                 metricRow("Swap", values: data.map(\.swapMB), unit: "MB", color: .orange)
                 metricRow("ディスク空き", values: data.map(\.diskFreePercent), unit: "%", color: .green)
@@ -112,5 +119,21 @@ struct HealthTrendView: View {
 
     private func fmt(_ v: Double) -> String {
         v >= 100 ? String(format: "%.0f", v) : String(format: "%.1f", v)
+    }
+
+    /// 実データの範囲と件数を文章化（例: 「直近3.2時間 / 19件を表示（記録が増えると7日表示も変化します）」）
+    private func coverageCaption(_ data: [HealthSnapshot]) -> String {
+        guard let first = data.first?.date, let last = data.last?.date else { return "" }
+        let spanHours = last.timeIntervalSince(first) / 3600
+        let spanText: String
+        if spanHours >= 24 {
+            spanText = String(format: "直近%.1f日", spanHours / 24)
+        } else if spanHours >= 1 {
+            spanText = String(format: "直近%.1f時間", spanHours)
+        } else {
+            spanText = String(format: "直近%.0f分", spanHours * 60)
+        }
+        let hint = spanHours < 24 ? "（記録が増えると7日表示も変化します）" : ""
+        return "\(spanText) / \(data.count)件を表示\(hint)"
     }
 }

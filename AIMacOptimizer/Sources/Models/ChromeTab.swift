@@ -32,6 +32,16 @@ enum TabCategory: String, CaseIterable {
     }
 }
 
+/// 最適化アクションの実行結果。
+/// 「メモリ解放」と「ディスク解放」は別物なので分けて返す。
+/// （キャッシュ/一時ファイル/ゴミ箱の削除はディスクを空けるがRAMは増やさない。
+///  これらをRAM解放量として表示していたため「2GB解放と出たのに実測0MB」が起きていた）
+struct ActionOutcome {
+    var succeeded: Bool
+    /// このアクションが実際に空けたディスク容量(MB)。RAM系アクションは0。
+    var freedDiskMB: Double = 0
+}
+
 /// Suggestion from the smart advisor
 struct OptimizationSuggestion: Identifiable {
     let id = UUID()
@@ -41,13 +51,13 @@ struct OptimizationSuggestion: Identifiable {
     let estimatedSavingMB: Double
     /// 実行時に「現在選択中の detailItems」を受け取り、選択された対象だけに作用する。
     /// （ユーザーがチェックを外した項目を誤って処理しないため）
-    let action: ([SuggestionDetailItem]) async -> Bool
+    let action: ([SuggestionDetailItem]) async -> ActionOutcome
     /// Detailed sub-items the user can expand and select/deselect
     var detailItems: [SuggestionDetailItem]
 
     init(type: SuggestionType, title: String, description: String,
          estimatedSavingMB: Double, detailItems: [SuggestionDetailItem] = [],
-         action: @escaping ([SuggestionDetailItem]) async -> Bool) {
+         action: @escaping ([SuggestionDetailItem]) async -> ActionOutcome) {
         self.type = type
         self.title = title
         self.description = description

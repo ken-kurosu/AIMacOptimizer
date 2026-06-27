@@ -122,7 +122,10 @@ final class BatteryMonitor: ObservableObject {
             self.isCharging = isCharging
             self.batteryLevel = max(0, min(100, batteryLvl))
             self.cycleCount = cycleCount
-            self.maxCapacity = maxCap
+            // 「最大容量」は実 mAh を表示する。Apple Silicon では MaxCapacity が設計比%(~100)で
+            // 返るため、そのまま mAh 表示すると「100 mAh / 設計 8694 mAh」と桁違いの矛盾になる。
+            // 実 mAh の AppleRawMaxCapacity があればそれを使い、無い旧Intel機は mAh の maxCap を使う。
+            self.maxCapacity = rawMaxCap > 0 ? rawMaxCap : maxCap
             self.designCapacity = designCap
             self.healthPercent = max(0, min(100, healthPercent))
             self.temperature = temp

@@ -23,10 +23,13 @@ final class StorageAnalyzer: ObservableObject {
         let freeBytes = (attrs[.systemFreeSize] as? Int64) ?? 0
         let usedBytes = totalBytes - freeBytes
 
+        // macOS 10.6 以降の Finder / About This Mac / システム設定は 10進(1000基準, GB) でディスク容量を表示する。
+        // ここを 1024基準(GiB) にすると約7.4%小さく出て「値が違う」と見える。Finder に合わせて 10進にする。
+        // （RAM は 2進が正なので MemoryOptimizer/ProcessMonitor 側は 1024 のまま）
         return StorageInfo(
-            totalGB: Double(totalBytes) / 1024 / 1024 / 1024,
-            usedGB: Double(usedBytes) / 1024 / 1024 / 1024,
-            freeGB: Double(freeBytes) / 1024 / 1024 / 1024
+            totalGB: Double(totalBytes) / 1000 / 1000 / 1000,
+            usedGB: Double(usedBytes) / 1000 / 1000 / 1000,
+            freeGB: Double(freeBytes) / 1000 / 1000 / 1000
         )
     }
 
@@ -262,6 +265,15 @@ final class StorageAnalyzer: ObservableObject {
             }
         }
         return deleted > 0
+    }
+
+    /// キャッシュを削除し、実際に減った容量(MB)を返す。
+    /// （スキャン時の満額ではなく実測差分。保護/ロックでスキップした分を「確保」に含めないため）
+    func clearCacheMeasuringFreed(_ item: StorageItem) -> Double {
+        let before = directorySize(item.path) ?? item.sizeMB
+        guard clearCache(item) else { return 0 }
+        let after = directorySize(item.path) ?? 0
+        return max(0, before - after)
     }
 
     /// Move an item to Trash (requires user confirmation)

@@ -138,6 +138,8 @@ final class BatteryMonitor: ObservableObject {
         await MainActor.run {
             self.isAvailable = available
             if !available {
+                // バッテリー非搭載（デスクトップMac）では以降ポーリングしても無意味なので止める
+                stopRefreshTimer()
                 self.batteryLevel = 0
                 self.cycleCount = 0
                 self.maxCapacity = 0

@@ -51,7 +51,12 @@ final class ProcessMonitor: ObservableObject {
     func setActive(_ active: Bool) {
         guard active != isActive else { return }
         isActive = active
-        if active { refreshFull() }   // 開いた瞬間に一覧を即更新（空表示を防ぐ）
+        if active {
+            refreshFull()   // 開いた瞬間に一覧を即更新（空表示を防ぐ）
+        } else {
+            // 非表示中は全プロセスの配列を保持しない（メモリ節約。再表示時に即再取得する）
+            Task { @MainActor in self.processes = [] }
+        }
         scheduleTimer()
     }
 

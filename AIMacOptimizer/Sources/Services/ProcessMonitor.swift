@@ -10,7 +10,11 @@ final class ProcessMonitor: ObservableObject {
     @Published var topProcesses: [ProcessMemoryInfo] = []
 
     private var timer: Timer?
-    private let updateInterval: TimeInterval = 2.0
+    // パネル表示中はプロセス一覧も更新。非表示中はメニューバーの%に必要な systemMemory だけを
+    // 低頻度で更新し、高コストな全プロセス列挙を行わない（常時稼働の電力消費を抑える）。
+    private let activeInterval: TimeInterval = 2.0
+    private let idleInterval: TimeInterval = 10.0
+    private var isActive = false
 
     /// Known system processes that should not be terminated
     private let systemProcessNames: Set<String> = [
@@ -24,10 +28,8 @@ final class ProcessMonitor: ObservableObject {
     // MARK: - Lifecycle
 
     func startMonitoring() {
-        refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
+        refreshMemoryOnly()   // 起動直後にメニューバーの%を表示
+        scheduleTimer()
     }
 
     func stopMonitoring() {
@@ -35,13 +37,41 @@ final class ProcessMonitor: ObservableObject {
         timer = nil
     }
 
+    private func scheduleTimer() {
+        timer?.invalidate()
+        let interval = isActive ? activeInterval : idleInterval
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if self.isActive { self.refreshFull() } else { self.refreshMemoryOnly() }
+        }
+    }
+
+    /// パネルの表示/非表示に応じて監視粒度を切り替える。
+    /// 表示中: systemMemory ＋ 全プロセス一覧（2秒）。非表示中: systemMemory のみ（10秒）。
+    func setActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        if active { refreshFull() }   // 開いた瞬間に一覧を即更新（空表示を防ぐ）
+        scheduleTimer()
+    }
+
     // MARK: - Data Collection
 
-    func refresh() {
+    /// メニューバー表示用：安価な systemMemory のみ更新（非表示中はこれだけ）
+    func refreshMemoryOnly() {
+        let mem = getSystemMemory()
+        Task { @MainActor in self.systemMemory = mem }
+    }
+
+    /// パネル表示用：systemMemory ＋ 全プロセス列挙
+    func refreshFull() {
+        let mem = getSystemMemory()
+        let procs = getAllProcesses()
+        let top = aggregateByApp(procs).prefix(20).map { $0 }
         Task { @MainActor in
-            self.systemMemory = getSystemMemory()
-            self.processes = getAllProcesses()
-            self.topProcesses = aggregateByApp(processes).prefix(20).map { $0 }
+            self.systemMemory = mem
+            self.processes = procs
+            self.topProcesses = top
         }
     }
 

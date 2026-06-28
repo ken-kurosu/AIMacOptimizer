@@ -169,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @objc private func togglePopover() {
         if let panel = panel, panel.isVisible {
             panel.orderOut(nil)
+            // 非表示中はプロセス列挙を止め、メニューバーの%更新のみに落として電力を抑える
+            monitor.setActive(false)
         } else {
             showPopover()
         }
@@ -190,6 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
         panel.makeKeyAndOrderFront(nil)
+        // 表示中はプロセス一覧を含むフル更新に切り替える（即時に一覧を出す）
+        monitor.setActive(true)
     }
 
     private func createPanel() {

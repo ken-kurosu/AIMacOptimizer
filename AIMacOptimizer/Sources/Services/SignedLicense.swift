@@ -11,7 +11,7 @@ import CryptoKit
 /// 発行は scripts/sign_license.swift で行う（秘密鍵は ~/.aimac_license_private_key）。
 enum SignedLicense {
     /// 発行者の Ed25519 公開鍵（base64）。秘密鍵はアプリに含めない。
-    private static let publicKeyB64 = "YcPnCKIi/O0OsWbN5xp8bZyFQoe2x9abeR9UuOfffB8="
+    private static let publicKeyB64 = "cSchrIh/X8uvTti+YuUImtML+hk6j4DJKpMfpt56QrY="
 
     /// キーを検証し、有効なら付与すべき tier を返す。無効なら nil。
     static func verify(_ key: String) -> LicenseTier? {

@@ -369,32 +369,11 @@ final class SmartAdvisor {
             ))
         }
 
-        // 11. RAM purge (always available)
-        // 推定は「総RAMの固定%」をやめ、実際にパージで戻せるキャッシュ量(purgeable + file-backed)を上限にする。
-        // （以前は16GB機で常に約1.6GBと表示していたが、purgeの実効果はずっと小さく、過大表示だった）
-        let purgeEstimate = optimizer.purgeableMemoryMB()
-        let purgeDetails = [
-            SuggestionDetailItem(
-                name: "解放可能なファイルキャッシュ",
-                detail: "macOSがディスクキャッシュ用に保持しているメモリを解放します。安全に実行できますが、解放量は環境により小さい場合があり、アプリの再読み込みが少し遅くなることがあります",
-                sizeMB: purgeEstimate,
-                isSelected: true,
-                isRecommended: systemMemory.freePercent < 30
-            )
-        ]
-
-        suggestions.append(OptimizationSuggestion(
-            type: .purgeRAM,
-            title: "RAMキャッシュをパージ",
-            description: purgeEstimate >= 1 ? "推定 最大 \(Int(purgeEstimate)) MB 解放可能" : "メモリ圧迫を緩和",
-            estimatedSavingMB: purgeEstimate,
-            detailItems: purgeDetails,
-            action: { [weak self] selected in
-                guard selected.first?.isSelected ?? true else { return ActionOutcome(succeeded: false) }
-                let ok = await self?.optimizer.purgeRAM() ?? false
-                return ActionOutcome(succeeded: ok)
-            }
-        ))
+        // 11. RAM purge は提案しない。
+        //   `/usr/sbin/purge` は管理者権限が無いと必ず失敗し(Operation not permitted)、
+        //   仮に動いても本アプリの空きメモリ指標(inactiveを既に空き扱い)ではほぼ0にしか反映されない。
+        //   「推定○○MB解放」と表示して実際は0、という乖離を生むため、ユーザー向け提案から除外する。
+        //   メモリ解放は「実測できるアプリ終了・タブ/キャッシュ削除」で行う。
 
         // Sort by estimated savings (highest first), but swap warning always at top if present
         return suggestions.sorted { a, b in

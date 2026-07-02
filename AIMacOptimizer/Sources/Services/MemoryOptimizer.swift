@@ -486,10 +486,25 @@ final class MemoryOptimizer {
             }
         }
 
-        // アプリ終了等の解放が反映されるまで少し待ってから実測
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
-        let freeAfter = currentFreeMemoryMB()
-        // 推定ではなく「実際に増えた空きメモリ」を報告（負やノイズは0に丸める）
+        // アプリ終了(terminate は非同期)のメモリ返却が反映されるまで、
+        // 空きメモリが「安定する」まで待ってから実測する。
+        // 固定1.5秒だと返却前に測って過小表示になりやすかった。
+        // 0.5秒ごとにサンプルし、2回続けて変化が小さければ安定とみなす（最大約5秒）。
+        var freeAfter = currentFreeMemoryMB()
+        var stableStreak = 0
+        for _ in 0..<10 {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            let sample = currentFreeMemoryMB()
+            if abs(sample - freeAfter) < 25 {   // 25MB以内の変動は安定とみなす
+                stableStreak += 1
+            } else {
+                stableStreak = 0
+            }
+            freeAfter = sample
+            if stableStreak >= 2 { break }
+        }
+        // 「実際に増えた空きメモリ」を報告（この指標はメニューバー/ゲージの空き表示と同一式なので、
+        //  報告値とゲージの動きが一致する）。負やノイズは0に丸める。
         let freedMB = max(0, freeAfter - freeBefore)
 
         return OptimizationResult(
@@ -516,25 +531,6 @@ final class MemoryOptimizer {
         let total = Double(ProcessInfo.processInfo.physicalMemory)
         let used = (Double(stats.active_count) + Double(stats.wire_count) + Double(stats.compressor_page_count)) * pageSize
         return max(0, (total - used) / 1024 / 1024)
-    }
-
-    /// purge で戻せる可能性のあるメモリ量(MB)の概算上限。
-    /// purgeable（破棄可能）＋ external（ファイルバック・再読込可能）ページが対象。
-    /// 「総RAMの固定%」のような過大推定を避け、実効に近い控えめな値を返す。
-    func purgeableMemoryMB() -> Double {
-        var stats = vm_statistics64()
-        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
-        let host = mach_host_self()
-        let result = withUnsafeMutablePointer(to: &stats) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                host_statistics64(host, HOST_VM_INFO64, $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return 0 }
-        let pageSize = Double(vm_kernel_page_size)
-        let purgeable = Double(stats.purgeable_count) * pageSize
-        let external = Double(stats.external_page_count) * pageSize
-        return max(0, (purgeable + external) / 1024 / 1024)
     }
 
     // MARK: - Helpers

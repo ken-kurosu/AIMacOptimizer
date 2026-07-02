@@ -477,7 +477,8 @@ struct SuggestionExpandableRow: View {
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
-                        Text("推定 \(suggestion.savingFormatted) 解放")
+                        // 上限の目安であることを明示（実際の解放量は実行後に実測値で表示する）
+                        Text("最大 約\(suggestion.savingFormatted)（目安）")
                             .font(.caption2)
                             .foregroundColor(.green)
                     }

@@ -3,6 +3,8 @@ import Foundation
 /// AI-powered pattern learning engine that improves suggestions over time
 final class PatternLearner: ObservableObject {
 
+    static let shared = PatternLearner()
+
     @Published var profiles: [String: AppUsageProfile] = [:]
 
     private let storageKey = "ai_mac_optimizer_patterns"

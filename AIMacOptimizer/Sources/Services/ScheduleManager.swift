@@ -3,21 +3,21 @@ import UserNotifications
 
 /// Manages scheduled automatic optimization
 final class ScheduleManager: ObservableObject {
+    static let shared = ScheduleManager()
+
     @Published var schedule: OptimizationSchedule
     @Published var lastAutoRun: Date?
     @Published var nextAutoRun: Date?
     @Published var isAutoRunning = false
 
     private var timer: Timer?
-    private let monitor: ProcessMonitor
-    private let learner: PatternLearner
+    private let learner = PatternLearner.shared
+    /// ワンショットのプロセス/メモリ取得専用（監視ループ startMonitoring は呼ばない）
+    private let procSource = ProcessMonitor()
     private let optimizer = MemoryOptimizer()
     private let scheduleKey = "ai_mac_optimizer_schedule"
 
-    init(monitor: ProcessMonitor, learner: PatternLearner) {
-        self.monitor = monitor
-        self.learner = learner
-
+    private init() {
         // Load saved schedule
         if let data = UserDefaults.standard.data(forKey: scheduleKey),
            let saved = try? JSONDecoder().decode(OptimizationSchedule.self, from: data) {
@@ -52,6 +52,18 @@ final class ScheduleManager: ObservableObject {
             stopSchedule()
             startSchedule()
         }
+    }
+
+    func setOnlyWhenIdle(_ value: Bool) {
+        schedule.onlyWhenIdle = value
+        saveSchedule()
+    }
+
+    /// 学習用にプロセスを一度だけ記録する（スケジュール有効時のみ、低頻度で呼ぶ）。
+    /// パネル非表示中でも学習を進めるためのワンショット取得。
+    func recordLearningSnapshot() {
+        let procs = procSource.fetchOnce().processes
+        learner.recordSnapshot(processes: procs)
     }
 
     private func startSchedule() {
@@ -94,48 +106,41 @@ final class ScheduleManager: ObservableObject {
 
         await MainActor.run { isAutoRunning = true }
 
-        // @Published（monitor/learner）はメインで読み、データ競合を避ける
-        let (snapMemory, suggestions): (SystemMemoryInfo, [OptimizationSuggestion]) = await MainActor.run {
-            (monitor.systemMemory,
-             learner.getSmartSuggestions(processes: monitor.processes, systemMemory: monitor.systemMemory))
+        // ワンショットで現在のプロセス/メモリを取得（パネル非表示中でも動くよう監視ループには依存しない）
+        let snap = procSource.fetchOnce()
+        // 学習ベースの提案（profiles 読み取りはメインで、データ競合を避ける）
+        let suggestions = await MainActor.run {
+            learner.getSmartSuggestions(processes: snap.processes, systemMemory: snap.memory)
         }
 
-        // Only auto-execute high-confidence, safe actions (up to maxAutoActions)
+        // 実際に解放されたメモリを測るため実行前の空きを記録
+        let freeBefore = optimizer.currentFreeMemoryMB()
+
+        // 過去に3回以上手動最適化した、かつ現在アイドル確度の高いアプリだけを自動終了
         var actionsExecuted = 0
-        var freedMB: Double = 0
+        for suggestion in suggestions.prefix(schedule.maxAutoActions) where suggestion.type == .quitApp {
+            let appName = suggestion.title
+                .replacingOccurrences(of: "[高確度] ", with: "")
+                .replacingOccurrences(of: "[中確度] ", with: "")
+                .replacingOccurrences(of: " を終了", with: "")
 
-        for suggestion in suggestions.prefix(schedule.maxAutoActions) {
-            // Only auto-close apps that user has optimized before
-            if suggestion.type == .quitApp {
-                let appName = suggestion.title
-                    .replacingOccurrences(of: "[高確度] ", with: "")
-                    .replacingOccurrences(of: "[中確度] ", with: "")
-                    .replacingOccurrences(of: " を終了", with: "")
-
-                // プロファイル判定（@Published profiles 読み取り）はメインで
-                let eligible = await MainActor.run { () -> Bool in
-                    guard let profile = learner.profiles[appName] else { return false }
-                    return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
-                }
-                if eligible {
-                    let outcome = await suggestion.action(suggestion.detailItems)
-                    if outcome.succeeded {
-                        actionsExecuted += 1
-                        freedMB += suggestion.estimatedSavingMB
-                        await MainActor.run { learner.recordOptimized(appName: appName) }
-                    }
+            let eligible = await MainActor.run { () -> Bool in
+                guard let profile = learner.profiles[appName] else { return false }
+                return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
+            }
+            if eligible {
+                let outcome = await suggestion.action(suggestion.detailItems)
+                if outcome.succeeded {
+                    actionsExecuted += 1
+                    await MainActor.run { learner.recordOptimized(appName: appName) }
                 }
             }
         }
+        // RAMパージは行わない（非rootで失敗し、空き指標にもほぼ反映されないため）
 
-        // Always try RAM purge if memory is high
-        if snapMemory.severity == .high {
-            let purged = await optimizer.purgeRAM()
-            if purged {
-                actionsExecuted += 1
-                freedMB += snapMemory.totalMB * 0.05
-            }
-        }
+        // 実行後、メモリ返却が反映されるまで少し待ってから実測（推定ではなく実際の解放量を報告）
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        let freedMB = actionsExecuted > 0 ? max(0, optimizer.currentFreeMemoryMB() - freeBefore) : 0
 
         await MainActor.run {
             lastAutoRun = Date()
@@ -143,11 +148,12 @@ final class ScheduleManager: ObservableObject {
             isAutoRunning = false
         }
 
-        // Notify user if actions were taken
+        // Notify user if actions were taken（実測値で通知）
         if actionsExecuted > 0 {
+            let freedText = freedMB >= 1 ? "約\(Int(freedMB))MBを解放しました" : "メモリを整理しました"
             sendNotification(
                 title: "自動最適化を実行しました",
-                body: "\(actionsExecuted)件の最適化を実行し、約\(Int(freedMB))MBを解放しました。"
+                body: "\(actionsExecuted)件のアプリを終了し、\(freedText)。"
             )
         }
     }

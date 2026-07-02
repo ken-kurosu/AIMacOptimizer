@@ -68,6 +68,12 @@ final class ProcessMonitor: ObservableObject {
         Task { @MainActor in self.systemMemory = mem }
     }
 
+    /// 学習/自動最適化用のワンショット取得（監視ループとは独立・@Publishedを更新しない）。
+    /// スケジュール機能が有効なときだけ低頻度で呼ぶ想定。
+    func fetchOnce() -> (memory: SystemMemoryInfo, processes: [ProcessMemoryInfo]) {
+        (getSystemMemory(), getAllProcesses())
+    }
+
     /// パネル表示用：systemMemory ＋ 全プロセス列挙
     func refreshFull() {
         let mem = getSystemMemory()

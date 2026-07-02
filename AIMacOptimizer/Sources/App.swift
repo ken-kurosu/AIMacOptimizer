@@ -56,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Request notification permissions
         NotificationService.shared.requestPermission()
 
+        // スケジュール自動最適化を初期化（保存設定が有効なら定期実行を開始）
+        _ = ScheduleManager.shared
+
         // Start periodic notification checks (every 60 seconds)
         startNotificationTimer()
 
@@ -244,6 +247,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             NotificationService.shared.checkAndNotify(memoryPercent: memPercent, diskFreeGB: storage.freeGB)
             // ストレージ圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
             Task { @MainActor in DiskGuard.shared.evaluate() }
+
+            // スケジュール自動最適化が有効なときだけ、学習用にプロセスを軽く記録する
+            // （パネル非表示中でも学習を進める。無効なら取得コストは発生しない）
+            if ScheduleManager.shared.schedule.enabled {
+                ScheduleManager.shared.recordLearningSnapshot()
+            }
 
             // 健康状態の推移を記録（10分間隔・軽量。ここに相乗りして追加コストをほぼ0に）
             var loads = [Double](repeating: 0, count: 3)

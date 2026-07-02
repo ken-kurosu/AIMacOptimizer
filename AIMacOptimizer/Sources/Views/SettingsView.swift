@@ -13,8 +13,7 @@ struct SettingsView: View {
     @StateObject private var license = LicenseManager.shared
     @ObservedObject private var diskGuard = DiskGuard.shared
     @ObservedObject private var nav = SettingsNavigation.shared
-    @State private var scheduleEnabled = false
-    @State private var scheduleInterval = 60
+    @ObservedObject private var scheduleManager = ScheduleManager.shared
 
     /// 設定タブの定義（左サイドバーに常時表示）
     private struct SettingsTab: Identifiable {
@@ -444,23 +443,38 @@ struct SettingsView: View {
         Form {
             Section {
                 if license.canUseSchedule {
-                    Toggle(L10n.scheduleEnabled, isOn: $scheduleEnabled)
+                    Toggle(L10n.scheduleEnabled, isOn: Binding(
+                        get: { scheduleManager.schedule.enabled },
+                        set: { scheduleManager.enableSchedule($0) }
+                    ))
 
-                    if scheduleEnabled {
-                        Picker("実行間隔", selection: $scheduleInterval) {
+                    if scheduleManager.schedule.enabled {
+                        Picker("実行間隔", selection: Binding(
+                            get: { scheduleManager.schedule.intervalMinutes },
+                            set: { scheduleManager.updateInterval($0) }
+                        )) {
                             Text("30分").tag(30)
                             Text("1時間").tag(60)
                             Text("2時間").tag(120)
                             Text("4時間").tag(240)
                         }
 
-                        Toggle("ユーザーがアイドル時のみ実行", isOn: .constant(true))
+                        Toggle("ユーザーがアイドル時のみ実行", isOn: Binding(
+                            get: { scheduleManager.schedule.onlyWhenIdle },
+                            set: { scheduleManager.setOnlyWhenIdle($0) }
+                        ))
+
+                        if let next = scheduleManager.nextAutoRun {
+                            Text("次回実行予定: \(next.formatted(date: .omitted, time: .shortened))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("安全性について")
                                 .font(.caption)
                                 .fontWeight(.medium)
-                            Text("自動最適化は、過去に3回以上手動で最適化したアプリのみを対象とします。業務中のアプリは自動で終了しません。")
+                            Text("自動最適化は、過去に3回以上手動で最適化したアプリのみを対象とします。業務中のアプリは自動で終了しません。夜間(23〜7時)は実行しません。")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -502,7 +516,7 @@ struct SettingsView: View {
                 }
 
                 Button("学習データをリセット", role: .destructive) {
-                    PatternLearner().resetLearning()
+                    PatternLearner.shared.resetLearning()
                 }
             } header: {
                 Text("AI学習")

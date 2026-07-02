@@ -356,18 +356,34 @@ final class StorageAnalyzer: ObservableObject {
         var success = 0
         var failed = 0
         for subItem in subItems {
-            // Protect font-related files
-            if isProtectedPath(subItem.name) || isProtectedPath(subItem.path) {
+            // フォント関連・システム領域は削除しない
+            if isProtectedPath(subItem.name) || isProtectedPath(subItem.path) || isSystemPath(subItem.path) {
                 print("⚠️ Skipping protected sub-item: \(subItem.path)")
                 failed += 1
                 continue
             }
-            do {
-                try fileManager.removeItem(atPath: subItem.path)
-                success += 1
-            } catch {
-                print("Failed to delete \(subItem.name): \(error)")
-                failed += 1
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: subItem.path, isDirectory: &isDir) else { failed += 1; continue }
+
+            if isDir.boolValue {
+                // ディレクトリ自体は削除せず、中身だけを1件ずつ保護付きで削除する。
+                // （未展開のカテゴリ丸ごと ~/Library/Caches 等を渡された時に、
+                //  フォントキャッシュ(com.apple.FontRegistry 等)まで巻き込んで消す事故を防ぐ）
+                guard let contents = try? fileManager.contentsOfDirectory(atPath: subItem.path) else { failed += 1; continue }
+                var cleared = false
+                for entry in contents {
+                    if isProtectedPath(entry) { continue }   // フォント等はスキップ
+                    if (try? fileManager.removeItem(atPath: "\(subItem.path)/\(entry)")) != nil { cleared = true }
+                }
+                if cleared { success += 1 } else { failed += 1 }
+            } else {
+                do {
+                    try fileManager.removeItem(atPath: subItem.path)
+                    success += 1
+                } catch {
+                    print("Failed to delete \(subItem.name): \(error)")
+                    failed += 1
+                }
             }
         }
         return (success, failed)

@@ -221,6 +221,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Close panel only when clicking the status bar icon again
         // (Don't use global mouse monitor — it closes the panel during system dialogs)
 
+        // ×ボタンや⌘Wで閉じられた場合も省電力モード(プロセス列挙停止)へ落とす。
+        // （togglePopover の orderOut 経路以外で閉じても2秒フル列挙が残らないように）
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: newPanel, queue: .main
+        ) { [weak self] _ in
+            self?.monitor.setActive(false)
+        }
+
         self.panel = newPanel
     }
 

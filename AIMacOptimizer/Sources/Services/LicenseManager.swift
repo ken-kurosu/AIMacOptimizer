@@ -111,10 +111,19 @@ final class LicenseManager: ObservableObject {
 
     // MARK: - State Management
     private func loadState() {
-        if let tierRaw = UserDefaults.standard.string(forKey: tierKey),
-           let tier = LicenseTier(rawValue: tierRaw) {
-            currentTier = tier
+        // tier は保存された license_tier 文字列を鵜呑みにせず、保存済みの
+        // 署名キー/プロモコードを毎回再検証して導出する。
+        // （tier 文字列を信用すると `defaults write <bundleID> license_tier pro_lifetime`
+        //   だけで永久Pro化できてしまうため。署名検証はオフラインで偽造不可）
+        var derived: LicenseTier = .free
+        if let key = UserDefaults.standard.string(forKey: licenseKeyKey),
+           let tier = SignedLicense.verify(key) {
+            derived = tier
+        } else if let code = UserDefaults.standard.string(forKey: promoCodeKey),
+                  let tier = validPromoCodes[code] {
+            derived = tier
         }
+        currentTier = derived
         weeklyAISuggestionsUsed = UserDefaults.standard.integer(forKey: weeklyCountKey)
     }
 

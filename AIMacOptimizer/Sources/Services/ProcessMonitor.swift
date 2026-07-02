@@ -223,11 +223,11 @@ final class ProcessMonitor: ObservableObject {
     /// Extract bundle identifier from application path
     private func getBundleIdentifier(fromPath path: String) -> String? {
         guard path.contains("/Applications/") || path.contains(".app/") else { return nil }
-        // Extract .app path
+        // Extract .app path（半開区間で ".../Foo.app" ちょうどを取る。
+        //  以前は [...upperBound] で末尾に余分な文字が付き "Foo.appapp" になり常に nil だった）
         if let range = path.range(of: ".app") {
-            let appPath = String(path[...range.upperBound])
-            let bundle = Bundle(path: String(appPath.dropLast(1) + "app"))
-            return bundle?.bundleIdentifier
+            let appPath = String(path[..<range.upperBound])
+            return Bundle(path: appPath)?.bundleIdentifier
         }
         return nil
     }

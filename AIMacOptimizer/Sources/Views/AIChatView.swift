@@ -36,7 +36,7 @@ struct AIChatView: View {
                 .foregroundColor(.purple)
                 .font(.system(size: 14))
 
-            Text("AI相談")
+            Text(L10n.aiChat)
                 .font(.subheadline)
                 .fontWeight(.medium)
 
@@ -51,7 +51,7 @@ struct AIChatView: View {
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .help("会話をクリア")
+            .help(L10n.clearConversation)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -70,7 +70,7 @@ struct AIChatView: View {
             HStack(spacing: 3) {
                 Image(systemName: "gift.fill")
                     .font(.system(size: 9))
-                Text("無料モード")
+                Text(L10n.freeMode)
                     .font(.system(size: 10, weight: .semibold))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7))
@@ -83,7 +83,7 @@ struct AIChatView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("AIの種類を切り替え（どちらも無料・キー不要）")
+        .help(L10n.switchAIType)
     }
 
     private func switchProvider(_ p: AIProvider) {
@@ -112,7 +112,7 @@ struct AIChatView: View {
                         HStack {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("考え中...")
+                            Text(L10n.thinking)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -146,15 +146,15 @@ struct AIChatView: View {
 
     private var welcomeMessage: some View {
         VStack(spacing: 8) {
-            Text("診断結果について何でも聞いてください")
+            Text(L10n.askAnythingDiagnosis)
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             // Suggested questions
             let suggestions = [
-                "このMacで容量を食ってるものは？",
-                "安全に消せるものを教えて",
-                "一番深刻な問題は何？",
+                L10n.suggestedQ1,
+                L10n.suggestedQ2,
+                L10n.suggestedQ3,
             ]
             ForEach(suggestions, id: \.self) { suggestion in
                 Button(action: {
@@ -178,7 +178,7 @@ struct AIChatView: View {
 
     private var chatInput: some View {
         HStack(spacing: 8) {
-            TextField("質問を入力...", text: $inputText)
+            TextField(L10n.enterQuestion, text: $inputText)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 12))
                 .focused($isInputFocused)

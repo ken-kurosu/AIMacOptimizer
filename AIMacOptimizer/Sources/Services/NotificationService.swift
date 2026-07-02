@@ -62,9 +62,9 @@ class NotificationService {
         guard memoryPercent >= threshold else { return }
         
         if shouldSendNotification(type: "memory") {
-            let title = "メモリ警告"
-            let body = "メモリ使用率が\(Int(memoryPercent))%に達しました"
-            let suggestion = "不要なアプリを終了するか、メモリタブから最適化してください"
+            let title = L10n.notifyMemoryTitle
+            let body = L10n.notifyMemoryBody(percent: Int(memoryPercent))
+            let suggestion = L10n.notifyMemorySuggestion
             
             sendNotification(title: title, body: body, suggestion: suggestion)
             updateNotificationTimestamp(type: "memory")
@@ -76,9 +76,9 @@ class NotificationService {
         guard diskFreeGB < freeSpaceThreshold else { return }
         
         if shouldSendNotification(type: "disk") {
-            let title = "ストレージ空き容量警告"
-            let body = "ストレージ空き容量が\(String(format: "%.1f", diskFreeGB))GBです"
-            let suggestion = "ストレージタブで不要ファイルを整理してください"
+            let title = L10n.notifyDiskTitle
+            let body = L10n.notifyDiskBody(freeGB: String(format: "%.1f", diskFreeGB))
+            let suggestion = L10n.notifyDiskSuggestion
             
             sendNotification(title: title, body: body, suggestion: suggestion)
             updateNotificationTimestamp(type: "disk")

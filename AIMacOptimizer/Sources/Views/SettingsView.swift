@@ -25,7 +25,7 @@ struct SettingsView: View {
     private var settingsTabs: [SettingsTab] {
         [
             .init(id: 0, title: L10n.general, icon: "gear"),
-            .init(id: 1, title: "ライセンス", icon: "crown"),
+            .init(id: 1, title: L10n.license, icon: "crown"),
             .init(id: 2, title: L10n.monitoring, icon: "gauge.medium"),
             .init(id: 3, title: L10n.autoOptimization, icon: "clock.arrow.2.circlepath"),
             .init(id: 5, title: L10n.notifications, icon: "bell"),
@@ -90,29 +90,29 @@ struct SettingsView: View {
     private var generalTab: some View {
         Form {
             Section {
-                Toggle("ログイン時に起動", isOn: $launchAtLogin)
+                Toggle(L10n.launchAtLogin, isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { newValue in
                         setLaunchAtLogin(newValue)
                     }
             } header: {
-                Text("起動設定")
+                Text(L10n.startupSettings)
             }
 
             Section {
                 HStack {
-                    Text("更新間隔")
+                    Text(L10n.refreshInterval)
                     Spacer()
                     Picker("", selection: $refreshInterval) {
-                        Text("1秒").tag(1.0)
-                        Text("2秒").tag(2.0)
-                        Text("5秒").tag(5.0)
-                        Text("10秒").tag(10.0)
+                        Text(L10n.seconds(1)).tag(1.0)
+                        Text(L10n.seconds(2)).tag(2.0)
+                        Text(L10n.seconds(5)).tag(5.0)
+                        Text(L10n.seconds(10)).tag(10.0)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 220)
                 }
             } header: {
-                Text("パフォーマンス")
+                Text(L10n.performance)
             }
 
             Section {
@@ -147,7 +147,7 @@ struct SettingsView: View {
                                 Image(systemName: "crown.fill")
                                     .foregroundColor(.orange)
                             }
-                            Text("現在のプラン")
+                            Text(L10n.currentPlan)
                                 .font(.body)
                         }
                         Text(license.currentTier.displayName)
@@ -161,34 +161,34 @@ struct SettingsView: View {
                 if !license.currentTier.isPro {
                     // Feature comparison（実態に一致: Pro=ストレージ削除＋スケジュールのみ、他は無料）
                     VStack(alignment: .leading, spacing: 6) {
-                        featureRow("メモリ最適化・Chrome/Safariタブ分析", available: true)
-                        featureRow("診断・AI相談（ローカル/無料）", available: true)
-                        featureRow("ストレージスキャン（表示）", available: true)
-                        featureRow("多言語対応", available: true)
+                        featureRow(L10n.featureMemoryOptimize, available: true)
+                        featureRow(L10n.featureDiagnosisAI, available: true)
+                        featureRow(L10n.featureStorageScan, available: true)
+                        featureRow(L10n.featureMultiLang, available: true)
                         Divider()
-                        featureRow("ストレージのファイル削除・クリーンアップ", available: false)
-                        featureRow("スケジュール自動最適化", available: false)
-                        featureRow("優先サポート", available: false)
+                        featureRow(L10n.featureStorageDelete, available: false)
+                        featureRow(L10n.featureScheduleOptimize, available: false)
+                        featureRow(L10n.featurePrioritySupport, available: false)
                     }
                     .padding(.vertical, 4)
                 }
             } header: {
-                Text("プラン情報")
+                Text(L10n.planInfo)
             }
 
             // Promo code section
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("プロモコードをお持ちの方はこちら")
+                    Text(L10n.havePromoCode)
                         .font(.caption)
                         .foregroundColor(.secondary)
 
                     HStack(spacing: 8) {
-                        TextField("プロモコードを入力", text: $license.promoCodeInput)
+                        TextField(L10n.enterPromoCode, text: $license.promoCodeInput)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(.body, design: .monospaced))
 
-                        Button("適用") {
+                        Button(L10n.apply) {
                             license.activatePromoCode()
                         }
                         .buttonStyle(.borderedProminent)
@@ -207,7 +207,7 @@ struct SettingsView: View {
                     }
                 }
             } header: {
-                Text("プロモコード")
+                Text(L10n.promoCode)
             }
 
             // Upgrade options (for free users)
@@ -217,9 +217,9 @@ struct SettingsView: View {
                         // Pro Monthly
                         Button(action: { license.purchaseProMonthly() }) {
                             upgradeOptionCard(
-                                title: "Pro（月額）",
+                                title: L10n.proMonthly,
                                 price: PurchaseConfig.proMonthlyPrice,
-                                subtitle: "いつでもキャンセル可能",
+                                subtitle: L10n.proMonthlySubtitle,
                                 highlight: false
                             )
                         }
@@ -228,33 +228,33 @@ struct SettingsView: View {
                         // Pro Lifetime
                         Button(action: { license.purchaseProLifetime() }) {
                             upgradeOptionCard(
-                                title: "Pro Lifetime",
+                                title: L10n.proLifetime,
                                 price: PurchaseConfig.proLifetimePrice,
-                                subtitle: "買い切り・永久ライセンス",
+                                subtitle: L10n.proLifetimeSubtitle,
                                 highlight: true
                             )
                         }
                         .buttonStyle(.plain)
                     }
-                    Text("購入後にメールで届くライセンスキーを下記に入力してください")
+                    Text(L10n.enterLicenseKeyHint)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.top, 4)
                 } header: {
-                    Text("アップグレード")
+                    Text(L10n.upgradeSection)
                 }
 
                 // License Key section
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("購入後にメールで届くライセンスキーを入力")
+                        Text(L10n.enterLicenseKey)
                             .font(.caption)
                             .foregroundColor(.secondary)
                         HStack(spacing: 8) {
                             TextField("AIMAC-XXXX-XXXX-XXXX", text: $license.licenseKeyInput)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
-                            Button("適用") {
+                            Button(L10n.apply) {
                                 license.activateLicenseKey()
                             }
                             .buttonStyle(.borderedProminent)
@@ -272,14 +272,14 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("ライセンスキー")
+                    Text(L10n.licenseKey)
                 }
             }
 
             // Usage stats
             Section {
                 HStack {
-                    Text("今週のAI提案使用回数")
+                    Text(L10n.weeklyAISuggestionUse)
                     Spacer()
                     Text("\(license.weeklyAISuggestionsUsed) / \(license.currentTier.isPro ? "∞" : "3")")
                         .foregroundColor(.secondary)
@@ -287,12 +287,12 @@ struct SettingsView: View {
                 }
 
                 if license.currentTier.isPro {
-                    Button("ライセンスをリセット（Free に戻す）", role: .destructive) {
+                    Button(L10n.resetLicense, role: .destructive) {
                         license.resetLicense()
                     }
                 }
             } header: {
-                Text("利用状況")
+                Text(L10n.usageStatus)
             }
         }
         .formStyle(.grouped)
@@ -317,7 +317,7 @@ struct SettingsView: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                     if highlight {
-                        Text("おすすめ")
+                        Text(L10n.recommendedBadge)
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 5)
@@ -352,7 +352,7 @@ struct SettingsView: View {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("自動最適化しきい値")
+                        Text(L10n.autoOptimizeThreshold)
                         Spacer()
                         Text("\(Int(autoOptimizeThreshold))%")
                             .foregroundColor(.secondary)
@@ -360,21 +360,21 @@ struct SettingsView: View {
                     }
                     Slider(value: $autoOptimizeThreshold, in: 70...95, step: 5)
 
-                    Text("メモリ使用率がこの値を超えると、最適化の提案を自動表示します")
+                    Text(L10n.autoOptimizeThresholdDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             } header: {
-                Text("メモリ監視")
+                Text(L10n.memoryMonitoring)
             }
 
             Section {
-                Toggle("ストレージ圧迫を監視する", isOn: $diskGuard.settings.enabled)
+                Toggle(L10n.monitorStoragePressure, isOn: $diskGuard.settings.enabled)
 
                 if diskGuard.settings.enabled {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("圧迫とみなす使用率")
+                            Text(L10n.pressureUsagePercent)
                             Spacer()
                             Text("\(Int(diskGuard.settings.thresholdPercent))%")
                                 .foregroundColor(.secondary)
@@ -385,41 +385,41 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("圧迫とみなす空き容量")
+                            Text(L10n.pressureFreeSpace)
                             Spacer()
-                            Text("\(Int(diskGuard.settings.minFreeGB))GB 未満")
+                            Text(L10n.lessThanGB(Int(diskGuard.settings.minFreeGB)))
                                 .foregroundColor(.secondary)
                                 .monospacedDigit()
                         }
                         Slider(value: $diskGuard.settings.minFreeGB, in: 5...50, step: 1)
                     }
 
-                    Text("使用率か空き容量のどちらかが上記に達すると圧迫とみなします。")
+                    Text(L10n.pressureRuleDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    Toggle("圧迫時は自動で空ける（通知のみ）", isOn: $diskGuard.settings.autoClean)
+                    Toggle(L10n.autoFreeOnPressure, isOn: $diskGuard.settings.autoClean)
 
                     Text(diskGuard.settings.autoClean
-                        ? "ストレージが圧迫したら、リスクのないキャッシュ/ログを自動削除し、結果を通知でお知らせします。"
-                        : "ストレージが圧迫したら、何を消すか・安全度を提示して、ワンボタンで空けられるよう提案します。")
+                        ? L10n.autoFreeOnDesc
+                        : L10n.autoFreeOffDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             } header: {
-                Text("ストレージ自動ガード")
+                Text(L10n.storageAutoGuard)
             }
 
             Section {
-                Text("Chrome/Safariのタブ分析には「オートメーション」権限が必要です（初回に許可を求められます）。")
+                Text(L10n.browserAutomationNote)
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button("オートメーション設定を開く") {
+                Button(L10n.openAutomationSettings) {
                     openAutomationPreferences()
                 }
             } header: {
-                Text("ブラウザ連携")
+                Text(L10n.browserIntegration)
             }
         }
         .formStyle(.grouped)
@@ -437,32 +437,32 @@ struct SettingsView: View {
                     ))
 
                     if scheduleManager.schedule.enabled {
-                        Picker("実行間隔", selection: Binding(
+                        Picker(L10n.runInterval, selection: Binding(
                             get: { scheduleManager.schedule.intervalMinutes },
                             set: { scheduleManager.updateInterval($0) }
                         )) {
-                            Text("30分").tag(30)
-                            Text("1時間").tag(60)
-                            Text("2時間").tag(120)
-                            Text("4時間").tag(240)
+                            Text(L10n.minutes(30)).tag(30)
+                            Text(L10n.hours(1)).tag(60)
+                            Text(L10n.hours(2)).tag(120)
+                            Text(L10n.hours(4)).tag(240)
                         }
 
-                        Toggle("ユーザーがアイドル時のみ実行", isOn: Binding(
+                        Toggle(L10n.onlyWhenIdle, isOn: Binding(
                             get: { scheduleManager.schedule.onlyWhenIdle },
                             set: { scheduleManager.setOnlyWhenIdle($0) }
                         ))
 
                         if let next = scheduleManager.nextAutoRun {
-                            Text("次回実行予定: \(next.formatted(date: .omitted, time: .shortened))")
+                            Text(L10n.nextRun(next.formatted(date: .omitted, time: .shortened)))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("安全性について")
+                            Text(L10n.aboutSafety)
                                 .font(.caption)
                                 .fontWeight(.medium)
-                            Text("自動最適化は、過去に3回以上手動で最適化したアプリのみを対象とします。業務中のアプリは自動で終了しません。夜間(23〜7時)は実行しません。")
+                            Text(L10n.scheduleSafetyDesc)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
@@ -473,15 +473,15 @@ struct SettingsView: View {
                         Image(systemName: "lock.fill")
                             .font(.title2)
                             .foregroundColor(.orange)
-                        Text("スケジュール自動最適化はPro機能です")
+                        Text(L10n.scheduleProLock)
                             .font(.subheadline)
                             .fontWeight(.medium)
-                        Text("Proにアップグレードすると、定期的な自動最適化を設定できます")
+                        Text(L10n.scheduleProLockDesc)
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
 
-                        Button("ライセンスタブで確認") {
+                        Button(L10n.checkOnLicenseTab) {
                             nav.selectedTab = 1
                         }
                         .buttonStyle(.borderedProminent)
@@ -495,19 +495,19 @@ struct SettingsView: View {
 
             Section {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("AI学習データ")
+                    Text(L10n.aiLearningData)
                         .font(.caption)
                         .fontWeight(.medium)
-                    Text("アプリの使用パターンを学習して、より適切な最適化提案を行います。データはローカルにのみ保存されます。")
+                    Text(L10n.aiLearningDataDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
-                Button("学習データをリセット", role: .destructive) {
+                Button(L10n.resetLearningData, role: .destructive) {
                     PatternLearner.shared.resetLearning()
                 }
             } header: {
-                Text("AI学習")
+                Text(L10n.aiLearning)
             }
         }
         .formStyle(.grouped)
@@ -518,12 +518,12 @@ struct SettingsView: View {
     private var notificationTab: some View {
         Form {
             Section {
-                Toggle("通知を有効にする", isOn: $enableNotifications)
+                Toggle(L10n.enableNotifications, isOn: $enableNotifications)
 
                 if enableNotifications {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("通知しきい値")
+                            Text(L10n.notifyThreshold)
                             Spacer()
                             Text("\(Int(notifyThreshold))%")
                                 .foregroundColor(.secondary)
@@ -531,13 +531,13 @@ struct SettingsView: View {
                         }
                         Slider(value: $notifyThreshold, in: 60...95, step: 5)
 
-                        Text("メモリ使用率がこの値を超えると通知を表示します")
+                        Text(L10n.notifyThresholdDesc)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
             } header: {
-                Text("通知設定")
+                Text(L10n.notificationSettings)
             }
         }
         .formStyle(.grouped)
@@ -558,7 +558,7 @@ struct SettingsView: View {
                 .fontWeight(.bold)
 
             HStack(spacing: 4) {
-                Text("バージョン 2.0.0")
+                Text(L10n.appVersion("2.0.0"))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 if license.currentTier.isPro {
@@ -576,7 +576,7 @@ struct SettingsView: View {
                 }
             }
 
-            Text("AIがあなたのMacのメモリとストレージを賢く最適化します。\n11種類のAI分析で、使用パターンを学習してより適切な提案を行います。")
+            Text(L10n.aboutDescription)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -589,7 +589,7 @@ struct SettingsView: View {
                 Button(action: reportBug) {
                     HStack(spacing: 6) {
                         Image(systemName: "ladybug.fill")
-                        Text("不具合・バグを報告")
+                        Text(L10n.reportBug)
                             .fontWeight(.medium)
                     }
                     .font(.system(size: 12))
@@ -597,7 +597,7 @@ struct SettingsView: View {
                     .padding(.vertical, 7)
                 }
                 .buttonStyle(.bordered)
-                Text("環境情報（バージョン・macOS）を添えてメールが開きます")
+                Text(L10n.reportBugDesc)
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
@@ -621,21 +621,12 @@ struct SettingsView: View {
         #else
         arch = "Intel"
         #endif
-        let body = """
-        （ここに不具合の内容・再現手順・期待する動作をご記入ください）
-
-
-
-        --- 環境情報（自動入力。消さないでください） ---
-        アプリ: AI Mac Optimizer 2.0.0
-        macOS: \(osVersion)
-        機種: \(arch)
-        """
+        let body = L10n.bugReportBody(osVersion: osVersion, arch: arch, version: "2.0.0")
         var comps = URLComponents()
         comps.scheme = "mailto"
         comps.path = supportEmail
         comps.queryItems = [
-            URLQueryItem(name: "subject", value: "【不具合報告】AI Mac Optimizer"),
+            URLQueryItem(name: "subject", value: L10n.bugReportSubject),
             URLQueryItem(name: "body", value: body),
         ]
         if let url = comps.url {

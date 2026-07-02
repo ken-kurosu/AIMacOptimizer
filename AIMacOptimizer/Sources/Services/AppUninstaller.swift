@@ -7,6 +7,14 @@ import SwiftUI
 enum LeftoverRisk: String {
     case low = "低"
     case medium = "中"
+
+    /// Localized display name (rawValue kept stable)
+    var localizedName: String {
+        switch self {
+        case .low: return L10n.riskLo
+        case .medium: return L10n.riskMid
+        }
+    }
 }
 
 /// 個々の残留ファイル/フォルダ（種類・リスク・理由・サイズ付き）

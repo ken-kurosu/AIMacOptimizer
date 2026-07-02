@@ -95,6 +95,18 @@ enum StorageCategory: String, CaseIterable {
         case .installer, .largeFile, .downloadedFile, .icloudCandidate: return true
         }
     }
+
+    /// Localized display name (rawValue kept stable for persistence/comparison)
+    var localizedName: String {
+        switch self {
+        case .cache: return L10n.storageCacheName
+        case .log: return L10n.storageLogName
+        case .installer: return L10n.storageInstallerName
+        case .largeFile: return L10n.storageLargeFileName
+        case .downloadedFile: return L10n.storageDownloadName
+        case .icloudCandidate: return L10n.storageICloudCandidateName
+        }
+    }
 }
 
 /// Action that can be taken on a storage item
@@ -102,6 +114,15 @@ enum StorageAction: String {
     case delete = "削除"
     case moveToTrash = "ゴミ箱に移動"
     case moveToICloud = "iCloudに退避"
+
+    /// Localized display name (rawValue kept stable for comparison)
+    var localizedName: String {
+        switch self {
+        case .delete: return L10n.storageActionDelete
+        case .moveToTrash: return L10n.storageActionMoveToTrash
+        case .moveToICloud: return L10n.storageActionMoveToICloud
+        }
+    }
 }
 
 /// Result of a storage cleanup operation

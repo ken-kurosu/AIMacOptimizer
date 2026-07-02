@@ -9,12 +9,13 @@ enum DiagnosisSeverity: String, Codable, Comparable {
     case info = "info"
     case good = "good"
 
+    /// Localized display label (rawValue kept stable for Codable/comparison)
     var label: String {
         switch self {
-        case .critical: return "危険"
-        case .warning: return "注意"
-        case .info: return "情報"
-        case .good: return "良好"
+        case .critical: return L10n.diagSeverityCritical
+        case .warning: return L10n.diagSeverityWarning
+        case .info: return L10n.diagSeverityInfo
+        case .good: return L10n.diagSeverityGood
         }
     }
 
@@ -66,6 +67,21 @@ enum DiagnosisCategory: String, Codable {
         case .composite: return "gauge.with.dots.needle.33percent"
         }
     }
+
+    /// Localized display name (rawValue kept stable for Codable)
+    var localizedName: String {
+        switch self {
+        case .cpu: return L10n.diagCategoryCPU
+        case .memory: return L10n.diagCategoryMemory
+        case .disk: return L10n.diagCategoryDisk
+        case .icloudSync: return L10n.diagCategoryICloud
+        case .securitySoftware: return L10n.diagCategorySecurity
+        case .devTools: return L10n.diagCategoryDevTools
+        case .browserApp: return L10n.diagCategoryBrowserApp
+        case .loginItems: return L10n.diagCategoryLoginItems
+        case .composite: return L10n.diagCategoryComposite
+        }
+    }
 }
 
 /// Type of auto-fix action available for a finding
@@ -80,16 +96,17 @@ enum DiagnosisFixAction: String, Codable {
     case openFontBook = "open_font_book"
     case none = "none"
 
+    /// Localized button label (rawValue kept stable for Codable)
     var buttonLabel: String {
         switch self {
-        case .purgeRAM: return "RAMパージ実行"
-        case .quitApp: return "アプリを終了"
-        case .clearCache: return "キャッシュ削除"
-        case .clearDerivedData: return "DerivedData削除"
-        case .clearBrowserCache: return "ブラウザキャッシュ削除"
-        case .flushDNS: return "DNSフラッシュ"
-        case .openSystemSettings: return "システム設定を開く"
-        case .openFontBook: return "Font Bookを開く"
+        case .purgeRAM: return L10n.fixPurgeRAM
+        case .quitApp: return L10n.fixQuitApp
+        case .clearCache: return L10n.fixClearCache
+        case .clearDerivedData: return L10n.fixClearDerivedData
+        case .clearBrowserCache: return L10n.fixClearBrowserCache
+        case .flushDNS: return L10n.fixFlushDNS
+        case .openSystemSettings: return L10n.fixOpenSystemSettings
+        case .openFontBook: return L10n.fixOpenFontBook
         case .none: return ""
         }
     }
@@ -176,7 +193,7 @@ struct DiagnosisReport: Codable {
         lines.append("")
 
         for finding in findings.sorted(by: { $0.severity < $1.severity }) {
-            lines.append("[\(finding.severity.label)] \(finding.category.rawValue): \(finding.title)")
+            lines.append("[\(finding.severity.label)] \(finding.category.localizedName): \(finding.title)")
             lines.append("  詳細: \(finding.detail)")
             lines.append("  提案: \(finding.suggestion)")
             if !finding.rawData.isEmpty {

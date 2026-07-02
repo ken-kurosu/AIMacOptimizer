@@ -69,4 +69,13 @@ enum MemorySeverity: String {
         case .high: return "red"
         }
     }
+
+    /// Localized display name (rawValue is kept stable for persistence/comparison)
+    var localizedName: String {
+        switch self {
+        case .low: return L10n.severityLow
+        case .medium: return L10n.severityMedium
+        case .high: return L10n.severityHigh
+        }
+    }
 }

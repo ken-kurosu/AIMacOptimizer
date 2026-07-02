@@ -22,6 +22,14 @@ enum CleanupSafety: String, Codable {
         case .caution: return "exclamationmark.triangle.fill"
         }
     }
+
+    /// Localized display name (rawValue kept stable for Codable)
+    var localizedName: String {
+        switch self {
+        case .safe: return L10n.cleanupSafetySafe
+        case .caution: return L10n.cleanupSafetyCaution
+        }
+    }
 }
 
 /// 自動回避で削除する候補 1 件

@@ -2,6 +2,47 @@ import Foundation
 import Combine
 import IOKit
 
+/// Battery health condition. rawValue is language-independent; display/color use `kind`.
+enum BatteryCondition {
+    case normal, good, warning, replace, unknown, desktop
+
+    var localizedName: String {
+        switch self {
+        case .normal: return L10n.batteryConditionNormal
+        case .good: return L10n.batteryConditionGood
+        case .warning: return L10n.batteryConditionWarning
+        case .replace: return L10n.batteryConditionReplace
+        case .unknown: return L10n.batteryConditionUnknown
+        case .desktop: return L10n.batteryConditionDesktop
+        }
+    }
+}
+
+/// Time-remaining state, kept language-independent so display can be localized.
+enum BatteryTimeRemaining: Equatable {
+    case unknown
+    case notApplicable
+    case calculating
+    case minutes(Int)
+
+    var isEmpty: Bool {
+        if case .unknown = self { return true }
+        return false
+    }
+
+    var localized: String {
+        switch self {
+        case .unknown: return ""
+        case .notApplicable: return "N/A"
+        case .calculating: return L10n.batteryCalculating
+        case .minutes(let m):
+            let hours = m / 60
+            let mins = m % 60
+            return hours > 0 ? L10n.batteryTimeHM(hours: hours, minutes: mins) : L10n.batteryTimeM(minutes: mins)
+        }
+    }
+}
+
 @MainActor
 final class BatteryMonitor: ObservableObject {
     @Published var isCharging: Bool = false
@@ -11,9 +52,16 @@ final class BatteryMonitor: ObservableObject {
     @Published var designCapacity: Int = 0
     @Published var healthPercent: Int = 0
     @Published var temperature: Double = 0.0
-    @Published var condition: String = "Unknown"
+    @Published var conditionKind: BatteryCondition = .unknown
     @Published var isAvailable: Bool = false
-    @Published var timeRemaining: String = "Unknown"
+    @Published var timeRemainingState: BatteryTimeRemaining = .unknown
+
+    /// Localized condition text for display
+    var conditionLocalized: String { conditionKind.localizedName }
+    /// Localized time-remaining text for display
+    var timeRemainingLocalized: String { timeRemainingState.localized }
+    /// Backward-compatible accessor: whether time remaining is present
+    var timeRemaining: BatteryTimeRemaining { timeRemainingState }
     
     private var refreshTimer: Timer?
     
@@ -112,11 +160,11 @@ final class BatteryMonitor: ObservableObject {
         let temp = Double(tempCentiDegrees) / 100.0
         
         // Determine condition based on health
-        let conditionStr = getCondition(healthPercent: healthPercent, isCharging: isCharging)
-        
-        // Format time remaining
-        let timeStr = formatTimeRemaining(timeRemaining)
-        
+        let conditionKind = getCondition(healthPercent: healthPercent, isCharging: isCharging)
+
+        // Compute time remaining state
+        let timeState: BatteryTimeRemaining = timeRemaining > 0 ? .minutes(timeRemaining) : .calculating
+
         // Update all published properties
         await MainActor.run {
             self.isCharging = isCharging
@@ -129,8 +177,8 @@ final class BatteryMonitor: ObservableObject {
             self.designCapacity = designCap
             self.healthPercent = max(0, min(100, healthPercent))
             self.temperature = temp
-            self.condition = conditionStr
-            self.timeRemaining = timeStr
+            self.conditionKind = conditionKind
+            self.timeRemainingState = timeState
         }
     }
     
@@ -146,34 +194,21 @@ final class BatteryMonitor: ObservableObject {
                 self.designCapacity = 0
                 self.healthPercent = 0
                 self.temperature = 0.0
-                self.condition = "Desktop"
-                self.timeRemaining = "N/A"
+                self.conditionKind = .desktop
+                self.timeRemainingState = .notApplicable
             }
         }
     }
-    
-    private func getCondition(healthPercent: Int, isCharging: Bool) -> String {
+
+    private func getCondition(healthPercent: Int, isCharging: Bool) -> BatteryCondition {
         if healthPercent >= 100 {
-            return "正常" // Normal
+            return .normal
         } else if healthPercent >= 80 {
-            return "良好" // Good
+            return .good
         } else if healthPercent >= 60 {
-            return "警告" // Warning
+            return .warning
         } else {
-            return "交換推奨" // Replace recommended
-        }
-    }
-    
-    private func formatTimeRemaining(_ minutes: Int) -> String {
-        guard minutes > 0 else { return "計算中" } // Calculating
-        
-        let hours = minutes / 60
-        let mins = minutes % 60
-        
-        if hours > 0 {
-            return String(format: "%d時間 %d分", hours, mins)
-        } else {
-            return String(format: "%d分", mins)
+            return .replace
         }
     }
 }

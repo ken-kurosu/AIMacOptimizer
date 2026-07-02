@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// Maps the internal Japanese risk token ("高"/"中"/"低") to a localized label.
+func localizedRisk(_ risk: String) -> String {
+    switch risk {
+    case "高": return L10n.riskHigh
+    case "中": return L10n.riskMid
+    case "低": return L10n.riskLo
+    default: return risk
+    }
+}
+
 /// Deep Diagnosis tab view — shows diagnosis results with overall score
 struct DiagnosisView: View {
     @ObservedObject var engine: DeepDiagnosisEngine
@@ -40,19 +50,19 @@ struct DiagnosisView: View {
             Image(systemName: "stethoscope")
                 .font(.system(size: 40))
                 .foregroundColor(.blue)
-            Text("Deep Diagnosis")
+            Text(L10n.deepDiagnosis)
                 .font(.headline)
-            Text("CPU・メモリ・ストレージ・iCloud同期など\n9項目を包括的に診断します")
+            Text(L10n.deepDiagnosisDesc)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-            
+
             Button(action: {
                 Task { await engine.runFullDiagnosis() }
             }) {
                 HStack {
                     Image(systemName: "play.fill")
-                    Text("診断を開始")
+                    Text(L10n.startDiagnosis)
                         .fontWeight(.medium)
                 }
                 .frame(maxWidth: .infinity)
@@ -139,7 +149,7 @@ struct DiagnosisView: View {
                     } else {
                         Image(systemName: "wand.and.stars")
                     }
-                    Text(isFixing ? "修復中..." : "全て修復 (\(fixableCount)件)")
+                    Text(isFixing ? L10n.fixing : L10n.fixAll(count: fixableCount))
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
@@ -149,8 +159,8 @@ struct DiagnosisView: View {
             .tint(.green)
             .disabled(isFixing)
             .padding(.horizontal, 16)
-            
-            Text("自動修復可能な項目をまとめて実行し、再診断します")
+
+            Text(L10n.fixAllDesc)
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
@@ -163,7 +173,7 @@ struct DiagnosisView: View {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
-                Text("修復完了")
+                Text(L10n.fixComplete)
                     .font(.caption)
                     .fontWeight(.bold)
                 Spacer()
@@ -187,11 +197,11 @@ struct DiagnosisView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 11))
                         .foregroundColor(.orange)
-                    Text("個別の承認が必要な操作")
+                    Text(L10n.approvalRequired)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.orange)
                 }
-                Text("以下はリスクがあるため自動実行していません。内容を確認して、実行するものだけ承認してください。")
+                Text(L10n.approvalRequiredDesc)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
@@ -206,21 +216,21 @@ struct DiagnosisView: View {
                                 .lineLimit(2)
                         }
                         if let risk = finding.rawData["risk"], let detail = finding.rawData["risk_detail"] {
-                            Text("終了リスク \(risk)：\(detail)")
+                            Text(L10n.quitRiskLabel(risk: localizedRisk(risk), detail: detail))
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         HStack(spacing: 8) {
                             Spacer()
-                            Button("スキップ") {
+                            Button(L10n.skip) {
                                 pendingRisky.removeAll { $0.id == finding.id }
                             }
                             .font(.system(size: 10, weight: .medium))
                             .buttonStyle(.bordered)
                             .controlSize(.small)
 
-                            Button("承認して実行") {
+                            Button(L10n.approveAndRun) {
                                 Task {
                                     let msg = await engine.executeFix(for: finding)
                                     riskyResults.append(msg)
@@ -256,7 +266,7 @@ struct DiagnosisView: View {
     private func scoreHeader(_ report: DiagnosisReport) -> some View {
         VStack(spacing: 8) {
             HStack {
-                Text("診断結果")
+                Text(L10n.diagnosisResult)
                     .font(.headline)
                 Spacer()
                 Text(report.timestamp, style: .time)
@@ -322,15 +332,15 @@ struct DiagnosisView: View {
                         .font(.system(size: 12))
                         .foregroundColor(.yellow)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Proでもっと活用")
+                        Text(L10n.proMoreValue)
                             .font(.system(size: 11, weight: .semibold))
-                        Text("AIチャット・無制限診断・自動最適化")
+                        Text(L10n.proMoreValueDesc)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
                     Button(action: { SettingsWindowController.shared.showSettings() }) {
-                        Text("アップグレード")
+                        Text(L10n.upgrade)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 8)
@@ -354,7 +364,7 @@ struct DiagnosisView: View {
             Button(action: onOpenChat) {
                 HStack {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                    Text("AIに相談する")
+                    Text(L10n.askAI)
                         .fontWeight(.medium)
                 }
                 .frame(maxWidth: .infinity)
@@ -369,7 +379,7 @@ struct DiagnosisView: View {
             }) {
                 HStack {
                     Image(systemName: "arrow.clockwise")
-                    Text("再診断")
+                    Text(L10n.reDiagnose)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -423,7 +433,7 @@ struct FindingRow: View {
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
                             .lineLimit(2)
-                        Text(finding.category.rawValue)
+                        Text(finding.category.localizedName)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
@@ -464,7 +474,7 @@ struct FindingRow: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "info.circle")
                                     .font(.system(size: 10))
-                                Text(showProcessDetail ? "詳細を閉じる" : "詳細を確認")
+                                Text(showProcessDetail ? L10n.closeDetail : L10n.showDetail)
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .foregroundColor(.blue)
@@ -483,7 +493,7 @@ struct FindingRow: View {
                                         Image(systemName: "exclamationmark.shield.fill")
                                             .font(.system(size: 9))
                                             .foregroundColor(riskColor(risk))
-                                        Text("終了リスク: \(risk)")
+                                        Text(L10n.quitRiskInline(localizedRisk(risk)))
                                             .font(.system(size: 10, weight: .bold))
                                             .foregroundColor(riskColor(risk))
                                     }

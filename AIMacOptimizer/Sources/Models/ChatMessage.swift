@@ -50,7 +50,13 @@ enum AIProvider: String, Codable, CaseIterable {
     /// Apple オンデバイスLLM（無料・キー不要、対応OS/チップのみ）
     case appleOnDevice = "オンデバイスAI（無料）"
 
-    var displayName: String { rawValue }
+    /// Localized display name (rawValue kept stable for Codable)
+    var displayName: String {
+        switch self {
+        case .local: return L10n.providerLocal
+        case .appleOnDevice: return L10n.providerAppleOnDevice
+        }
+    }
 
     /// 有料API相談モードは廃止。全プロバイダが無料・キー不要・ランニングコスト0。
     var requiresAPIKey: Bool { false }

@@ -54,19 +54,19 @@ struct HealthTrendView: View {
                 Image(systemName: "waveform.path.ecg")
                     .font(.system(size: 12))
                     .foregroundColor(.blue)
-                Text("健康状態の推移")
+                Text(L10n.healthTrend)
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 Picker("", selection: $rangeHours) {
-                    Text("24時間").tag(24.0)
-                    Text("7日").tag(168.0)
+                    Text(L10n.last24h).tag(24.0)
+                    Text(L10n.last7d).tag(168.0)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 130)
             }
 
             if data.count < 2 {
-                Text("データ収集中です。バックグラウンドで10分ごとに記録し、しばらくすると推移が表示されます。")
+                Text(L10n.collectingData)
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -80,15 +80,15 @@ struct HealthTrendView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 2)
 
-                metricRow("メモリ使用率", values: data.map(\.memUsedPercent), unit: "%", color: .blue)
+                metricRow(L10n.memoryUsagePercent, values: data.map(\.memUsedPercent), unit: "%", color: .blue)
                 // Swap は大きいと GB 表示（他画面の単位表記と揃える）
                 if (data.map(\.swapMB).max() ?? 0) >= 1024 {
-                    metricRow("Swap", values: data.map { $0.swapMB / 1024 }, unit: "GB", color: .orange)
+                    metricRow(L10n.swap, values: data.map { $0.swapMB / 1024 }, unit: "GB", color: .orange)
                 } else {
-                    metricRow("Swap", values: data.map(\.swapMB), unit: "MB", color: .orange)
+                    metricRow(L10n.swap, values: data.map(\.swapMB), unit: "MB", color: .orange)
                 }
-                metricRow("ディスク空き", values: data.map(\.diskFreePercent), unit: "%", color: .green)
-                metricRow("CPU負荷", values: data.map(\.loadAvg1), unit: "", color: .red)
+                metricRow(L10n.diskFree, values: data.map(\.diskFreePercent), unit: "%", color: .green)
+                metricRow(L10n.cpuLoad, values: data.map(\.loadAvg1), unit: "", color: .red)
             }
         }
         .padding(10)
@@ -109,7 +109,7 @@ struct HealthTrendView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(.system(size: 10, weight: .medium))
-                Text("平均\(fmt(avg))\(unitSuffix) ・ \(fmt(minV))〜\(fmt(maxV))")
+                Text(L10n.trendStat(avg: fmt(avg), unit: unitSuffix, minV: fmt(minV), maxV: fmt(maxV)))
                     .font(.system(size: 8))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -125,7 +125,7 @@ struct HealthTrendView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(color)
                     .monospacedDigit()
-                Text("現在")
+                Text(L10n.current_)
                     .font(.system(size: 7))
                     .foregroundColor(.secondary)
             }
@@ -144,17 +144,17 @@ struct HealthTrendView: View {
         let spanHours = last.timeIntervalSince(first) / 3600
         let spanText: String
         if spanHours >= 24 {
-            spanText = String(format: "実データ 直近%.1f日", spanHours / 24)
+            spanText = L10n.coverageSpanDays(String(format: "%.1f", spanHours / 24))
         } else if spanHours >= 1 {
-            spanText = String(format: "実データ 直近%.1f時間", spanHours)
+            spanText = L10n.coverageSpanHours(String(format: "%.1f", spanHours))
         } else {
-            spanText = String(format: "実データ 直近%.0f分", spanHours * 60)
+            spanText = L10n.coverageSpanMinutes(String(format: "%.0f", spanHours * 60))
         }
         // 選択期間に対してデータが足りているか（9割未満なら「まだ揃っていない」と案内）
-        let reqLabel = requestedHours >= 48 ? String(format: "%.0f日", requestedHours / 24) : "24時間"
+        let reqLabel = requestedHours >= 48 ? L10n.rangeLabelDays(String(format: "%.0f", requestedHours / 24)) : L10n.rangeLabel24h
         if spanHours < requestedHours * 0.9 {
-            return "\(spanText) / \(data.count)件（まだ\(reqLabel)分そろっていません。記録が増えると差が出ます）"
+            return L10n.coverageIncomplete(span: spanText, count: data.count, reqLabel: reqLabel)
         }
-        return "\(spanText) / \(data.count)件を表示"
+        return L10n.coverageComplete(span: spanText, count: data.count)
     }
 }

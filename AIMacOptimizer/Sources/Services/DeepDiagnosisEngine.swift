@@ -24,14 +24,14 @@ final class DeepDiagnosisEngine: ObservableObject {
         var allFindings: [DiagnosisFinding] = []
 
         let steps: [(String, () async -> [DiagnosisFinding])] = [
-            ("CPU負荷を分析中...", diagnoseCPU),
-            ("メモリ状態を分析中...", diagnoseMemory),
-            ("ストレージ容量を分析中...", diagnoseDisk),
-            ("iCloud同期を確認中...", diagnoseICloudSync),
-            ("セキュリティソフトを確認中...", diagnoseSecuritySoftware),
-            ("開発ツールを確認中...", diagnoseDevTools),
-            ("ブラウザ・アプリを分析中...", diagnoseBrowserApps),
-            ("ログイン項目を確認中...", diagnoseLoginItems),
+            (L10n.diagStepCPU, diagnoseCPU),
+            (L10n.diagStepMemory, diagnoseMemory),
+            (L10n.diagStepDisk, diagnoseDisk),
+            (L10n.diagStepICloud, diagnoseICloudSync),
+            (L10n.diagStepSecurity, diagnoseSecuritySoftware),
+            (L10n.diagStepDevTools, diagnoseDevTools),
+            (L10n.diagStepBrowserApps, diagnoseBrowserApps),
+            (L10n.diagStepLoginItems, diagnoseLoginItems),
         ]
 
         for (i, step) in steps.enumerated() {
@@ -42,7 +42,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         }
 
         // 9. Composite score
-        currentStep = "総合スコアを算出中..."
+        currentStep = L10n.diagStepScore
         let score = calculateOverallScore(findings: allFindings)
         progress = 1.0
 

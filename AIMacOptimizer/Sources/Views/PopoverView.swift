@@ -29,7 +29,7 @@ struct PopoverView: View {
                 Picker("", selection: $selectedTab) {
                     Text(L10n.memoryUsage).tag(0)
                     Text(L10n.storageUsage).tag(1)
-                    Text("ツール").tag(3)
+                    Text(L10n.tools).tag(3)
                     Text(L10n.diagnosis).tag(2)
                 }
                 .pickerStyle(.segmented)
@@ -80,7 +80,7 @@ struct PopoverView: View {
             Spacer()
             if !license.currentTier.isPro {
                 Button(action: { openSettings(initialTab: 1) }) {
-                    Text("Pro にアップグレード")
+                    Text(L10n.upgradeToPro)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
@@ -193,7 +193,7 @@ struct MemoryTabView: View {
     }
 
     private var severityBadge: some View {
-        Text(monitor.systemMemory.severity.rawValue)
+        Text(monitor.systemMemory.severity.localizedName)
             .font(.caption)
             .fontWeight(.medium)
             .padding(.horizontal, 8)
@@ -234,7 +234,7 @@ struct MemoryTabView: View {
 
             if monitor.topProcesses.count > 8 {
                 Button(action: { withAnimation(.easeInOut(duration: 0.2)) { showAllProcesses.toggle() } }) {
-                    Text(showAllProcesses ? "閉じる" : "もっと見る（上位\(monitor.topProcesses.count)件）")
+                    Text(showAllProcesses ? L10n.showMore : L10n.showTopProcesses(count: monitor.topProcesses.count))
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.blue)
                 }
@@ -312,7 +312,7 @@ struct MemoryTabView: View {
                 Image(systemName: "sparkles")
                     .foregroundColor(.blue)
                     .font(.system(size: 10))
-                Text("おすすめ")
+                Text(L10n.recommendations)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -446,13 +446,13 @@ struct MemoryTabView: View {
             mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb)
         }
         var parts: [String] = []
-        if result.freedMB >= 1 { parts.append("メモリ約 \(fmt(result.freedMB))") }
-        if result.freedDiskMB >= 1 { parts.append("ディスク約 \(fmt(result.freedDiskMB))") }
+        if result.freedMB >= 1 { parts.append(L10n.memoryAmount(fmt(result.freedMB))) }
+        if result.freedDiskMB >= 1 { parts.append(L10n.diskAmount(fmt(result.freedDiskMB))) }
         if parts.isEmpty {
             // 実測の増分が誤差レベル（例: パージのみ）の場合は数値を断定しない
-            return "最適化を実行しました"
+            return L10n.optimizeDone
         }
-        return parts.joined(separator: " ／ ") + " を解放しました"
+        return L10n.optimizeResult(parts.joined(separator: " ／ "))
     }
 }
 
@@ -478,7 +478,7 @@ struct SuggestionExpandableRow: View {
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
                         // 上限の目安であることを明示（実際の解放量は実行後に実測値で表示する）
-                        Text("最大 約\(suggestion.savingFormatted)（目安）")
+                        Text(L10n.maxSavingEstimate(suggestion.savingFormatted))
                             .font(.caption2)
                             .foregroundColor(.green)
                     }
@@ -539,7 +539,7 @@ struct SuggestionDetailRow: View {
                         .foregroundColor(item.isSelected ? .primary : .secondary)
 
                     if item.isRecommended {
-                        Text("推奨")
+                        Text(L10n.recommended)
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 4)
@@ -592,14 +592,14 @@ struct StorageTabView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.blue)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("ストレージ自動削除: 有効")
+                        Text(L10n.storageAutoCleanEnabled)
                             .font(.system(size: 11, weight: .semibold))
-                        Text("圧迫時に安全なキャッシュ/ログを自動削除し通知します")
+                        Text(L10n.storageAutoCleanDesc)
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
-                    Button("停止") {
+                    Button(L10n.stop) {
                         diskGuard.settings.autoClean = false
                     }
                     .font(.system(size: 10, weight: .medium))
@@ -620,7 +620,7 @@ struct StorageTabView: View {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.orange)
                             .font(.system(size: 14))
-                        Text("確認")
+                        Text(L10n.confirm)
                             .font(.caption)
                             .fontWeight(.semibold)
                         Spacer()
@@ -630,7 +630,7 @@ struct StorageTabView: View {
                     let sizeStr = totalSizeMB >= 1024
                         ? String(format: "%.1f GB", totalSizeMB / 1024)
                         : String(format: "%.0f MB", totalSizeMB)
-                    Text("\(confirmParentName) から \(confirmSubItems.count)件 (\(sizeStr)) を\(action.rawValue)しますか？")
+                    Text(L10n.confirmStorageAction(parent: confirmParentName, count: confirmSubItems.count, size: sizeStr, action: action.localizedName))
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -642,7 +642,7 @@ struct StorageTabView: View {
                             confirmAction = nil
                             confirmCategory = nil
                         } label: {
-                            Text("キャンセル")
+                            Text(L10n.cancel)
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .buttonStyle(.bordered)
@@ -651,7 +651,7 @@ struct StorageTabView: View {
                         Button {
                             executeConfirmedAction()
                         } label: {
-                            Text(action.rawValue)
+                            Text(action.localizedName)
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .buttonStyle(.borderedProminent)
@@ -685,7 +685,7 @@ struct StorageTabView: View {
                 }
                 Spacer()
 
-                Button("スキャン開始") {
+                Button(L10n.startScan) {
                     Task { await analyzer.scan() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -722,16 +722,16 @@ struct StorageTabView: View {
                 Image(systemName: "internaldrive.fill")
                     .foregroundColor(.orange)
                     .font(.system(size: 14))
-                Text("ストレージ圧迫を検知")
+                Text(L10n.storagePressureDetected)
                     .font(.caption)
                     .fontWeight(.semibold)
                 Spacer()
-                Text("使用 \(Int(plan.usagePercentBefore))% / 空き \(String(format: "%.1f", plan.freeGBBefore))GB")
+                Text(L10n.storageUsageSummary(percent: Int(plan.usagePercentBefore), freeGB: String(format: "%.1f", plan.freeGBBefore)))
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
 
-            Text("リスクのないキャッシュ/ログを約 \(plan.totalFormatted) 安全に削除できます。")
+            Text(L10n.safeCleanupAvailable(plan.totalFormatted))
                 .font(.system(size: 11))
                 .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -750,7 +750,7 @@ struct StorageTabView: View {
                                     Text(item.name)
                                         .font(.system(size: 10, weight: .medium))
                                         .lineLimit(1)
-                                    Text(item.safety.rawValue)
+                                    Text(item.safety.localizedName)
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundColor(safetyColor(item.safety))
                                     Spacer()
@@ -770,7 +770,7 @@ struct StorageTabView: View {
             .frame(maxHeight: 110)
 
             Toggle(isOn: $enableAutoFromNow) {
-                Text("今後、圧迫を検知したら自動で空ける（通知のみ）")
+                Text(L10n.autoCleanFromNow)
                     .font(.system(size: 10))
             }
             .toggleStyle(.checkbox)
@@ -779,7 +779,7 @@ struct StorageTabView: View {
                 Button {
                     diskGuard.dismissPendingPlan()
                 } label: {
-                    Text("後で")
+                    Text(L10n.later)
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.bordered)
@@ -790,9 +790,9 @@ struct StorageTabView: View {
                 Button {
                     diskGuard.approvePendingPlan(enableAutoFromNow: enableAutoFromNow)
                     // 実際の解放量は削除完了後に通知でお知らせ（ここでは見込み値を断定しない）
-                    cleanupMessage = "ストレージの掃除を実行しました（結果は通知でお知らせします）"
+                    cleanupMessage = L10n.cleanupStarted
                 } label: {
-                    Text("今すぐ安全に空ける（\(plan.totalFormatted)）")
+                    Text(L10n.cleanNowSafely(plan.totalFormatted))
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
@@ -823,9 +823,9 @@ struct StorageTabView: View {
                 .foregroundColor(.orange)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("削除にはProが必要です")
+                Text(L10n.proRequiredForDeletion)
                     .font(.system(size: 11, weight: .semibold))
-                Text("スキャン結果の確認はFreeでもOK")
+                Text(L10n.scanResultsFreeOK)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
@@ -833,7 +833,7 @@ struct StorageTabView: View {
             Spacer()
 
             Button(action: { openSettings(initialTab: 1) }) {
-                Text("Pro へ")
+                Text(L10n.toPro)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
@@ -907,7 +907,7 @@ struct StorageTabView: View {
                             if parentItem.category == .cache || parentItem.category == .log {
                                 let result = analyzer.clearSelectedSubItems(selectedSubs)
                                 if result.success > 0 {
-                                    cleanupMessage = "✅ \(result.success)件をクリアしました"
+                                    cleanupMessage = L10n.clearedCount(result.success)
                                     Task {
                                         await analyzer.scan()
                                         analyzer.storageInfo = analyzer.getStorageInfo()
@@ -939,16 +939,16 @@ struct StorageTabView: View {
         }
 
         if result.success > 0 {
-            cleanupMessage = "✅ \(result.success)件を\(action.rawValue)しました"
+            cleanupMessage = L10n.actionDoneCount(result.success, action: action.localizedName)
             if result.failed > 0 {
-                cleanupMessage! += " (❌ \(result.failed)件失敗)"
+                cleanupMessage! += L10n.actionFailedCount(result.failed)
             }
             Task {
                 await analyzer.scan()
                 analyzer.storageInfo = analyzer.getStorageInfo()
             }
         } else {
-            cleanupMessage = "❌ 操作に失敗しました"
+            cleanupMessage = L10n.operationFailed
         }
 
         confirmSubItems = []
@@ -999,7 +999,7 @@ struct StorageExpandableRow: View {
                     Text(item.name)
                         .font(.caption)
                         .lineLimit(1)
-                    Text(item.category.rawValue)
+                    Text(item.category.localizedName)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -1014,20 +1014,20 @@ struct StorageExpandableRow: View {
                 if isProUser {
                     Menu {
                         if item.category == .cache || item.category == .log {
-                            Button("チェック済みをクリア") {
+                            Button(L10n.clearChecked) {
                                 let targets = selectedOrAllSubItems()
                                 guard !targets.isEmpty else { return }
                                 onSubItemAction(item, targets, .delete)
                             }
                             .disabled(subItemsLoaded && item.subItems.filter(\.isSelected).isEmpty)
                         } else {
-                            Button("チェック済みをゴミ箱に移動") {
+                            Button(L10n.moveCheckedToTrash) {
                                 let targets = selectedOrAllSubItems()
                                 guard !targets.isEmpty else { return }
                                 onSubItemAction(item, targets, .moveToTrash)
                             }
                             .disabled(subItemsLoaded && item.subItems.filter(\.isSelected).isEmpty)
-                            Button("チェック済みをiCloudに退避") {
+                            Button(L10n.moveCheckedToICloud) {
                                 let targets = selectedOrAllSubItems()
                                 guard !targets.isEmpty else { return }
                                 onSubItemAction(item, targets, .moveToICloud)
@@ -1057,7 +1057,7 @@ struct StorageExpandableRow: View {
                 if item.subItems.isEmpty {
                     HStack {
                         Spacer()
-                        Text("ファイルがありません")
+                        Text(L10n.noFiles)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                         Spacer()
@@ -1075,7 +1075,7 @@ struct StorageExpandableRow: View {
                             if !selectedSubs.isEmpty {
                                 Divider().padding(.vertical, 4)
                                 HStack(spacing: 8) {
-                                    Text("\(selectedSubs.count)件 選択中")
+                                    Text(L10n.selectedCount(selectedSubs.count))
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                     Spacer()
@@ -1083,7 +1083,7 @@ struct StorageExpandableRow: View {
                                         Button {
                                             onSubItemAction(item, selectedSubs, .delete)
                                         } label: {
-                                            Text("クリア")
+                                            Text(L10n.clear)
                                                 .font(.system(size: 11, weight: .medium))
                                         }
                                         .buttonStyle(.borderedProminent)
@@ -1093,7 +1093,7 @@ struct StorageExpandableRow: View {
                                         Button {
                                             onSubItemAction(item, selectedSubs, .moveToTrash)
                                         } label: {
-                                            Text("ゴミ箱へ")
+                                            Text(L10n.toTrash)
                                                 .font(.system(size: 11, weight: .medium))
                                         }
                                         .buttonStyle(.borderedProminent)
@@ -1103,7 +1103,7 @@ struct StorageExpandableRow: View {
                                         Button {
                                             onSubItemAction(item, selectedSubs, .moveToICloud)
                                         } label: {
-                                            Text("iCloud")
+                                            Text(L10n.iCloud)
                                                 .font(.system(size: 11, weight: .medium))
                                         }
                                         .buttonStyle(.bordered)
@@ -1159,7 +1159,7 @@ struct StorageSubItemRow: View {
                         .foregroundColor(subItem.isSelected ? .primary : .secondary)
 
                     if subItem.isRecommended {
-                        Text("推奨")
+                        Text(L10n.recommended)
                             .font(.system(size: 8, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 4)
@@ -1198,8 +1198,8 @@ struct ToolsTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $selectedSection) {
-                Text("バッテリー").tag(0)
-                Text("アプリ管理").tag(1)
+                Text(L10n.battery).tag(0)
+                Text(L10n.appManagement).tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -1221,10 +1221,10 @@ struct ToolsTabView: View {
                     // Battery gauge
                     VStack(spacing: 8) {
                         HStack {
-                            Text("バッテリーヘルス")
+                            Text(L10n.batteryHealth)
                                 .font(.headline)
                             Spacer()
-                            Text(batteryMonitor.condition)
+                            Text(batteryMonitor.conditionLocalized)
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 8)
@@ -1246,7 +1246,7 @@ struct ToolsTabView: View {
                                 Text("\(batteryMonitor.healthPercent)%")
                                     .font(.system(size: 24, weight: .bold, design: .rounded))
                                     .foregroundColor(batteryHealthColor)
-                                Text("健康度")
+                                Text(L10n.healthLevel)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -1257,17 +1257,17 @@ struct ToolsTabView: View {
                     
                     // Battery details grid
                     VStack(spacing: 6) {
-                        batteryRow("充電状態", batteryMonitor.isCharging ? "充電中" : "バッテリー使用中", 
+                        batteryRow(L10n.chargingStatus, batteryMonitor.isCharging ? L10n.charging : L10n.onBattery,
                                    icon: batteryMonitor.isCharging ? "bolt.fill" : "battery.100")
-                        batteryRow("バッテリー残量", "\(batteryMonitor.batteryLevel)%", icon: "battery.75")
-                        batteryRow("充電サイクル", "\(batteryMonitor.cycleCount)回", icon: "arrow.triangle.2.circlepath")
-                        batteryRow("最大容量", "\(batteryMonitor.maxCapacity) mAh", icon: "bolt.batteryblock")
-                        batteryRow("設計容量", "\(batteryMonitor.designCapacity) mAh", icon: "square.and.pencil")
+                        batteryRow(L10n.batteryLevel, "\(batteryMonitor.batteryLevel)%", icon: "battery.75")
+                        batteryRow(L10n.chargeCycles, L10n.cycleCountValue(batteryMonitor.cycleCount), icon: "arrow.triangle.2.circlepath")
+                        batteryRow(L10n.maxCapacity, "\(batteryMonitor.maxCapacity) mAh", icon: "bolt.batteryblock")
+                        batteryRow(L10n.designCapacity, "\(batteryMonitor.designCapacity) mAh", icon: "square.and.pencil")
                         if batteryMonitor.temperature > 0 {
-                            batteryRow("温度", String(format: "%.1f°C", batteryMonitor.temperature), icon: "thermometer.medium")
+                            batteryRow(L10n.temperature, String(format: "%.1f°C", batteryMonitor.temperature), icon: "thermometer.medium")
                         }
                         if !batteryMonitor.timeRemaining.isEmpty {
-                            batteryRow("残り時間", batteryMonitor.timeRemaining, icon: "clock")
+                            batteryRow(L10n.timeRemainingLabel, batteryMonitor.timeRemainingLocalized, icon: "clock")
                         }
                     }
                     .padding(.horizontal)
@@ -1278,12 +1278,12 @@ struct ToolsTabView: View {
                             Image(systemName: "lightbulb.fill")
                                 .font(.system(size: 10))
                                 .foregroundColor(.yellow)
-                            Text("バッテリーのコツ")
+                            Text(L10n.batteryTips)
                                 .font(.system(size: 11, weight: .medium))
                         }
-                        Text(batteryMonitor.cycleCount > 800 
-                            ? "充電サイクルが800回を超えています。バッテリー交換を検討してください。" 
-                            : "20%～80%の範囲で使うとバッテリー寿命が延びます。")
+                        Text(batteryMonitor.cycleCount > 800
+                            ? L10n.batteryTipReplace
+                            : L10n.batteryTipRange)
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
                     }
@@ -1298,9 +1298,9 @@ struct ToolsTabView: View {
                         Image(systemName: "desktopcomputer")
                             .font(.system(size: 40))
                             .foregroundColor(.secondary)
-                        Text("バッテリー非搭載")
+                        Text(L10n.noBattery)
                             .font(.headline)
-                        Text("このMacにはバッテリーが搭載されていません")
+                        Text(L10n.noBatteryDesc)
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -1336,10 +1336,11 @@ struct ToolsTabView: View {
     }
     
     private var batteryConditionColor: Color {
-        switch batteryMonitor.condition {
-        case "正常", "良好": return .green
-        case "警告": return .orange
-        default: return .red
+        switch batteryMonitor.conditionKind {
+        case .normal, .good: return .green
+        case .warning: return .orange
+        case .replace: return .red
+        case .unknown, .desktop: return .secondary
         }
     }
     
@@ -1350,7 +1351,7 @@ struct ToolsTabView: View {
                 VStack(spacing: 12) {
                     Spacer().frame(height: 60)
                     ProgressView()
-                    Text("アプリをスキャン中...")
+                    Text(L10n.scanningApps)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
@@ -1361,9 +1362,9 @@ struct ToolsTabView: View {
                     Image(systemName: "app.badge.checkmark")
                         .font(.system(size: 36))
                         .foregroundColor(.blue)
-                    Text("アプリ管理")
+                    Text(L10n.appManagement)
                         .font(.headline)
-                    Text("インストール済みアプリと残留ファイルを検出")
+                    Text(L10n.detectLeftovers)
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Button(action: {
@@ -1371,7 +1372,7 @@ struct ToolsTabView: View {
                     }) {
                         HStack {
                             Image(systemName: "magnifyingglass")
-                            Text("スキャン開始")
+                            Text(L10n.startScan)
                                 .fontWeight(.medium)
                         }
                         .frame(maxWidth: .infinity)
@@ -1386,13 +1387,13 @@ struct ToolsTabView: View {
                 // App list with leftover info
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("\(uninstaller.apps.count)個のアプリ")
+                        Text(L10n.appsCount(uninstaller.apps.count))
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Spacer()
                         let totalLeftover = uninstaller.apps.reduce(0.0) { $0 + $1.leftoverSizeMB }
                         if totalLeftover > 0 {
-                            Text("残留ファイル: \(formatSize(totalLeftover))")
+                            Text(L10n.leftoverTotal(formatSize(totalLeftover)))
                                 .font(.system(size: 10))
                                 .foregroundColor(.orange)
                         }
@@ -1473,11 +1474,11 @@ struct AppUninstallRow: View {
                             .lineLimit(1)
                         HStack(spacing: 4) {
                             if app.leftoverSizeMB > 0 {
-                                Text("残留: " + formatSize(app.leftoverSizeMB))
+                                Text(L10n.leftoverLabel(formatSize(app.leftoverSizeMB)))
                                     .font(.system(size: 9))
                                     .foregroundColor(.orange)
                             }
-                            Text("合計: " + formatSize(app.totalSizeMB))
+                            Text(L10n.totalLabel(formatSize(app.totalSizeMB)))
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
                         }
@@ -1494,13 +1495,13 @@ struct AppUninstallRow: View {
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     // 「残留ファイル」とは何かの説明
-                    Text("「残留ファイル」＝このアプリが残した設定・キャッシュ・ログなどの補助データです。アプリを消しても残りがちで、少しずつ容量を圧迫します。")
+                    Text(L10n.leftoverExplanation)
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !app.leftovers.isEmpty {
-                        Text("残留ファイル（\(app.leftovers.count)件 / \(formatSize(app.leftoverSizeMB))） — 項目ごとに種類・リスクが違います。残すものはチェックを外してください")
+                        Text(L10n.leftoverHeader(count: app.leftovers.count, size: formatSize(app.leftoverSizeMB)))
                             .font(.system(size: 10, weight: .medium))
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(app.leftovers) { item in
@@ -1517,7 +1518,7 @@ struct AppUninstallRow: View {
                                         HStack(spacing: 4) {
                                             Text(item.category)
                                                 .font(.system(size: 10, weight: .medium))
-                                            Text("リスク\(item.risk.rawValue)")
+                                            Text(L10n.leftoverRiskLabel(item.risk.localizedName))
                                                 .font(.system(size: 8, weight: .bold))
                                                 .foregroundColor(leftoverRiskColor(item.risk))
                                             Spacer()
@@ -1550,18 +1551,18 @@ struct AppUninstallRow: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 if app.leftoverSizeMB > 0 {
                                     actionChoice(
-                                        title: "残留削除",
+                                        title: L10n.leftoverRemoveTitle,
                                         tint: .orange,
-                                        risk: "リスク低",
-                                        desc: "アプリ本体は残し、残留ファイルだけをゴミ箱へ。アプリは引き続き使えます。",
+                                        risk: L10n.riskLow,
+                                        desc: L10n.leftoverRemoveDesc,
                                         action: { pendingAction = .leftoversOnly }
                                     )
                                 }
                                 actionChoice(
-                                    title: "アンインストール",
+                                    title: L10n.uninstallTitle,
                                     tint: .red,
-                                    risk: "リスク中",
-                                    desc: "アプリ本体＋残留ファイルをまとめてゴミ箱へ。このアプリは使えなくなります（再び使うには再インストールが必要）。",
+                                    risk: L10n.riskMedium,
+                                    desc: L10n.uninstallDesc,
                                     action: { pendingAction = .uninstall }
                                 )
                             }
@@ -1570,7 +1571,7 @@ struct AppUninstallRow: View {
                         HStack(spacing: 4) {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 9))
-                            Text("Pro機能")
+                            Text(L10n.proFeature)
                                 .font(.system(size: 9))
                         }
                         .foregroundColor(.orange)
@@ -1628,25 +1629,25 @@ struct AppUninstallRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 11))
                     .foregroundColor(isUninstall ? .red : .orange)
-                Text(isUninstall ? "アンインストールしますか？" : "残留ファイルを削除しますか？")
+                Text(isUninstall ? L10n.uninstallConfirmTitle : L10n.removeLeftoversConfirmTitle)
                     .font(.system(size: 11, weight: .bold))
             }
             Text(isUninstall
-                ? "「\(app.name)」の本体と残留ファイルをゴミ箱へ移動します。アプリは使えなくなります（再び使うには再インストールが必要）。"
-                : "選択した残留 \(selectedLeftoverPaths.count)件 をゴミ箱へ移動します。アプリ本体は残り、引き続き使えます。チェックを外した項目は削除しません。")
+                ? L10n.uninstallConfirmDesc(app: app.name)
+                : L10n.removeLeftoversConfirmDesc(count: selectedLeftoverPaths.count))
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("いずれもゴミ箱へ移動するだけなので、ゴミ箱を空にするまでは元に戻せます。")
+            Text(L10n.trashRecoverable)
                 .font(.system(size: 9))
                 .foregroundColor(.secondary)
             HStack(spacing: 8) {
-                Button("キャンセル") { pendingAction = nil }
+                Button(L10n.cancel) { pendingAction = nil }
                     .font(.system(size: 10, weight: .medium))
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 Spacer()
-                Button(isUninstall ? "アンインストールする" : "残留を削除する") {
+                Button(isUninstall ? L10n.uninstallAction : L10n.removeLeftoversAction) {
                     executeAction(pending)
                 }
                 .font(.system(size: 10, weight: .semibold))
@@ -1665,14 +1666,14 @@ struct AppUninstallRow: View {
         switch pending {
         case .leftoversOnly:
             let result = uninstaller.removeLeftovers(paths: selectedLeftoverPaths)
-            resultMessage = "残留ファイル \(result.removedCount)件をゴミ箱へ移動（約\(formatSize(result.freedMB))）"
-                + (result.errors.isEmpty ? "" : "／一部失敗 \(result.errors.count)件")
+            resultMessage = L10n.leftoversMovedResult(count: result.removedCount, freed: formatSize(result.freedMB))
+                + (result.errors.isEmpty ? "" : L10n.partialFailure(result.errors.count))
         case .uninstall:
             // チェックを外した残留は削除しない（leftoversOnly と同じ選択集合を渡す）
             let result = uninstaller.uninstallApp(app, leftoverPaths: selectedLeftoverPaths)
             resultMessage = result.errors.isEmpty
-                ? "「\(app.name)」をゴミ箱へ移動しました（\(result.removedCount)項目・約\(formatSize(result.freedMB))）"
-                : "一部失敗しました（成功 \(result.removedCount)項目／エラー \(result.errors.count)件）"
+                ? L10n.appUninstalledResult(app: app.name, count: result.removedCount, freed: formatSize(result.freedMB))
+                : L10n.uninstallPartialFailure(success: result.removedCount, errors: result.errors.count)
         }
         pendingAction = nil
     }

@@ -37,8 +37,8 @@ final class SmartAdvisor {
 
                 suggestions.append(OptimizationSuggestion(
                     type: .closeTab,
-                    title: "不要なChromeタブを閉じる (\(tabsToClose.count)個)",
-                    description: "推定 \(Int(estimatedMB)) MB 解放可能",
+                    title: L10n.suggestCloseChromeTabs(count: tabsToClose.count),
+                    description: L10n.estimatedFreeMB(Int(estimatedMB)),
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
                     action: { [weak self] selected in
@@ -81,8 +81,8 @@ final class SmartAdvisor {
 
                 suggestions.append(OptimizationSuggestion(
                     type: .closeSafariTab,
-                    title: "不要なSafariタブを閉じる (\(closeableSafari.count)個)",
-                    description: "推定 \(Int(estimatedMB)) MB 解放可能",
+                    title: L10n.suggestCloseSafariTabs(count: closeableSafari.count),
+                    description: L10n.estimatedFreeMB(Int(estimatedMB)),
                     estimatedSavingMB: estimatedMB,
                     detailItems: tabDetails,
                     action: { [weak self] selected in
@@ -119,8 +119,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .quitApp,
-                title: "バックグラウンドアプリを終了 (\(backgroundApps.count)個)",
-                description: "推定 \(Int(totalMB)) MB 解放可能",
+                title: L10n.suggestQuitBackgroundApps(count: backgroundApps.count),
+                description: L10n.estimatedFreeMB(Int(totalMB)),
                 estimatedSavingMB: totalMB,
                 detailItems: appDetails,
                 action: { [weak self] selected in
@@ -157,8 +157,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .restartApp,
-                title: "\(app.name) を再起動",
-                description: "\(app.memoryFormatted) 使用中",
+                title: L10n.suggestRestartApp(app.name),
+                description: L10n.suggestAppMemoryUsing(app.memoryFormatted),
                 estimatedSavingMB: savingEstimate,
                 detailItems: details,
                 action: { [weak self] selected in
@@ -185,8 +185,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .clearBrowserCache,
-                title: "ブラウザキャッシュを削除 (\(browserCaches.count)ブラウザ)",
-                description: "推定 \(Int(totalCacheMB)) MB 解放可能",
+                title: L10n.suggestClearBrowserCache(count: browserCaches.count),
+                description: L10n.estimatedFreeMB(Int(totalCacheMB)),
                 estimatedSavingMB: totalCacheMB,
                 detailItems: cacheDetails,
                 action: { [weak self] selected in
@@ -220,8 +220,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .clearCache,
-                title: "重いChrome拡張機能 (\(heavyExtensions.count)個)",
-                description: "推定ランタイムメモリ \(Int(runtimeEstimate)) MB",
+                title: L10n.suggestHeavyChromeExtensions(count: heavyExtensions.count),
+                description: L10n.suggestRuntimeMemory(Int(runtimeEstimate)),
                 estimatedSavingMB: runtimeEstimate,
                 detailItems: extDetails,
                 action: { _ in ActionOutcome(succeeded: true) } // Info-only — user manually disables in Chrome
@@ -246,8 +246,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .disableLoginItem,
-                title: "ログイン項目を見直し (\(loginItems.count)個)",
-                description: "起動時に \(Int(totalLoginMB)) MB 使用",
+                title: L10n.suggestReviewLoginItems(count: loginItems.count),
+                description: L10n.suggestLoginItemsUsing(Int(totalLoginMB)),
                 estimatedSavingMB: totalLoginMB * 0.5, // Not all will be disabled
                 detailItems: loginDetails,
                 action: { _ in ActionOutcome(succeeded: true) } // Info-only — user disables in System Settings
@@ -274,8 +274,8 @@ final class SmartAdvisor {
 
                 suggestions.append(OptimizationSuggestion(
                     type: .clearTmpFiles,
-                    title: "一時ファイルを削除",
-                    description: "推定 \(Int(totalTempMB)) MB 解放可能",
+                    title: L10n.suggestClearTmpFiles,
+                    description: L10n.estimatedFreeMB(Int(totalTempMB)),
                     estimatedSavingMB: totalTempMB * 0.7, // Won't delete everything
                     detailItems: tempDetails,
                     action: { [weak self] selected in
@@ -315,8 +315,8 @@ final class SmartAdvisor {
 
         suggestions.append(OptimizationSuggestion(
             type: .flushDNS,
-            title: "DNSキャッシュをクリア",
-            description: "推定 \(Int(dnsEstimate)) MB 解放可能",
+            title: L10n.suggestClearDNSCache,
+            description: L10n.estimatedFreeMB(Int(dnsEstimate)),
             estimatedSavingMB: dnsEstimate,
             detailItems: dnsDetails,
             action: { [weak self] selected in
@@ -352,8 +352,8 @@ final class SmartAdvisor {
 
             suggestions.append(OptimizationSuggestion(
                 type: .swapWarning,
-                title: "⚠️ Swap使用量が高い (\(swapUsedFmt))",
-                description: "Swapが多いと動作が遅くなります。下記の高メモリアプリを終了するとメモリが空きSwapが減ります（チェックして実行）",
+                title: L10n.suggestSwapHigh(swapUsedFmt),
+                description: L10n.suggestSwapHighDesc,
                 estimatedSavingMB: totalSwapperMB,
                 detailItems: swapDetails,
                 action: { [weak self] selected in

@@ -119,7 +119,8 @@ final class AffiliateManager {
             : 0
         if storageUsagePercent > 75 {
             if let storage = affiliateProducts.first(where: {
-                $0.category == .storage && $0.title.contains("SSD")
+                // SSD商品はtitleに"SSD"を含まない場合があるためdescriptionも見る（以前は到達不能だった）
+                $0.category == .storage && ($0.title.contains("SSD") || $0.description.contains("SSD"))
             }) {
                 recommendations.append(storage)
             }

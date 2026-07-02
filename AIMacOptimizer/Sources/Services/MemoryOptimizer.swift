@@ -557,8 +557,9 @@ final class MemoryOptimizer {
     }
 
     private func runAppleScript(_ source: String) async -> String? {
+        // NSAppleScript はメインスレッド専用（バックグラウンド実行は稀にクラッシュ/失敗する）ため main で実行する
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            DispatchQueue.main.async {
                 let script = NSAppleScript(source: source)
                 var error: NSDictionary?
                 let result = script?.executeAndReturnError(&error)

@@ -81,7 +81,12 @@ struct HealthTrendView: View {
                     .padding(.bottom, 2)
 
                 metricRow("メモリ使用率", values: data.map(\.memUsedPercent), unit: "%", color: .blue)
-                metricRow("Swap", values: data.map(\.swapMB), unit: "MB", color: .orange)
+                // Swap は大きいと GB 表示（他画面の単位表記と揃える）
+                if (data.map(\.swapMB).max() ?? 0) >= 1024 {
+                    metricRow("Swap", values: data.map { $0.swapMB / 1024 }, unit: "GB", color: .orange)
+                } else {
+                    metricRow("Swap", values: data.map(\.swapMB), unit: "MB", color: .orange)
+                }
                 metricRow("ディスク空き", values: data.map(\.diskFreePercent), unit: "%", color: .green)
                 metricRow("CPU負荷", values: data.map(\.loadAvg1), unit: "", color: .red)
             }

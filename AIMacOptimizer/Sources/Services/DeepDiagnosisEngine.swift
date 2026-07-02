@@ -256,8 +256,8 @@ final class DeepDiagnosisEngine: ObservableObject {
                 category: .memory, severity: .critical,
                 title: "メモリが極度に不足",
                 detail: "空きメモリ \(mem.freeFormatted) (\(String(format: "%.0f", mem.freePercent))%) — 全体 \(mem.totalFormatted)",
-                suggestion: "不要なアプリを終了するか、RAMパージを実行してください。",
-                isAutoFixable: true, fixAction: .purgeRAM,
+                suggestion: "メモリタブの提案から、使っていないアプリやタブを終了してメモリを解放してください。",
+                isAutoFixable: false, fixAction: .none,
                 rawData: ["used_mb": "\(Int(mem.usedMB))", "free_mb": "\(Int(mem.freeMB))",
                           "total_mb": "\(Int(mem.totalMB))", "compressed_mb": "\(Int(mem.compressedMB))"]
             ))
@@ -266,8 +266,8 @@ final class DeepDiagnosisEngine: ObservableObject {
                 category: .memory, severity: .warning,
                 title: "メモリ使用量が高い",
                 detail: "空きメモリ \(mem.freeFormatted) (\(String(format: "%.0f", mem.freePercent))%)",
-                suggestion: "バックグラウンドアプリの終了を検討してください。",
-                isAutoFixable: true, fixAction: .purgeRAM
+                suggestion: "メモリタブの提案から、バックグラウンドアプリの終了を検討してください。",
+                isAutoFixable: false, fixAction: .none
             ))
         } else {
             findings.append(DiagnosisFinding(

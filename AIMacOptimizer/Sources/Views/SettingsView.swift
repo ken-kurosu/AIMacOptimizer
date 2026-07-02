@@ -127,16 +127,6 @@ struct SettingsView: View {
                     }
                 }
 
-                if !license.canUseMultiLanguage && appLanguageRaw != AppLanguage.system.rawValue {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.orange)
-                        Text("多言語切替はPro機能です")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                }
             } header: {
                 Text(L10n.language)
             }
@@ -155,7 +145,7 @@ struct SettingsView: View {
                         HStack(spacing: 6) {
                             if license.currentTier.isPro {
                                 Image(systemName: "crown.fill")
-                                    .foregroundColor(.yellow)
+                                    .foregroundColor(.orange)
                             }
                             Text("現在のプラン")
                                 .font(.body)
@@ -163,23 +153,21 @@ struct SettingsView: View {
                         Text(license.currentTier.displayName)
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(license.currentTier.isPro ? .yellow : .secondary)
+                            .foregroundColor(license.currentTier.isPro ? .orange : .secondary)
                     }
                     Spacer()
                 }
 
                 if !license.currentTier.isPro {
-                    // Feature comparison for free users
+                    // Feature comparison（実態に一致: Pro=ストレージ削除＋スケジュールのみ、他は無料）
                     VStack(alignment: .leading, spacing: 6) {
-                        featureRow("メモリ分析・Chrome/Safariタブ分析", available: true)
-                        featureRow("ストレージスキャン（表示のみ）", available: true)
-                        featureRow("AI提案（3回/週）", available: true)
+                        featureRow("メモリ最適化・Chrome/Safariタブ分析", available: true)
+                        featureRow("診断・AI相談（ローカル/無料）", available: true)
+                        featureRow("ストレージスキャン（表示）", available: true)
+                        featureRow("多言語対応", available: true)
                         Divider()
-                        featureRow("ストレージ削除・クリーンアップ", available: false)
-                        featureRow("AI提案（無制限）", available: false)
-                        featureRow("AIチャット相談", available: false)
+                        featureRow("ストレージのファイル削除・クリーンアップ", available: false)
                         featureRow("スケジュール自動最適化", available: false)
-                        featureRow("多言語対応", available: false)
                         featureRow("優先サポート", available: false)
                     }
                     .padding(.vertical, 4)
@@ -423,15 +411,15 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("Chromeタブの分析にはアクセシビリティ権限が必要です。")
+                Text("Chrome/Safariのタブ分析には「オートメーション」権限が必要です（初回に許可を求められます）。")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                Button("アクセシビリティ設定を開く") {
-                    openAccessibilityPreferences()
+                Button("オートメーション設定を開く") {
+                    openAutomationPreferences()
                 }
             } header: {
-                Text("Chrome連携")
+                Text("ブラウザ連携")
             }
         }
         .formStyle(.grouped)
@@ -671,8 +659,9 @@ struct SettingsView: View {
         }
     }
 
-    private func openAccessibilityPreferences() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+    private func openAutomationPreferences() {
+        // Chrome/Safari のタブ操作(AppleScript)に必要なのはオートメーション権限
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!
         NSWorkspace.shared.open(url)
     }
 }

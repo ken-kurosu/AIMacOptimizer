@@ -61,14 +61,14 @@ struct PopoverView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "crown.fill")
                         .font(.system(size: 10))
-                        .foregroundColor(.yellow)
+                        .foregroundColor(.orange)
                     Text(license.currentTier.displayName)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.yellow)
+                        .foregroundColor(.orange)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.yellow.opacity(0.15))
+                .background(Color.orange.opacity(0.15))
                 .cornerRadius(10)
             } else {
                 HStack(spacing: 4) {

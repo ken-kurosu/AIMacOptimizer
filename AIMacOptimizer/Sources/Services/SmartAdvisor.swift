@@ -413,12 +413,12 @@ final class SmartAdvisor {
     // MARK: - Tab Classification
 
     private func classifyTabReason(_ tab: ChromeTab) -> String {
-        if tab.url == "chrome://newtab/" { return "空の新しいタブ — 削除推奨" }
-        if tab.url.contains("login") || tab.url.contains("auth") { return "ログインページ — 再ログイン不要なら削除推奨" }
-        if tab.title.contains("404") || tab.title.lowercased().contains("error") { return "エラーページ — 削除推奨" }
-        if tab.title.lowercased().contains("not found") { return "ページ未検出 — 削除推奨" }
-        if tab.url.contains("google.com/search") || tab.url.contains("bing.com/search") { return "検索結果ページ — 閲覧済みなら削除推奨" }
-        if tab.category == .closeable { return "長時間未使用 — 削除推奨" }
+        if tab.url == "chrome://newtab/" { return "空の新しいタブ — 閉じる推奨" }
+        if tab.url.contains("login") || tab.url.contains("auth") { return "ログインページ — 再ログイン不要なら閉じる推奨" }
+        if tab.title.contains("404") || tab.title.lowercased().contains("error") { return "エラーページ — 閉じる推奨" }
+        if tab.title.lowercased().contains("not found") { return "ページ未検出 — 閉じる推奨" }
+        if tab.url.contains("google.com/search") || tab.url.contains("bing.com/search") { return "検索結果ページ — 閲覧済みなら閉じる推奨" }
+        if tab.category == .closeable { return "長時間未使用 — 閉じる推奨" }
         return "重複タブ — 1つだけ残せば十分"
     }
 
@@ -444,10 +444,10 @@ final class SmartAdvisor {
     }
 
     private func classifySafariTabReason(title: String, url: String) -> String {
-        if url.contains("about:blank") || title.isEmpty { return "空白タブ — 削除推奨" }
-        if title.contains("404") || title.lowercased().contains("error") { return "エラーページ — 削除推奨" }
-        if url.contains("google.com/search") || url.contains("bing.com/search") { return "検索結果ページ — 削除推奨" }
-        if title.lowercased().contains("favorites") { return "お気に入りページ — 削除推奨" }
+        if url.contains("about:blank") || title.isEmpty { return "空白タブ — 閉じる推奨" }
+        if title.contains("404") || title.lowercased().contains("error") { return "エラーページ — 閉じる推奨" }
+        if url.contains("google.com/search") || url.contains("bing.com/search") { return "検索結果ページ — 閉じる推奨" }
+        if title.lowercased().contains("favorites") { return "お気に入りページ — 閉じる推奨" }
         return "不要なタブ"
     }
 }

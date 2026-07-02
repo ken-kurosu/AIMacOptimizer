@@ -112,8 +112,9 @@ final class LicenseManager: ObservableObject {
         //   だけで永久Pro化できてしまうため。署名検証はオフラインで偽造不可）
         var derived: LicenseTier = .free
         if let key = UserDefaults.standard.string(forKey: licenseKeyKey),
-           let tier = SignedLicense.verify(key) {
-            derived = tier
+           let v = SignedLicense.verify(key), !v.isExpired {
+            // 月額など期限付きキーは、期限切れなら自動的に Free へ戻る
+            derived = v.tier
         } else if let code = UserDefaults.standard.string(forKey: promoCodeKey),
                   let tier = validPromoCodes[code] {
             derived = tier
@@ -188,8 +189,13 @@ final class LicenseManager: ObservableObject {
         }
 
         // 署名付きライセンスキーを検証（秘密鍵を持つ発行者が署名したキーのみ有効＝偽造不可・オフライン検証）
-        if let tier = SignedLicense.verify(key) {
-            applyLicenseKey(key, tier: tier)
+        if let v = SignedLicense.verify(key) {
+            if v.isExpired {
+                licenseKeyMessage = "このライセンスキーは有効期限が切れています。月額プランは更新後にお送りする新しいキーをご利用ください。"
+                licenseKeySuccess = false
+            } else {
+                applyLicenseKey(key, tier: v.tier)
+            }
         } else {
             licenseKeyMessage = "無効なライセンスキーです。購入確認メールのキーをそのまま貼り付けてください。"
             licenseKeySuccess = false

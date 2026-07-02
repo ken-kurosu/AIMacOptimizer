@@ -48,12 +48,21 @@ async function verifyStripe(payload: string, sigHeader: string, secret: string):
   return diff === 0;
 }
 
-// 署名付きライセンスキー生成（アプリの SignedLicense.verify と同じ形式）
-//   message = [version(1), tier(1: 1=Pro / 2=Lifetime), nonce(4)]
+// 2025-01-01 00:00:00 UTC からの日数（アプリの SignedLicense と同じ基準）
+const LICENSE_EPOCH = 1_735_689_600;
+// 月額キーの有効日数（更新猶予込み）。Stripeの更新(約30日)より少し長くする。
+const MONTHLY_VALID_DAYS = 35;
+
+// 署名付きライセンスキー生成（アプリの SignedLicense.verify と同じ v2 形式）
+//   message = [version(2), tier(1: 1=Pro / 2=Lifetime), expiryHi, expiryLo, nonce(2)]
+//   expiry = LICENSE_EPOCH からの日数(UInt16)。0 = 無期限（買い切り）。
 //   key = "AIMAC-" + base64url(message + signature(64))
 function generateKey(seed: Uint8Array, tier: number): string {
-  const nonce = crypto.getRandomValues(new Uint8Array(4));
-  const message = new Uint8Array([1, tier, ...nonce]);
+  // 月額(tier=1)は今日+35日で失効。買い切り(tier=2)は無期限(0)。
+  const expiryDays =
+    tier === 1 ? Math.floor((Date.now() / 1000 - LICENSE_EPOCH) / 86400) + MONTHLY_VALID_DAYS : 0;
+  const nonce = crypto.getRandomValues(new Uint8Array(2));
+  const message = new Uint8Array([2, tier, (expiryDays >> 8) & 0xff, expiryDays & 0xff, ...nonce]);
   const sig = ed25519.sign(message, seed);
   const keyData = new Uint8Array(message.length + sig.length);
   keyData.set(message, 0);
@@ -84,17 +93,29 @@ export default {
     }
 
     const event = JSON.parse(payload);
+    const lifetimeAmount = Number(env.LIFETIME_AMOUNT || '4980');
+    const seed = b64ToBytes(env.PRIVATE_KEY_B64);
+
+    // 初回購入（買い切り・月額とも）
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const email: string | undefined = session.customer_details?.email || session.customer_email;
       const amount = Number(session.amount_total || 0);
-      const lifetimeAmount = Number(env.LIFETIME_AMOUNT || '4980');
       const tier = amount >= lifetimeAmount ? 2 : 1;
       const tierName = tier === 2 ? 'Pro (買い切り)' : 'Pro (月額)';
       if (email) {
-        const seed = b64ToBytes(env.PRIVATE_KEY_B64);
-        const key = generateKey(seed, tier);
-        await sendEmail(env, email, key, tierName);
+        await sendEmail(env, email, generateKey(seed, tier), tierName);
+      }
+    }
+    // 月額サブスクの更新（毎月の再課金）。billing_reason=subscription_cycle が更新。
+    // 初回(subscription_create)は checkout.session.completed で処理済みなので二重送信しない。
+    else if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const email: string | undefined = invoice.customer_email;
+      const amount = Number(invoice.amount_paid || 0);
+      if (email && invoice.billing_reason === 'subscription_cycle' && amount < lifetimeAmount) {
+        // 更新のたびに新しい期限付きキーを送る（アプリに貼り直すと期限が延びる）
+        await sendEmail(env, email, generateKey(seed, 1), 'Pro (月額・更新)');
       }
     }
     return new Response('ok');

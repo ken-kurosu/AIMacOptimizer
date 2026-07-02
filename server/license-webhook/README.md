@@ -30,14 +30,24 @@ npx wrangler deploy          # → https://aimac-license-webhook.<account>.worke
 ## Stripe 側の設定
 1. Stripe ダッシュボード → Developers → Webhooks → Add endpoint
 2. Endpoint URL = 上で発行された Workers の URL
-3. 受信イベント = `checkout.session.completed`
+3. 受信イベント = `checkout.session.completed` と `invoice.paid`（月額の更新用）
 4. 作成後に表示される **Signing secret (whsec_...)** をコピー
 5. `npx wrangler secret put STRIPE_WEBHOOK_SECRET` で設定し、再度 `npx wrangler deploy`
 
 ## 動作
-- 決済完了 → Stripe が Workers に通知 → 署名検証 → 金額で tier 判定
+- 初回決済(`checkout.session.completed`) → 署名検証 → 金額で tier 判定
   （`amount_total >= 4980` 円なら買い切り、それ未満は月額。`wrangler.toml` の `LIFETIME_AMOUNT` で調整可）
+- キー形式は v2（有効期限入り）。**買い切り=無期限**、**月額=発行から35日で失効**する期限付きキー。
+- **月額の更新**(`invoice.paid` の `billing_reason=subscription_cycle`) → 毎月あらたな35日キーを再発行してメール送信。
+  ユーザーはアプリに貼り直すと期限が延びる（初回は checkout 側で処理するため二重送信しない）。
 - 署名付きキー `AIMAC-...` を生成 → 購入者のメールへ Resend で送信
+
+## ⚠️ 月額プランを本番で有効化する前に（必ずライブStripeでテスト）
+オフラインの期限チェックは実装・検証済みだが、サブスクの更新/解約の実挙動はライブ検証が必要:
+1. Stripe テストモードで月額購入 → 初回キーがメール到達・アプリで Pro になる
+2. `invoice.paid`(subscription_cycle) を送信 → 更新キーがメール到達
+3. 解約 → 期限(35日)到達後にアプリが自動で Free に戻る
+これらが確認できるまでは、アプリ内の月額導線は出さず買い切りのみ販売を推奨。
 
 ## テスト
 - Stripe ダッシュボードの Webhook 画面から「Send test webhook」で `checkout.session.completed` を送信して確認。

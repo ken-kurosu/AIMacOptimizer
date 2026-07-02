@@ -56,36 +56,31 @@ final class LicenseManager: ObservableObject {
     /// AI suggestions used this week (Free: max 3/week)
     @Published var weeklyAISuggestionsUsed: Int = 0
 
-    /// Whether storage deletion is allowed
+    // MARK: - Feature Gating（v1方針）
+    // Pro の価値は「ストレージのファイル削除」と「スケジュール自動最適化」に集約。
+    // それ以外（メモリ最適化提案・診断・ローカルAI相談・言語切替）は全て Free で無制限。
+    // （有料APIモードは廃止済み。以前の「AI提案 週3回」制限は funnel を損ねるため撤廃）
+
+    /// Whether storage file deletion is allowed（Pro限定）
     var canDeleteStorage: Bool { currentTier.isPro }
 
-    /// Whether scheduled optimization is allowed
+    /// Whether scheduled auto-optimization is allowed（Pro限定）
     var canUseSchedule: Bool { currentTier.isPro }
 
-    /// Whether multi-language is allowed
-    var canUseMultiLanguage: Bool { currentTier.isPro }
+    /// 言語切替は全ユーザー可（多言語対応は基本機能）
+    var canUseMultiLanguage: Bool { true }
 
-    /// Whether AI chat (Deep Diagnosis + Chat) is available
-    /// Free: diagnosis only (3/week), Pro: unlimited diagnosis + chat
-    var canUseDiagnosis: Bool {
-        if currentTier.isPro { return true }
-        return weeklyAISuggestionsUsed < 3
-    }
+    /// 診断は全ユーザー無制限
+    var canUseDiagnosis: Bool { true }
 
-    /// Whether AI chat consultation is available (Pro only)
-    var canUseAIChat: Bool { currentTier.isPro }
+    /// AI相談（ローカル/オンデバイス）は全ユーザー可
+    var canUseAIChat: Bool { true }
 
-    /// Whether AI suggestions are available (Free: 3/week limit)
-    var canUseAISuggestions: Bool {
-        if currentTier.isPro { return true }
-        return weeklyAISuggestionsUsed < 3
-    }
+    /// メモリ最適化提案は全ユーザー無制限
+    var canUseAISuggestions: Bool { true }
 
-    /// Remaining AI suggestions for free tier
-    var remainingAISuggestions: Int {
-        if currentTier.isPro { return -1 } // unlimited
-        return max(0, 3 - weeklyAISuggestionsUsed)
-    }
+    /// -1 = 無制限
+    var remainingAISuggestions: Int { -1 }
 
     // MARK: - Persistence Keys
     private let tierKey = "license_tier"

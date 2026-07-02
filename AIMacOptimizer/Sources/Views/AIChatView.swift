@@ -15,16 +15,10 @@ struct AIChatView: View {
             chatHeader
             Divider()
 
-            if !chatService.settings.isConfigured {
-                apiKeySetupView
-            } else {
-                // Messages
-                chatMessages
-                Divider()
-
-                // Input area
-                chatInput
-            }
+            // すべて無料プロバイダ（ローカル/オンデバイス）なので設定不要で常にチャット可能
+            chatMessages
+            Divider()
+            chatInput
         }
     }
 
@@ -63,131 +57,38 @@ struct AIChatView: View {
         .padding(.vertical, 8)
     }
 
-    /// 現在のAIモード（無料/有料）を表示し、いつでも切り替えられるメニュー
+    /// AIの種類（ローカル解析 / オンデバイスAI、いずれも無料）を切り替えるメニュー
     private var providerMenu: some View {
         let current = chatService.settings.provider
         return Menu {
-            Section("無料（推奨・キー不要）") {
-                ForEach(AIProvider.allCases.filter { $0.isFree }, id: \.self) { p in
-                    Button { switchProvider(p) } label: {
-                        Label(p.displayName, systemImage: current == p ? "checkmark" : "gift")
-                    }
-                }
-            }
-            Section("上級（従量課金・APIキー必要）") {
-                ForEach(AIProvider.allCases.filter { $0.requiresAPIKey }, id: \.self) { p in
-                    Button { switchProvider(p) } label: {
-                        Label(p.displayName, systemImage: current == p ? "checkmark" : "creditcard")
-                    }
+            ForEach(AIProvider.allCases, id: \.self) { p in
+                Button { switchProvider(p) } label: {
+                    Label(p.displayName, systemImage: current == p ? "checkmark" : "gift")
                 }
             }
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: current.isFree ? "gift.fill" : "creditcard.fill")
+                Image(systemName: "gift.fill")
                     .font(.system(size: 9))
-                Text(current.isFree ? "無料モード" : "有料API")
+                Text("無料モード")
                     .font(.system(size: 10, weight: .semibold))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7))
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background((current.isFree ? Color.green : Color.orange).opacity(0.15))
-            .foregroundColor(current.isFree ? .green : .orange)
+            .background(Color.green.opacity(0.15))
+            .foregroundColor(.green)
             .cornerRadius(7)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("AIの種類を切り替え（無料/有料）")
+        .help("AIの種類を切り替え（どちらも無料・キー不要）")
     }
 
     private func switchProvider(_ p: AIProvider) {
         chatService.settings.provider = p
         chatService.saveSettings()
-    }
-
-    // MARK: - API Key Setup
-
-    private var apiKeySetupView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-
-            Image(systemName: "key.fill")
-                .font(.system(size: 32))
-                .foregroundColor(.orange)
-
-            Text("これは有料モードです")
-                .font(.headline)
-
-            Text("OpenAI / Anthropic は従量課金の上級モードです。\n無料で使うなら「無料モードに戻る」を押してください（キー不要・このMac内で完結）。")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            Button(action: { switchProvider(.local) }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "gift.fill")
-                    Text("無料モードに戻る")
-                        .fontWeight(.semibold)
-                }
-                .font(.system(size: 12))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(Color.green.opacity(0.15))
-                .foregroundColor(.green)
-                .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-
-            // Provider picker
-            Picker("プロバイダー", selection: $chatService.settings.provider) {
-                ForEach(AIProvider.allCases, id: \.self) { provider in
-                    Text(provider.displayName).tag(provider)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 40)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("API キー")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                SecureField("sk-...", text: $chatService.settings.apiKey)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-            }
-            .padding(.horizontal, 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("モデル（空欄でデフォルト）")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField(chatService.settings.provider.defaultModel, text: $chatService.settings.model)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
-            }
-            .padding(.horizontal, 24)
-
-            Text("推奨: \(chatService.settings.provider.displayName) \(chatService.settings.provider.defaultModel) (\(chatService.settings.provider.costPer1KInput)/1Kトークン)")
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
-
-            Button(action: {
-                chatService.saveSettings()
-            }) {
-                Text("保存して開始")
-                    .fontWeight(.medium)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-            .padding(.horizontal, 40)
-            .disabled(chatService.settings.apiKey.isEmpty)
-
-            Spacer()
-        }
     }
 
     // MARK: - Chat Messages

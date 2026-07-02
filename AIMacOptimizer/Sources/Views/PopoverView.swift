@@ -75,12 +75,6 @@ struct PopoverView: View {
                     Text("Free")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(.secondary)
-                    Text("•")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 8))
-                    Text("AI提案 残り\(license.remainingAISuggestions)回/週")
-                        .font(.system(size: 10))
-                        .foregroundColor(license.remainingAISuggestions > 0 ? .secondary : .red)
                 }
             }
             Spacer()
@@ -296,72 +290,18 @@ struct MemoryTabView: View {
                     .fontWeight(.medium)
 
                 Spacer()
-
-                // Show remaining count for free users
-                if !license.currentTier.isPro {
-                    Text("残り\(license.remainingAISuggestions)回/週")
-                        .font(.system(size: 10))
-                        .foregroundColor(license.remainingAISuggestions > 0 ? .orange : .red)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(4)
-                }
             }
             .padding(.horizontal)
             .padding(.top, 8)
 
-            if !license.canUseAISuggestions {
-                // Free tier limit reached
-                aiLimitReachedView
-            } else {
-                ForEach(Array(viewModel.suggestions.prefix(8).enumerated()), id: \.element.id) { index, suggestion in
-                    SuggestionExpandableRow(
-                        suggestion: $viewModel.suggestions[index]
-                    )
-                }
+            // メモリ最適化提案は全ユーザー無制限（回数制限は撤廃）
+            ForEach(Array(viewModel.suggestions.prefix(8).enumerated()), id: \.element.id) { index, suggestion in
+                SuggestionExpandableRow(
+                    suggestion: $viewModel.suggestions[index]
+                )
             }
         }
         .padding(.bottom, 8)
-    }
-
-    private var aiLimitReachedView: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "lock.fill")
-                .font(.title3)
-                .foregroundColor(.orange)
-            Text("今週のAI提案回数に達しました")
-                .font(.caption)
-                .fontWeight(.medium)
-            Text("Proにアップグレードすると無制限で利用できます")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-
-            Button(action: { openSettings(initialTab: 1) }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 10))
-                    Text("Pro にアップグレード")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                )
-                .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color.orange.opacity(0.05))
-        .cornerRadius(8)
-        .padding(.horizontal)
     }
 
     // MARK: - Affiliate Banner (Free users only)

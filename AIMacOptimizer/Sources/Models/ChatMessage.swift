@@ -49,45 +49,17 @@ enum AIProvider: String, Codable, CaseIterable {
     case local = "ローカル解析（無料）"
     /// Apple オンデバイスLLM（無料・キー不要、対応OS/チップのみ）
     case appleOnDevice = "オンデバイスAI（無料）"
-    case openAI = "OpenAI（要APIキー）"
-    case anthropic = "Anthropic（要APIキー）"
 
     var displayName: String { rawValue }
 
-    /// APIキーが必要か（=ランニングコストが発生しうる上級モード）
-    var requiresAPIKey: Bool {
-        switch self {
-        case .local, .appleOnDevice: return false
-        case .openAI, .anthropic: return true
-        }
-    }
-
-    /// ランニングコストが一切かからない無料プロバイダか
-    var isFree: Bool { !requiresAPIKey }
+    /// 有料API相談モードは廃止。全プロバイダが無料・キー不要・ランニングコスト0。
+    var requiresAPIKey: Bool { false }
+    var isFree: Bool { true }
 
     var defaultModel: String {
         switch self {
         case .local: return "rule-engine"
         case .appleOnDevice: return "apple-on-device"
-        case .openAI: return "gpt-4o-mini"
-        case .anthropic: return "claude-haiku-4-5-20251001"
-        }
-    }
-
-    var apiEndpoint: String {
-        switch self {
-        case .openAI: return "https://api.openai.com/v1/chat/completions"
-        case .anthropic: return "https://api.anthropic.com/v1/messages"
-        case .local, .appleOnDevice: return ""
-        }
-    }
-
-    /// Approximate cost per 1K tokens (input)
-    var costPer1KInput: String {
-        switch self {
-        case .local, .appleOnDevice: return "無料"
-        case .openAI: return "$0.00015"
-        case .anthropic: return "$0.0008"
         }
     }
 }

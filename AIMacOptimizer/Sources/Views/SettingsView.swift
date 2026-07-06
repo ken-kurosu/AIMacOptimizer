@@ -1,5 +1,6 @@
 import SwiftUI
 import ServiceManagement
+import UserNotifications
 
 /// Settings window for the app
 struct SettingsView: View {
@@ -14,6 +15,7 @@ struct SettingsView: View {
     @ObservedObject private var diskGuard = DiskGuard.shared
     @ObservedObject private var nav = SettingsNavigation.shared
     @ObservedObject private var scheduleManager = ScheduleManager.shared
+    @State private var notifyAuthStatus: UNAuthorizationStatus = .notDetermined
 
     /// 設定タブの定義（左サイドバーに常時表示）
     private struct SettingsTab: Identifiable {
@@ -539,8 +541,63 @@ struct SettingsView: View {
             } header: {
                 Text(L10n.notificationSettings)
             }
+
+            // 通知が来ない原因（多くは権限未許可）を可視化・解消する
+            Section {
+                HStack {
+                    Text("通知の許可状態")
+                    Spacer()
+                    Text(authStatusText)
+                        .foregroundColor(authStatusColor)
+                        .fontWeight(.medium)
+                }
+
+                if notifyAuthStatus == .denied {
+                    Text("macOSの通知が「許可しない」になっています。閾値を超えても通知は届きません。下のボタンからシステム設定で許可してください。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Button("テスト通知を送る") {
+                    NotificationService.shared.sendTestNotification()
+                    // 送信直後に状態を取り直す（初回は許可ダイアログが出る）
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { refreshNotifyAuthStatus() }
+                }
+
+                Button("システムの通知設定を開く") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            } header: {
+                Text("通知が来ない時")
+            }
         }
         .formStyle(.grouped)
+        .onAppear { refreshNotifyAuthStatus() }
+    }
+
+    private var authStatusText: String {
+        switch notifyAuthStatus {
+        case .authorized, .provisional, .ephemeral: return "許可されています"
+        case .denied: return "許可されていません"
+        case .notDetermined: return "未設定（テスト通知で許可を求めます）"
+        @unknown default: return "不明"
+        }
+    }
+
+    private var authStatusColor: Color {
+        switch notifyAuthStatus {
+        case .authorized, .provisional, .ephemeral: return .green
+        case .denied: return .red
+        default: return .orange
+        }
+    }
+
+    private func refreshNotifyAuthStatus() {
+        NotificationService.shared.authorizationStatus { status in
+            notifyAuthStatus = status
+        }
     }
 
     // AI設定はチャット画面側に一本化したため、設定タブからは削除（プロバイダ切替・APIキーはチャットで完結）

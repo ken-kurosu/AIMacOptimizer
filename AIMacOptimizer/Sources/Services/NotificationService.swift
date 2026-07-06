@@ -44,6 +44,31 @@ class NotificationService {
             }
         }
     }
+
+    /// 現在の通知許可状態を取得（設定画面で「なぜ通知が来ないか」を可視化するため）
+    func authorizationStatus(_ completion: @escaping (UNAuthorizationStatus) -> Void) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.async { completion(settings.authorizationStatus) }
+        }
+    }
+
+    /// テスト通知を送る。未要求なら先に許可要求する。
+    /// これが表示されれば「権限OK・配信経路OK」、出なければ権限が原因と切り分けできる。
+    func sendTestNotification() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined {
+                self.requestPermission()
+            }
+            let content = UNMutableNotificationContent()
+            content.title = "AI Mac Optimizer"
+            content.body = "テスト通知です。これが表示されれば通知は正常に届きます。"
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error { print("Test notification failed: \(error.localizedDescription)") }
+            }
+        }
+    }
     
     func checkAndNotify(memoryPercent: Double, diskFreeGB: Double) {
         let notificationsEnabled = defaults.bool(forKey: enableNotificationsKey)

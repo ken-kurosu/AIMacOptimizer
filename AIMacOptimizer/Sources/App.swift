@@ -35,7 +35,7 @@ final class PersistentPanel: NSPanel {
 
 // MARK: - App Delegate
 
-final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUserNotificationCenterDelegate {
     let monitor = ProcessMonitor()
 
     private var statusItem: NSStatusItem!
@@ -53,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Create menu bar status item
         setupStatusItem()
 
+        // 常駐アプリは常に「起動中」扱いのため、デリゲートで willPresent を実装しないと
+        // 閾値通知などがバナー表示されず抑制される。ここでデリゲートを設定する。
+        UNUserNotificationCenter.current().delegate = self
+
         // Request notification permissions
         NotificationService.shared.requestPermission()
 
@@ -69,6 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         scheduleLaunchSummaryNotification()
 
         print("=== AI Mac Optimizer started ===")
+    }
+
+    /// アプリ起動中でも通知をバナー＋音で表示する（常駐アプリでは必須。無いと抑制される）
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                               willPresent notification: UNNotification,
+                               withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
     }
 
     // MARK: - Launch at Login（既定ON）

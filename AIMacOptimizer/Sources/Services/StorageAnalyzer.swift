@@ -74,12 +74,25 @@ final class StorageAnalyzer: ObservableObject {
         var results: [StorageItem] = []
         let home = NSHomeDirectory()
 
+        // 再生成される安全な大型キャッシュ。実機の整理で「キャッシュ本体(~/Library/Caches)より
+        // これらの方が大きく空く」ことが多いため対象に含める（Xcode/Adobe/Cursor 等）。
         let cachePaths = [
             "\(home)/Library/Caches",
             "\(home)/Library/Application Support/Google/Chrome/Default/Cache",
             "\(home)/Library/Application Support/Google/Chrome/Default/Code Cache",
             "\(home)/Library/Application Support/Slack/Cache",
             "\(home)/Library/Application Support/discord/Cache",
+            // Xcode ビルド中間物（次回ビルドで再生成）
+            "\(home)/Library/Developer/Xcode/DerivedData",
+            // Adobe のメディアキャッシュ（再生成される。元の動画/画像は無事）
+            "\(home)/Library/Application Support/Adobe/Common/Media Cache Files",
+            "\(home)/Library/Application Support/Adobe/Common/Peak Files",
+            // Cursor / VS Code 系の再生成キャッシュ
+            "\(home)/Library/Application Support/Cursor/Cache",
+            "\(home)/Library/Application Support/Cursor/CachedData",
+            "\(home)/Library/Application Support/Cursor/Code Cache",
+            "\(home)/Library/Application Support/Code/Cache",
+            "\(home)/Library/Application Support/Code/CachedData",
         ]
 
         for path in cachePaths {

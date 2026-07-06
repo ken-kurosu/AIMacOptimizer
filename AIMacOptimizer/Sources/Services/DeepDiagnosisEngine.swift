@@ -75,8 +75,9 @@ final class DeepDiagnosisEngine: ObservableObject {
     func executeFix(for finding: DiagnosisFinding) async -> String {
         switch finding.fixAction {
         case .purgeRAM:
-            let success = await optimizer.purgeRAM()
-            return success ? "RAMパージを実行しました。メモリが解放されます。" : "RAMパージに失敗しました。管理者権限が必要な場合があります。"
+            // purge は管理者権限が無いと必ず失敗し、効果も空きメモリ指標にほぼ反映されないため実行しない。
+            // 実測で効果の出る操作へ誘導する。
+            return "メモリタブから、使っていないアプリやタブを終了してください（解放量は実測で表示されます）。"
 
         case .quitApp:
             let appName = finding.fixTarget
@@ -108,7 +109,7 @@ final class DeepDiagnosisEngine: ObservableObject {
                 }
             }
             let sizeAfter = optimizer.getDirectorySizeMB(path)
-            let freed = sizeBefore - sizeAfter
+            let freed = max(0, sizeBefore - sizeAfter)
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
             return "キャッシュを削除しました。約 \(freedStr) 解放。"
 
@@ -123,7 +124,7 @@ final class DeepDiagnosisEngine: ObservableObject {
                     try? fm.removeItem(atPath: "\(path)/\(dir)")
                 }
             }
-            let freed = sizeBefore - optimizer.getDirectorySizeMB(path)
+            let freed = max(0, sizeBefore - optimizer.getDirectorySizeMB(path))
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
             return "DerivedDataを削除しました。約 \(freedStr) 解放。次回ビルド時に再生成されます。"
 

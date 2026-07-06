@@ -144,12 +144,12 @@ final class SmartAdvisor {
             let essentialApps = ["Google Chrome", "Cursor", "Xcode", "Safari"]
             guard !essentialApps.contains(app.name) else { continue }
 
-            let savingEstimate = app.memoryMB * 0.3
+            // 再起動の解放量は予測しない（実際の解放量は実行後に実測表示）。使用量の事実だけ示す。
             let details = [
                 SuggestionDetailItem(
                     name: "\(app.name) のメモリ使用量",
-                    detail: "\(app.memoryFormatted) — 全メモリの\(Int(app.memoryMB / systemMemory.totalMB * 100))%を占有。再起動で約\(Int(savingEstimate))MB解放可能。作業中のデータは事前に保存してください",
-                    sizeMB: savingEstimate,
+                    detail: "\(app.memoryFormatted) を使用中（全メモリの\(Int(app.memoryMB / systemMemory.totalMB * 100))%）。長時間起動でメモリがたまっている場合、再起動でリセットされます。作業中のデータは事前に保存してください",
+                    sizeMB: app.memoryMB,
                     isSelected: true,
                     isRecommended: true
                 )
@@ -159,7 +159,7 @@ final class SmartAdvisor {
                 type: .restartApp,
                 title: L10n.suggestRestartApp(app.name),
                 description: L10n.suggestAppMemoryUsing(app.memoryFormatted),
-                estimatedSavingMB: savingEstimate,
+                estimatedSavingMB: app.memoryMB,   // 並び替え用（表示はしない。実解放は実測）
                 detailItems: details,
                 action: { [weak self] selected in
                     guard selected.first?.isSelected ?? true else { return ActionOutcome(succeeded: false) }

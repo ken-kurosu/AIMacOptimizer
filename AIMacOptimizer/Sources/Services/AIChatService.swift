@@ -226,19 +226,26 @@ final class AIChatService: ObservableObject {
             category: action.type == .deleteCacheSafe ? .cache : .largeFile,
             isDirectory: true
         )
-        let ok: Bool
+        let name = (action.path as NSString).lastPathComponent
+        func fmt(_ mb: Double) -> String { mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb) }
+
+        let msg: String
         switch action.type {
         case .deleteCacheSafe:
-            ok = storage.clearCache(item)
+            // スキャン満額ではなく「実際に減ったディスク容量」を表示する（保護スキップ/ロックで残った分は含めない）
+            let freed = storage.clearCacheMeasuringFreed(item)
+            msg = freed > 0
+                ? "「\(name)」のキャッシュを削除しました（実測 約\(fmt(freed)) 解放）。"
+                : "「\(name)」は削除できるものがありませんでした（使用中/フォント保護でスキップ）。"
         case .moveToTrash:
-            ok = storage.moveToTrash(item)
+            // ゴミ箱移動はディスクを空けない。「解放」と言わず、事実を伝える
+            let ok = storage.moveToTrash(item)
+            msg = ok
+                ? "「\(name)」をゴミ箱へ移動しました（約\(fmt(action.sizeMB))）。ゴミ箱を空にすると実際に空き容量が増えます。"
+                : "「\(name)」の移動に失敗しました。使用中/権限の都合でスキップされた可能性があります。"
         case .openURL:
-            ok = false
+            msg = "「\(name)」の処理に失敗しました。"
         }
-        let sizeStr = action.sizeMB >= 1024 ? String(format: "%.1f GB", action.sizeMB / 1024) : String(format: "%.0f MB", action.sizeMB)
-        let msg = ok
-            ? "「\((action.path as NSString).lastPathComponent)」を処理しました（約\(sizeStr) 解放）。"
-            : "「\((action.path as NSString).lastPathComponent)」の処理に失敗しました。フォント保護や権限の都合でスキップされた可能性があります。"
         messages.append(ChatMessage(role: .assistant, content: msg))
     }
 

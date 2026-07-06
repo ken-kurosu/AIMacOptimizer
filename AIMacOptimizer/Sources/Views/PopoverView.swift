@@ -477,10 +477,14 @@ struct SuggestionExpandableRow: View {
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(.primary)
-                        // 上限の目安であることを明示（実際の解放量は実行後に実測値で表示する）
-                        Text(L10n.maxSavingEstimate(suggestion.savingFormatted))
-                            .font(.caption2)
-                            .foregroundColor(.green)
+                        // 解放量の「目安」は、実測で数値を出せる操作（アプリ終了・キャッシュ/一時ファイル削除）
+                        // に限って表示する。タブ/DNS/拡張/ログイン項目/Swap等は予測が当てにならない、
+                        // または情報提供のみで実際は解放しないため、緑の数値は出さない（実測結果は実行後に表示）。
+                        if showsSavingEstimate(suggestion) {
+                            Text(L10n.maxSavingEstimate(suggestion.savingFormatted))
+                                .font(.caption2)
+                                .foregroundColor(.green)
+                        }
                     }
                     Spacer()
 
@@ -515,6 +519,17 @@ struct SuggestionExpandableRow: View {
         }
         .background(isExpanded ? Color.gray.opacity(0.04) : Color.clear)
         .cornerRadius(6)
+    }
+
+    /// 実測で解放量を出せる操作だけ「目安」を表示する。
+    /// タブ/再起動/DNS/拡張/ログイン項目/Swap は予測が当てにならない or 情報提供のみのため数値を出さない。
+    private func showsSavingEstimate(_ s: OptimizationSuggestion) -> Bool {
+        switch s.type {
+        case .quitApp, .clearBrowserCache, .clearTmpFiles:
+            return s.estimatedSavingMB >= 1
+        default:
+            return false
+        }
     }
 }
 

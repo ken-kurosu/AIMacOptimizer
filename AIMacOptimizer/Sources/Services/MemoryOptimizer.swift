@@ -15,13 +15,6 @@ final class MemoryOptimizer {
         let purged: Bool
     }
 
-    // MARK: - RAM Purge
-
-    /// Execute `purge` command to free inactive memory
-    func purgeRAM() async -> Bool {
-        await runShellCommand("/usr/sbin/purge", arguments: [])
-    }
-
     // MARK: - App Management
 
     /// Quit a running application by name

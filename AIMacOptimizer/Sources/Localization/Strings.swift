@@ -526,9 +526,9 @@ struct L10n {
 
     static func safeCleanupAvailable(_ total: String) -> String {
         switch current {
-        case .japanese: return "リスクのないキャッシュ/ログを約 \(total) 安全に削除できます。"
-        case .english: return "You can safely delete about \(total) of risk-free caches/logs."
-        case .chinese: return "可安全删除约 \(total) 无风险的缓存/日志。"
+        case .japanese: return "リスクのないキャッシュ/ログを最大 約\(total) 安全に削除できます（実際の解放量は削除後に表示）。"
+        case .english: return "Up to about \(total) of risk-free caches/logs can be safely deleted (actual amount shown after deletion)."
+        case .chinese: return "最多可安全删除约 \(total) 无风险的缓存/日志（实际释放量在删除后显示）。"
         }
     }
 

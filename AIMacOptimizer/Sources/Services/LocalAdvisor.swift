@@ -68,9 +68,9 @@ struct LocalAdvisor {
         out.append(contentsOf: findingsBlock(r, category: .memory))
         out.append("")
         out.append("【おすすめの対処】")
-        out.append("1. 使っていない上位アプリを終了（メモリタブからワンクリック可）")
-        out.append("2. メモリタブの「RAMパージ」で解放")
-        out.append("3. ブラウザのタブが多ければ整理（タブ分析で重複・未使用を検出できます）")
+        out.append("1. 使っていない上位アプリを終了（メモリタブからワンクリック可・解放量は実測で表示されます）")
+        out.append("2. ブラウザのタブが多ければ整理（タブ分析で重複・未使用を検出できます）")
+        out.append("3. メモリを大量に使うアプリを再起動すると、たまったメモリがリセットされます")
         return out.joined(separator: "\n")
     }
 

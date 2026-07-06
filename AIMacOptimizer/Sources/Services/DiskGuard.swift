@@ -140,7 +140,7 @@ final class DiskGuard: ObservableObject {
             pendingPlan = plan
             notify(
                 title: "ストレージ圧迫を検知しました",
-                body: "安全に空けられる項目が約\(plan.totalFormatted)あります。アプリを開いて確認してください。"
+                body: "安全に空けられる項目が最大 約\(plan.totalFormatted)あります（実際の解放量は削除後にお知らせ）。アプリを開いて確認してください。"
             )
         }
     }

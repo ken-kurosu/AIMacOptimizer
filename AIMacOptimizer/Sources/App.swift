@@ -259,6 +259,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             // ストレージ圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
             Task { @MainActor in DiskGuard.shared.evaluate() }
 
+            // 週次の最適化レポート（7日経過時のみ生成・通知。それ以外は即return で無コスト）
+            Task { @MainActor in WeeklyReportService.shared.checkAndSendIfDue() }
+
             // スケジュール自動最適化が有効なときだけ、学習用にプロセスを軽く記録する
             // （パネル非表示中でも学習を進める。無効なら取得コストは発生しない）
             if ScheduleManager.shared.schedule.enabled {

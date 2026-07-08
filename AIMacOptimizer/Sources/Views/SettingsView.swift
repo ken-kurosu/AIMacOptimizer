@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("autoOptimizeThreshold") private var autoOptimizeThreshold: Double = 90
     @AppStorage("enableNotifications") private var enableNotifications = true
     @AppStorage("notifyThreshold") private var notifyThreshold: Double = 80
+    @AppStorage("weeklyReportEnabled") private var weeklyReportEnabled = true
     @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.system.rawValue
 
     @StateObject private var license = LicenseManager.shared
@@ -540,6 +541,19 @@ struct SettingsView: View {
                 }
             } header: {
                 Text(L10n.notificationSettings)
+            }
+
+            // 定期最適化レポート — "使い続けるほど効く"継続価値
+            Section {
+                Toggle("週次の最適化レポート", isOn: $weeklyReportEnabled)
+                Text("何が容量を食っているか・空き容量やSwapの推移・快適に使うための助言を、週に1回まとめて通知します。実測値と履歴だけを根拠にし、誇張はしません。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Button("今すぐレポートを確認") {
+                    Task { await WeeklyReportService.shared.generateNow() }
+                }
+            } header: {
+                Text("定期レポート")
             }
 
             // 通知が来ない原因（多くは権限未許可）を可視化・解消する

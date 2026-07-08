@@ -70,6 +70,20 @@ class NotificationService {
         }
     }
     
+    /// 定期最適化レポートを通知する。閾値通知とは別枠（クールダウン非対象）。
+    func sendReport(title: String, body: String, subtitle: String) {
+        guard defaults.bool(forKey: enableNotificationsKey) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        if !subtitle.isEmpty { content.subtitle = subtitle }
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error { print("Report notification failed: \(error.localizedDescription)") }
+        }
+    }
+
     func checkAndNotify(memoryPercent: Double, diskFreeGB: Double) {
         let notificationsEnabled = defaults.bool(forKey: enableNotificationsKey)
         guard notificationsEnabled else { return }

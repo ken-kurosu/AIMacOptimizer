@@ -7,3 +7,11 @@ compatibility_date = "2024-11-01"
 # 任意の公開変数:
 [vars]
 LIFETIME_AMOUNT = "4980"
+
+# オンライン購読検証用の KV（月額の「毎月キー貼り直し」を不要にする対応表）。
+# デプロイ前に一度だけ名前空間を作成し、出力された id を下に貼って [[kv_namespaces]] を有効化する:
+#   npx wrangler kv namespace create LICENSES
+# ↓ 作成後にコメントを外して id を差し替える（未設定でも Worker は起動するが /validate は常に valid:false）
+# [[kv_namespaces]]
+# binding = "LICENSES"
+# id = "<ここに作成した KV namespace の id を貼る>"

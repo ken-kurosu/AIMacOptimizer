@@ -21,7 +21,9 @@ final class HealthHistory: ObservableObject {
     @Published private(set) var snapshots: [HealthSnapshot] = []
 
     private let fileURL: URL
-    private let maxAgeSec: TimeInterval = 14 * 24 * 60 * 60   // 14日保持
+    // 内部では全量(90日)を保持し、表示だけ tier で制限する（Free=24h / Pro=長期）。
+    // 90日 × 144回/日 × 約40byte ≈ 0.5MB 程度で軽量を維持。
+    private let maxAgeSec: TimeInterval = 90 * 24 * 60 * 60   // 90日保持
     private let minIntervalSec: TimeInterval = 10 * 60        // 10分間隔で記録（書き込み抑制）
 
     private init() {

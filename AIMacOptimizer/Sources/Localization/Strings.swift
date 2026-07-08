@@ -1162,6 +1162,22 @@ struct L10n {
         }
     }
 
+    static var last30d: String {
+        switch current {
+        case .japanese: return "30日"
+        case .english: return "30d"
+        case .chinese: return "30天"
+        }
+    }
+
+    static var healthTrendProLock: String {
+        switch current {
+        case .japanese: return "長期の推移は Pro で解放されます（Free は直近24時間）。"
+        case .english: return "Long-term trends are a Pro feature (Free shows the last 24 hours)."
+        case .chinese: return "长期趋势为 Pro 功能（免费版显示最近 24 小时）。"
+        }
+    }
+
     static var collectingData: String {
         switch current {
         case .japanese: return "データ収集中です。バックグラウンドで10分ごとに記録し、しばらくすると推移が表示されます。"

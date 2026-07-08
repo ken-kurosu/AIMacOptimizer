@@ -10,6 +10,16 @@ export interface Env {
   RESEND_API_KEY: string;        // Resend API キー
   FROM_EMAIL: string;            // 例: "AI Mac Optimizer <license@yourdomain.com>"
   LIFETIME_AMOUNT?: string;      // 買い切りの金額(円)。これ以上なら Lifetime。既定 4980
+  LICENSES?: KVNamespace;        // ライセンス⇔購読状態の対応表（オンライン検証用）
+}
+
+// KV に保存するライセンス状態
+interface LicenseRecord {
+  tier: 'pro' | 'lifetime';
+  status: 'active' | 'canceled' | 'past_due';
+  email?: string;
+  subscriptionId?: string;
+  updatedAt: number;
 }
 
 // ---- helpers ----
@@ -23,6 +33,9 @@ function b64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
+}
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 // Stripe Webhook 署名検証（HMAC-SHA256）
@@ -50,7 +63,7 @@ async function verifyStripe(payload: string, sigHeader: string, secret: string):
 
 // 2025-01-01 00:00:00 UTC からの日数（アプリの SignedLicense と同じ基準）
 const LICENSE_EPOCH = 1_735_689_600;
-// 月額キーの有効日数（更新猶予込み）。Stripeの更新(約30日)より少し長くする。
+// 月額キーの有効日数（更新猶予込み）。オンライン検証が主経路で、これはオフライン時のフォールバック期限。
 const MONTHLY_VALID_DAYS = 35;
 
 // 署名付きライセンスキー生成（アプリの SignedLicense.verify と同じ v2 形式）
@@ -75,6 +88,7 @@ async function sendEmail(env: Env, to: string, key: string, tierName: string): P
     `ご購入ありがとうございます（${tierName}）。\n\n` +
     `以下のライセンスキーを、アプリの「設定 → ライセンス → ライセンスキー」に貼り付けて有効化してください。\n\n` +
     `${key}\n\n` +
+    `※月額プランは、アプリがオンラインで購読状態を自動確認するため、通常このキーの貼り直しは不要です。\n` +
     `※このキーは大切に保管してください。\n— AI Mac Optimizer`;
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -83,9 +97,44 @@ async function sendEmail(env: Env, to: string, key: string, tierName: string): P
   });
 }
 
+// KV 保存ヘルパ（LICENSES 未設定でも落ちないように）
+async function saveRecord(env: Env, key: string, rec: LicenseRecord): Promise<void> {
+  if (!env.LICENSES) return;
+  await env.LICENSES.put('key:' + key, JSON.stringify(rec));
+  if (rec.subscriptionId) await env.LICENSES.put('sub:' + rec.subscriptionId, key);
+}
+async function updateStatusBySubscription(env: Env, subId: string, status: LicenseRecord['status']): Promise<void> {
+  if (!env.LICENSES) return;
+  const key = await env.LICENSES.get('sub:' + subId);
+  if (!key) return;
+  const rec = (await env.LICENSES.get('key:' + key, 'json')) as LicenseRecord | null;
+  if (!rec) return;
+  rec.status = status;
+  rec.updatedAt = Date.now();
+  await env.LICENSES.put('key:' + key, JSON.stringify(rec));
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
+
+    // --- オンライン購読検証エンドポイント（アプリが定期的に叩く） ---
+    // POST /validate  { "license_key": "AIMAC-..." }  ->  { valid, tier }
+    // 購読が有効な限り valid:true を返し、アプリは Pro を自動維持する（毎月の貼り直し不要）。
+    if (req.method === 'POST' && url.pathname === '/validate') {
+      const bodyText = await req.text();
+      let licenseKey = '';
+      try { licenseKey = (JSON.parse(bodyText).license_key || '').toString(); } catch { /* ignore */ }
+      if (!licenseKey) return json({ valid: false });
+      const rec = env.LICENSES ? ((await env.LICENSES.get('key:' + licenseKey, 'json')) as LicenseRecord | null) : null;
+      if (!rec) return json({ valid: false });
+      if (rec.tier === 'lifetime') return json({ valid: true, tier: 'lifetime' });
+      return json({ valid: rec.status === 'active', tier: 'pro' });
+    }
+
     if (req.method !== 'POST') return new Response('ok'); // ヘルスチェック用
+
+    // --- Stripe Webhook ---
     const payload = await req.text();
     const sig = req.headers.get('stripe-signature') || '';
     if (!(await verifyStripe(payload, sig, env.STRIPE_WEBHOOK_SECRET))) {
@@ -103,19 +152,36 @@ export default {
       const amount = Number(session.amount_total || 0);
       const tier = amount >= lifetimeAmount ? 2 : 1;
       const tierName = tier === 2 ? 'Pro (買い切り)' : 'Pro (月額)';
-      if (email) {
-        await sendEmail(env, email, generateKey(seed, tier), tierName);
-      }
+      const key = generateKey(seed, tier);
+      const subscriptionId: string | undefined =
+        typeof session.subscription === 'string' ? session.subscription : undefined;
+      await saveRecord(env, key, {
+        tier: tier === 2 ? 'lifetime' : 'pro',
+        status: 'active',
+        email,
+        subscriptionId,
+        updatedAt: Date.now(),
+      });
+      if (email) await sendEmail(env, email, key, tierName);
     }
-    // 月額サブスクの更新（毎月の再課金）。billing_reason=subscription_cycle が更新。
-    // 初回(subscription_create)は checkout.session.completed で処理済みなので二重送信しない。
+    // 月額サブスクの更新。オンライン検証が主経路なのでキーは再発行せず、状態を active に更新するだけ。
     else if (event.type === 'invoice.paid') {
       const invoice = event.data.object;
-      const email: string | undefined = invoice.customer_email;
-      const amount = Number(invoice.amount_paid || 0);
-      if (email && invoice.billing_reason === 'subscription_cycle' && amount < lifetimeAmount) {
-        // 更新のたびに新しい期限付きキーを送る（アプリに貼り直すと期限が延びる）
-        await sendEmail(env, email, generateKey(seed, 1), 'Pro (月額・更新)');
+      if (invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
+        await updateStatusBySubscription(env, invoice.subscription, 'active');
+      }
+    }
+    // 解約・支払い失敗 → 状態更新（アプリは次回検証で Pro を維持しなくなる）
+    else if (event.type === 'customer.subscription.deleted') {
+      const sub = event.data.object;
+      if (typeof sub.id === 'string') await updateStatusBySubscription(env, sub.id, 'canceled');
+    } else if (event.type === 'customer.subscription.updated') {
+      const sub = event.data.object;
+      if (typeof sub.id === 'string') {
+        const s = sub.status; // active / past_due / canceled / unpaid ...
+        const mapped: LicenseRecord['status'] =
+          s === 'active' || s === 'trialing' ? 'active' : s === 'past_due' ? 'past_due' : 'canceled';
+        await updateStatusBySubscription(env, sub.id, mapped);
       }
     }
     return new Response('ok');

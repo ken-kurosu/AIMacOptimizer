@@ -88,6 +88,11 @@ final class LicenseManager: ObservableObject {
     private let licenseKeyKey = "activated_license_key"
     private let weeklyCountKey = "weekly_ai_count"
     private let weekStartKey = "weekly_ai_week_start"
+    // オンライン購読検証（月額の「毎月キー貼り直し」を不要にするための猶予管理）
+    private let subscriptionValidUntilKey = "subscription_valid_until"
+    private let lastValidatedKey = "subscription_last_validated"
+    /// オンライン検証が成功したら付与する猶予。この期間内に再検証できれば Pro は途切れない。
+    private let validationGraceSec: TimeInterval = 40 * 24 * 60 * 60
 
     // MARK: - Valid Promo Codes
     // In production, these would be server-validated. For now, local codes.
@@ -102,6 +107,8 @@ final class LicenseManager: ObservableObject {
     private init() {
         loadState()
         resetWeeklyCountIfNeeded()
+        // 起動時に購読状態をオンライン確認（月額を自動維持）。URL 未設定なら即 return で無コスト。
+        Task { await refreshSubscriptionValidationIfNeeded() }
     }
 
     // MARK: - State Management
@@ -118,9 +125,56 @@ final class LicenseManager: ObservableObject {
         } else if let code = UserDefaults.standard.string(forKey: promoCodeKey),
                   let tier = validPromoCodes[code] {
             derived = tier
+        } else if UserDefaults.standard.string(forKey: licenseKeyKey) != nil,
+                  let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
+                  until > Date() {
+            // 署名キーはオフライン期限切れだが、オンライン検証で購読が有効と確認できている（月額の自動維持）
+            derived = .pro
         }
         currentTier = derived
         weeklyAISuggestionsUsed = UserDefaults.standard.integer(forKey: weeklyCountKey)
+    }
+
+    // MARK: - Online Subscription Validation
+
+    /// 購読の有効性をオンラインで確認し、有効なら Pro を自動維持する（月額の毎月キー貼り直しを不要にする）。
+    /// - URL 未設定 or キー未保存 or 12時間以内に確認済みなら何もしない（無コスト・オフライン安全）。
+    /// - 有効 → 猶予(40日)を更新。無効(解約等) → 猶予を消して再評価。
+    /// - 通信失敗 → 現状維持（既存の署名キー/猶予で判断）。この設計により、この経路は Pro を延長こそすれ、決して破壊しない。
+    func refreshSubscriptionValidationIfNeeded(force: Bool = false) async {
+        guard let urlStr = PurchaseConfig.licenseValidationURL,
+              let url = URL(string: urlStr),
+              let key = UserDefaults.standard.string(forKey: licenseKeyKey) else { return }
+        if !force, let last = UserDefaults.standard.object(forKey: lastValidatedKey) as? Date,
+           Date().timeIntervalSince(last) < 12 * 60 * 60 { return }
+        UserDefaults.standard.set(Date(), forKey: lastValidatedKey)
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["license_key": key])
+        req.timeoutInterval = 10
+
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let valid = obj["valid"] as? Bool else { return }
+            if valid {
+                let until = Date().addingTimeInterval(validationGraceSec)
+                UserDefaults.standard.set(until, forKey: subscriptionValidUntilKey)
+                if currentTier == .free {
+                    currentTier = (obj["tier"] as? String) == "lifetime" ? .proLifetime : .pro
+                    saveState()
+                }
+            } else {
+                // 明示的に無効（解約・支払い失敗）→ 猶予を破棄して再評価
+                UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
+                loadState()
+            }
+        } catch {
+            // オフライン等は現状維持（Pro を落とさない）
+        }
     }
 
     private func saveState() {
@@ -304,6 +358,8 @@ final class LicenseManager: ObservableObject {
         weeklyAISuggestionsUsed = 0
         UserDefaults.standard.removeObject(forKey: promoCodeKey)
         UserDefaults.standard.removeObject(forKey: licenseKeyKey)
+        UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
+        UserDefaults.standard.removeObject(forKey: lastValidatedKey)
         saveState()
     }
 }

@@ -44,10 +44,15 @@ struct Sparkline: View {
 /// 健康状態の推移（メモリ/Swap/ディスク空き/CPU負荷）を表示
 struct HealthTrendView: View {
     @ObservedObject private var history = HealthHistory.shared
+    @ObservedObject private var license = LicenseManager.shared
     @State private var rangeHours: Double = 24
 
     var body: some View {
-        let data = history.recent(hours: rangeHours)
+        // 履歴の壁: Free は直近24時間まで。長期(7日/30日)は Pro で解放。
+        let isPro = license.currentTier.isPro
+        let effectiveHours = isPro ? rangeHours : 24
+        let data = history.recent(hours: effectiveHours)
+        let proRangeLocked = !isPro && rangeHours > 24
 
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -60,9 +65,23 @@ struct HealthTrendView: View {
                 Picker("", selection: $rangeHours) {
                     Text(L10n.last24h).tag(24.0)
                     Text(L10n.last7d).tag(168.0)
+                    Text(L10n.last30d).tag(720.0)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 130)
+                .frame(width: 180)
+            }
+
+            if proRangeLocked {
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                    Text(L10n.healthTrendProLock)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 2)
             }
 
             if data.count < 2 {
@@ -74,7 +93,7 @@ struct HealthTrendView: View {
             } else {
                 // 実際にカバーしている範囲を明示。記録期間がまだ短いと「24時間」と「7日」で
                 // 同じデータになる（タブを変えても変化しない）ため、故障ではないと分かるようにする。
-                Text(coverageCaption(data, requestedHours: rangeHours))
+                Text(coverageCaption(data, requestedHours: effectiveHours))
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

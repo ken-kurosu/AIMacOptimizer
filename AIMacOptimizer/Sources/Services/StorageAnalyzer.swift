@@ -43,12 +43,14 @@ final class StorageAnalyzer: ObservableObject {
         let logs = scanLogs()
         let installers = scanInstallers()
         let largeFiles = scanLargeFiles()
+        let devBig = scanDeveloperBigConsumers()
 
         var results: [StorageItem] = []
         results.append(contentsOf: caches)
         results.append(contentsOf: logs)
         results.append(contentsOf: installers)
         results.append(contentsOf: largeFiles)
+        results.append(contentsOf: devBig)
         results.sort(by: >)
         let finalResults = results  // 並行クロージャに渡すため不変コピーを作る（Swift 6対応）
 
@@ -215,6 +217,43 @@ final class StorageAnalyzer: ObservableObject {
             }
         }
 
+        return results
+    }
+
+    /// 開発系の「隠れた大物」を検出する（Ollama モデル / iOS シミュレータ / Docker）。
+    /// Finder では見つけにくいが数GB〜数十GBを占めることが多い。再生成キャッシュではなく
+    /// 意図的なデータのため .largeFile として扱い、自動削除(findSafeCleanupItems)には含めない。
+    /// 削除は必ず個別確認・ゴミ箱経由（＝ユーザーが理解・同意した上でだけ）。
+    private func scanDeveloperBigConsumers() -> [StorageItem] {
+        var results: [StorageItem] = []
+        let home = NSHomeDirectory()
+
+        let candidates: [(path: String, label: String)] = [
+            ("\(home)/.ollama/models", "Ollama モデル"),
+            ("\(home)/Library/Developer/CoreSimulator/Devices", "iOS シミュレータ"),
+            ("\(home)/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", "Docker ディスクイメージ"),
+            ("\(home)/Library/Containers/com.docker.docker/Data", "Docker データ"),
+        ]
+
+        var dockerCounted = false
+        for c in candidates {
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: c.path, isDirectory: &isDir) else { continue }
+            // Docker は Docker.raw を優先し、データディレクトリとの二重計上を避ける
+            if c.label.hasPrefix("Docker") {
+                if dockerCounted { continue }
+            }
+            let size = isDir.boolValue ? directorySize(c.path) : fileSize(c.path)
+            guard let size = size, size > 500 else { continue } // >500MB のみ提示
+            if c.label.hasPrefix("Docker") { dockerCounted = true }
+            results.append(StorageItem(
+                path: c.path,
+                name: c.label,
+                sizeMB: size,
+                category: .largeFile,
+                isDirectory: isDir.boolValue
+            ))
+        }
         return results
     }
 

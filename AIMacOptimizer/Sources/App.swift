@@ -262,6 +262,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             // 週次の最適化レポート（7日経過時のみ生成・通知。それ以外は即return で無コスト）
             Task { @MainActor in WeeklyReportService.shared.checkAndSendIfDue() }
 
+            // 月額購読のオンライン再検証（12時間に1回だけ実行・URL未設定なら無コスト）
+            Task { @MainActor in await LicenseManager.shared.refreshSubscriptionValidationIfNeeded() }
+
             // スケジュール自動最適化が有効なときだけ、学習用にプロセスを軽く記録する
             // （パネル非表示中でも学習を進める。無効なら取得コストは発生しない）
             if ScheduleManager.shared.schedule.enabled {

@@ -60,6 +60,16 @@ struct SafeCleanupPlan {
     var isEmpty: Bool { candidates.isEmpty }
 }
 
+/// ストレージ圧迫の段階。空きが減るほど強く介入する（0バイト到達＝OS/他アプリが壊れる前に手を打つ）。
+enum DiskPressureLevel: Int, Comparable {
+    case normal = 0     // 余裕あり
+    case notice          // 注意（早めの気づき）
+    case critical        // 危険（強めに通知）
+    case emergency       // 緊急（設定に関わらずリスク0を自動解放）
+
+    static func < (a: DiskPressureLevel, b: DiskPressureLevel) -> Bool { a.rawValue < b.rawValue }
+}
+
 /// ストレージ自動ガードの設定（UserDefaults に JSON 永続化）
 struct DiskGuardSettings: Codable {
     /// 定期監視を行うか
@@ -68,8 +78,28 @@ struct DiskGuardSettings: Codable {
     var autoClean: Bool = false
     /// 使用率がこの値(%)以上で「圧迫」とみなす
     var thresholdPercent: Double = 90
-    /// 空き容量がこの値(GB)未満で「圧迫」とみなす
+    /// 空き容量がこの値(GB)未満で「注意」とみなす
     var minFreeGB: Double = 10
+    /// 空き容量がこの値(GB)未満で「危険」とみなす
+    var criticalFreeGB: Double = 5
+    /// 空き容量がこの値(GB)未満で「緊急」とみなす
+    var emergencyFreeGB: Double = 2
+    /// 緊急時は autoClean 設定に関わらず、リスク0のキャッシュ/ログを自動で解放する（0バイト到達の防止）
+    var emergencyAutoReclaim: Bool = true
+
+    init() {}
+
+    // 旧バージョンの保存データ（新フィールドが無い JSON）でも既存値を保ったまま読めるようにする
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        autoClean = try c.decodeIfPresent(Bool.self, forKey: .autoClean) ?? false
+        thresholdPercent = try c.decodeIfPresent(Double.self, forKey: .thresholdPercent) ?? 90
+        minFreeGB = try c.decodeIfPresent(Double.self, forKey: .minFreeGB) ?? 10
+        criticalFreeGB = try c.decodeIfPresent(Double.self, forKey: .criticalFreeGB) ?? 5
+        emergencyFreeGB = try c.decodeIfPresent(Double.self, forKey: .emergencyFreeGB) ?? 2
+        emergencyAutoReclaim = try c.decodeIfPresent(Bool.self, forKey: .emergencyAutoReclaim) ?? true
+    }
 }
 
 // MARK: - DiskGuard
@@ -82,6 +112,8 @@ final class DiskGuard: ObservableObject {
 
     /// UI に提示中の提案（手動モードで圧迫検知した時にセット）
     @Published private(set) var pendingPlan: SafeCleanupPlan?
+    /// 現在の圧迫レベル（UI がバッジ/色を出し分けるため）
+    @Published private(set) var pressureLevel: DiskPressureLevel = .normal
     /// 設定（変更すると自動で永続化）
     @Published var settings: DiskGuardSettings {
         didSet { saveSettings() }
@@ -107,15 +139,43 @@ final class DiskGuard: ObservableObject {
 
     // MARK: - 監視
 
-    /// AppDelegate の定期タイマーから呼ぶ。圧迫を検知したら提案/自動削除する。
+    /// 空き容量から現在の圧迫レベルを判定する。
+    func level(for info: StorageInfo) -> DiskPressureLevel {
+        if info.freeGB < settings.emergencyFreeGB { return .emergency }
+        if info.freeGB < settings.criticalFreeGB { return .critical }
+        if info.freeGB < settings.minFreeGB || info.usagePercent >= settings.thresholdPercent { return .notice }
+        return .normal
+    }
+
+    /// AppDelegate の定期タイマーから呼ぶ。圧迫レベルに応じて段階的に介入する。
     func evaluate() {
         guard settings.enabled else { return }
 
         let info = analyzer.getStorageInfo()
         guard info.totalGB > 0 else { return }
 
-        let pressured = info.usagePercent >= settings.thresholdPercent || info.freeGB < settings.minFreeGB
-        guard pressured else { return }
+        let level = self.level(for: info)
+        pressureLevel = level
+        guard level != .normal else { return }
+
+        // 【緊急】autoClean 設定・クールダウンに関わらず、リスク0を即時解放して 0バイト到達を防ぐ。
+        // （0バイトになると OS や他アプリ、そしてこのアプリ自身の動作にも支障が出るため、待たずに動く）
+        if level == .emergency {
+            if settings.emergencyAutoReclaim {
+                let candidates = buildCandidates()
+                if !candidates.isEmpty {
+                    let plan = SafeCleanupPlan(candidates: candidates,
+                                              usagePercentBefore: info.usagePercent, freeGBBefore: info.freeGB)
+                    performCleanup(plan, auto: true, emergency: true)
+                    return
+                }
+            }
+            // 安全に消せる物が無い緊急時 → 大物の助言つきで強く通知（UIバナーは安全項目がある時のみ）
+            notify(title: "⚠️ 空き容量が極めて少なくなっています",
+                   body: emergencyBody(info))
+            markActionTaken()
+            return
+        }
 
         // すでに提案を出しているなら重複させない
         guard pendingPlan == nil else { return }
@@ -124,7 +184,14 @@ final class DiskGuard: ObservableObject {
 
         // 安全候補（キャッシュ/ログのみ・フォント等の保護対象は除外）を収集
         let candidates = buildCandidates()
-        guard !candidates.isEmpty else { return }
+        guard !candidates.isEmpty else {
+            // 消せる安全物が無くても、危険域なら大物の内訳だけは知らせる
+            if level >= .critical {
+                notify(title: title(for: level), body: emergencyBody(info))
+                markActionTaken()
+            }
+            return
+        }
 
         let plan = SafeCleanupPlan(
             candidates: candidates,
@@ -134,15 +201,36 @@ final class DiskGuard: ObservableObject {
 
         if settings.autoClean {
             // 承認済み → 自動で空けて通知のみ
-            performCleanup(plan, auto: true)
+            performCleanup(plan, auto: true, emergency: false)
         } else {
-            // 手動 → 提案を UI に出し、気付けるよう通知
+            // 手動 → 提案を UI に出し、気付けるよう通知（危険域ほど強い文言）
             pendingPlan = plan
+            let extra = level >= .critical ? "空き残り約\(String(format: "%.1f", info.freeGB))GB。" : ""
             notify(
-                title: "ストレージ圧迫を検知しました",
-                body: "安全に空けられる項目が最大 約\(plan.totalFormatted)あります（実際の解放量は削除後にお知らせ）。アプリを開いて確認してください。"
+                title: title(for: level),
+                body: "\(extra)安全に空けられる項目が最大 約\(plan.totalFormatted)あります。アプリを開けばワンボタンで解放できます（実際の解放量は削除後にお知らせ）。"
             )
         }
+    }
+
+    private func title(for level: DiskPressureLevel) -> String {
+        switch level {
+        case .emergency: return "⚠️ 緊急：空き容量が極めて少ない"
+        case .critical:  return "⚠️ 空き容量が少なくなっています"
+        case .notice:    return "ストレージ圧迫を検知しました"
+        case .normal:    return "ストレージ"
+        }
+    }
+
+    /// 緊急/危険時の本文。安全に消せる物が乏しい時に「次に効く大物」を助言する。
+    private func emergencyBody(_ info: StorageInfo) -> String {
+        var lines = ["空き残り約\(String(format: "%.1f", info.freeGB))GB（使用\(String(format: "%.0f", info.usagePercent))%）。"]
+        let big = bigConsumerHints()
+        if !big.isEmpty {
+            lines.append("容量の大きい項目: " + big.prefix(3).joined(separator: " / "))
+        }
+        lines.append("アプリを開くと、安全な項目はワンボタンで、大きい項目は個別確認の上で整理できます。")
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - 操作（UI から）
@@ -163,7 +251,7 @@ final class DiskGuard: ObservableObject {
 
     // MARK: - 実行
 
-    private func performCleanup(_ plan: SafeCleanupPlan, auto: Bool) {
+    private func performCleanup(_ plan: SafeCleanupPlan, auto: Bool, emergency: Bool = false) {
         let analyzer = self.analyzer
         // ファイル IO は重いのでバックグラウンドで実行
         Task.detached {
@@ -184,22 +272,84 @@ final class DiskGuard: ObservableObject {
                     cleared += 1
                 }
             }
-            await self.finishCleanup(cleared: cleared, freedMB: freedMB, auto: auto)
+            await self.finishCleanup(cleared: cleared, freedMB: freedMB, auto: auto, emergency: emergency)
         }
     }
 
-    private func finishCleanup(cleared: Int, freedMB: Double, auto: Bool) {
+    private func finishCleanup(cleared: Int, freedMB: Double, auto: Bool, emergency: Bool) {
         markActionTaken()
+        pendingPlan = nil
         let freedText = freedMB >= 1024 ? String(format: "%.1f GB", freedMB / 1024) : String(format: "%.0f MB", freedMB)
-        let summary = "\(cleared)項目のキャッシュ/ログを削除し、約\(freedText)を確保しました。"
+        var summary = "\(cleared)項目のキャッシュ/ログを削除し、約\(freedText)を確保しました。"
+
+        // 緊急自動解放でもまだ危険域なら、次の一手（大物）を助言する
+        if emergency {
+            let info = analyzer.getStorageInfo()
+            if info.freeGB < settings.criticalFreeGB {
+                let big = bigConsumerHints()
+                if !big.isEmpty { summary += "\nまだ空きが少なめです。大きい項目: " + big.prefix(2).joined(separator: " / ") }
+            }
+        }
         lastAutoCleanSummary = summary
 
-        // 自動・手動どちらでも完了通知を出す（自動モードでは通知のみが唯一の通知手段）
         notify(
-            title: auto ? "ストレージを自動で空けました" : "ストレージを空けました",
+            title: emergency ? "緊急：安全な項目を自動で解放しました"
+                 : (auto ? "ストレージを自動で空けました" : "ストレージを空けました"),
             body: summary
         )
     }
+
+    // MARK: - AI(ローカル/無料)による「次に効く大物」の助言
+
+    /// 容量の大きい"要判断"項目を素早く見つけ、人が読める助言にする（ローカル完結・無料）。
+    /// 通知に載せる用途のため軽量に。詳しい一覧は optimalAdvice() / フルスキャンで。
+    private func bigConsumerHints() -> [String] {
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+        let candidates: [(String, String)] = [
+            ("\(home)/.ollama/models", "Ollamaモデル"),
+            ("\(home)/Library/Developer/CoreSimulator/Devices", "iOSシミュレータ"),
+            ("\(home)/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", "Dockerイメージ"),
+            ("\(home)/Downloads", "ダウンロード"),
+        ]
+        var hints: [(String, Double)] = []
+        for (path, label) in candidates {
+            guard fm.fileExists(atPath: path) else { continue }
+            if let mb = directorySizeQuick(path), mb >= 1024 {
+                hints.append(("\(label) \(String(format: "%.1fGB", mb / 1024))", mb))
+            }
+        }
+        return hints.sorted { $0.1 > $1.1 }.map { $0.0 }
+    }
+
+    /// ざっくりディレクトリ/ファイルサイズ(MB)。厳密さより速度優先。
+    private func directorySizeQuick(_ path: String) -> Double? {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return nil }
+        if !isDir.boolValue {
+            let attrs = try? fm.attributesOfItem(atPath: path)
+            return (attrs?[.size] as? NSNumber).map { $0.doubleValue / 1_000_000 }
+        }
+        guard let en = fm.enumerator(at: URL(fileURLWithPath: path),
+                                     includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                                     options: [.skipsHiddenFiles]) else { return nil }
+        var total: Double = 0
+        for case let url as URL in en {
+            if let s = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize {
+                total += Double(s)
+            }
+        }
+        return total / 1_000_000
+    }
+
+    /// 緊急時の最終手段：アプリ経由でなく手動で確実に空けられる、安全な（再生成される）コマンド一覧。
+    /// 万一アプリ操作もままならない極限状態のためのフォールバック（コピーして外部ターミナルで実行）。
+    static let emergencyTerminalCommands: [String] = [
+        "rm -rf ~/Library/Developer/Xcode/DerivedData/*",
+        "rm -rf ~/Library/Caches/*",
+        "xcrun simctl delete unavailable"
+    ]
 
     // MARK: - 候補生成
 

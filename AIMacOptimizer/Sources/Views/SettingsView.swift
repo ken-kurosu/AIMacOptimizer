@@ -408,6 +408,12 @@ struct SettingsView: View {
                         : L10n.autoFreeOffDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    Toggle("緊急時は自動でリスク0を解放", isOn: $diskGuard.settings.emergencyAutoReclaim)
+
+                    Text("空きが約\(Int(diskGuard.settings.emergencyFreeGB))GB未満になると、通常の自動削除設定に関わらず、再生成される安全なキャッシュ/ログだけを即座に解放します（0バイト到達＝OSや他アプリが不安定になる前に手を打つため）。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             } header: {
                 Text(L10n.storageAutoGuard)

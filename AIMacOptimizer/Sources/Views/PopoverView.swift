@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Main popover view with Memory, Storage, and Diagnosis tabs
 struct PopoverView: View {
@@ -732,18 +733,35 @@ struct StorageTabView: View {
 
     @ViewBuilder
     private func diskPressureBanner(_ plan: SafeCleanupPlan) -> some View {
+        let emergency = diskGuard.pressureLevel == .emergency
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "internaldrive.fill")
-                    .foregroundColor(.orange)
+                Image(systemName: emergency ? "exclamationmark.triangle.fill" : "internaldrive.fill")
+                    .foregroundColor(emergency ? .red : .orange)
                     .font(.system(size: 14))
-                Text(L10n.storagePressureDetected)
+                Text(emergency ? "緊急：空き容量が極めて少ない" : L10n.storagePressureDetected)
                     .font(.caption)
                     .fontWeight(.semibold)
+                    .foregroundColor(emergency ? .red : .primary)
                 Spacer()
                 Text(L10n.storageUsageSummary(percent: Int(plan.usagePercentBefore), freeGB: String(format: "%.1f", plan.freeGBBefore)))
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
+            }
+
+            // 緊急時は、確実に空く安全コマンド（再生成される項目のみ）もワンタップでコピーできる
+            if emergency {
+                Button {
+                    let joined = DiskGuard.emergencyTerminalCommands.joined(separator: "\n")
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(joined, forType: .string)
+                    cleanupMessage = "安全コマンドをコピーしました。ターミナルに貼り付けて実行できます。"
+                } label: {
+                    Label("緊急時の安全コマンドをコピー", systemImage: "doc.on.clipboard")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             Text(L10n.safeCleanupAvailable(plan.totalFormatted))
@@ -816,7 +834,7 @@ struct StorageTabView: View {
             }
         }
         .padding(10)
-        .background(Color.blue.opacity(0.08))
+        .background((emergency ? Color.red : Color.blue).opacity(0.08))
         .cornerRadius(8)
         .padding(.horizontal, 8)
         .padding(.top, 4)

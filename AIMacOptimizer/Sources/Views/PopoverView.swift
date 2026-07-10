@@ -9,6 +9,8 @@ struct PopoverView: View {
     @StateObject private var chatService = AIChatService()
     @StateObject private var batteryMonitor = BatteryMonitor()
     @State private var selectedTab = 0
+    /// 「設定」タブはウィンドウを開くランチャーなので、実際に表示する内容タブは別管理（チラつき防止）
+    @State private var lastContentTab = 0
     @State private var showChat = false
 
     init(monitor: ProcessMonitor) {
@@ -32,15 +34,25 @@ struct PopoverView: View {
                     Text(L10n.storageUsage).tag(1)
                     Text(L10n.tools).tag(3)
                     Text(L10n.diagnosis).tag(2)
+                    Text(L10n.settings).tag(4)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
+                .onChange(of: selectedTab) { newValue in
+                    // 一番右「設定」は独立ウィンドウで開き、タブ表示は直前の内容へ戻す
+                    if newValue == 4 {
+                        openSettings()
+                        DispatchQueue.main.async { selectedTab = lastContentTab }
+                    } else {
+                        lastContentTab = newValue
+                    }
+                }
 
-                if selectedTab == 0 {
+                if lastContentTab == 0 {
                     MemoryTabView(monitor: monitor, license: license)
-                } else if selectedTab == 1 {
+                } else if lastContentTab == 1 {
                     StorageTabView(license: license)
-                } else if selectedTab == 3 {
+                } else if lastContentTab == 3 {
                     ToolsTabView(batteryMonitor: batteryMonitor, license: license)
                 } else {
                     DiagnosisView(engine: diagnosisEngine, license: license, onOpenChat: {

@@ -82,9 +82,9 @@ struct L10n {
     // MARK: - Sections
     static var memoryUsage: String {
         switch current {
-        case .japanese: return "メモリ使用状況"
-        case .english: return "Memory Usage"
-        case .chinese: return "内存使用"
+        case .japanese: return "メモリ状況"
+        case .english: return "Memory"
+        case .chinese: return "内存"
         }
     }
 
@@ -1358,9 +1358,9 @@ struct L10n {
     // MARK: - Settings
     static var license: String {
         switch current {
-        case .japanese: return "ライセンス"
-        case .english: return "License"
-        case .chinese: return "许可证"
+        case .japanese: return "プラン"
+        case .english: return "Plan"
+        case .chinese: return "套餐"
         }
     }
 
@@ -1582,9 +1582,36 @@ struct L10n {
 
     static var resetLicense: String {
         switch current {
-        case .japanese: return "ライセンスをリセット（Free に戻す）"
-        case .english: return "Reset license (revert to Free)"
-        case .chinese: return "重置许可证（恢复为免费版）"
+        case .japanese: return "このMacのライセンスを解除"
+        case .english: return "Deactivate license on this Mac"
+        case .chinese: return "在此 Mac 上解除许可证"
+        }
+    }
+
+    /// リセットが「課金の解約ではない」ことの補足
+    static var resetLicenseNote: String {
+        switch current {
+        case .japanese: return "このMacをFreeに戻すだけです。有料プランの課金は解約されません。"
+        case .english: return "This only reverts this Mac to Free. It does NOT cancel your paid subscription."
+        case .chinese: return "仅将此 Mac 恢复为免费版，不会取消您的付费订阅。"
+        }
+    }
+
+    /// 有料プランの解約セクション見出し
+    static var cancelPlanTitle: String {
+        switch current {
+        case .japanese: return "有料プランを解約する"
+        case .english: return "Cancel paid plan"
+        case .chinese: return "取消付费套餐"
+        }
+    }
+
+    /// 解約手順の説明
+    static var cancelPlanNote: String {
+        switch current {
+        case .japanese: return "解約はStripeで行います。ご購入時の確認メール内の「サブスクリプションを管理」リンクから解約できます。解約後も、次回更新日まではProのままご利用いただけます。"
+        case .english: return "Cancellation is handled by Stripe. Use the “Manage subscription” link in your purchase receipt email. You keep Pro until the end of the current period."
+        case .chinese: return "取消由 Stripe 处理。请使用购买确认邮件中的\u{201C}管理订阅\u{201D}链接。取消后在本计费周期结束前仍可使用 Pro。"
         }
     }
 

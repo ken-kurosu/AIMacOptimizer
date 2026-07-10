@@ -291,12 +291,28 @@ struct SettingsView: View {
                 }
 
                 if license.currentTier.isPro {
-                    Button(L10n.resetLicense, role: .destructive) {
-                        license.resetLicense()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(L10n.resetLicense, role: .destructive) {
+                            license.resetLicense()
+                        }
+                        Text(L10n.resetLicenseNote)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                 }
             } header: {
                 Text(L10n.usageStatus)
+            }
+
+            // 解約（課金停止）はStripe側で行う。「このMacのライセンスを解除」との混同を防ぐため別セクションで明示。
+            if license.currentTier.isPro {
+                Section {
+                    Text(L10n.cancelPlanNote)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text(L10n.cancelPlanTitle)
+                }
             }
         }
         .formStyle(.grouped)

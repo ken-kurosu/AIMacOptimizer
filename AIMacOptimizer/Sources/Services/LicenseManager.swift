@@ -30,8 +30,8 @@ struct PurchaseConfig {
     static let proLifetimeURL = "https://buy.stripe.com/00w9AMbN65dsbW90z2gYU01"
 
     // MARK: - License validation endpoint (optional: server-side validation)
-    // 初期リリースはオフライン検証。将来的に Stripe Webhook + サーバーで自動発行に移行
-    static let licenseValidationURL: String? = nil
+    // Cloudflare Workers の Stripe Webhook + KV でライセンス発行/検証（月額は購読が有効な限り Pro を自動維持）
+    static let licenseValidationURL: String? = "https://aimac-license-webhook.kurosu.workers.dev/validate"
 
     // MARK: - Pricing Display
     static let proMonthlyPrice = "¥480/月"

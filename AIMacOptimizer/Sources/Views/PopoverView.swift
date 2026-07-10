@@ -1079,6 +1079,8 @@ struct StorageExpandableRow: View {
                             .foregroundColor(.blue)
                     }
                     .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)   // 「⋯」の右に出る紛らわしいドロップダウン矢印を消す
+                    .fixedSize()
                     .frame(width: 24)
                 } else {
                     // Lock icon for Free users

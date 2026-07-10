@@ -551,7 +551,7 @@ struct SettingsView: View {
             // 毎日のステータス通知（数値は無料）＋ 週次の詳しいレポート
             Section {
                 Toggle("毎日のステータス通知", isOn: $dailyStatusEnabled)
-                Text("1日1回、現在のメモリ使用率とディスク空き容量を通知でお届けします（無料）。通知をタップすると詳しい診断・レポートを開けます。")
+                Text("1日1回、現在のメモリ使用率とストレージ空き容量を通知でお届けします（無料）。通知をタップすると詳しい診断・レポートを開けます。")
                     .font(.caption)
                     .foregroundColor(.secondary)
 

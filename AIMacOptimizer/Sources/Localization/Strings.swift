@@ -477,9 +477,9 @@ struct L10n {
 
     static func diskAmount(_ formatted: String) -> String {
         switch current {
-        case .japanese: return "ディスク約 \(formatted)"
-        case .english: return "~\(formatted) disk"
-        case .chinese: return "磁盘约 \(formatted)"
+        case .japanese: return "ストレージ約 \(formatted)"
+        case .english: return "~\(formatted) storage"
+        case .chinese: return "存储约 \(formatted)"
         }
     }
 
@@ -1196,9 +1196,9 @@ struct L10n {
 
     static var diskFree: String {
         switch current {
-        case .japanese: return "ディスク空き"
-        case .english: return "Disk free"
-        case .chinese: return "磁盘可用"
+        case .japanese: return "ストレージ空き"
+        case .english: return "Storage free"
+        case .chinese: return "存储可用"
         }
     }
 

@@ -287,6 +287,22 @@ final class DiskGuard: ObservableObject {
     private func finishCleanup(cleared: Int, freedMB: Double, auto: Bool, emergency: Bool) {
         markActionTaken()
         pendingPlan = nil
+
+        // 実際にはほぼ空かなかった（対象が使用中／既に空 等）→ 誤解を招く「確保しました」は出さない。
+        // 通常時は無通知、緊急時のみ「空けられなかった＋大物の助言」を正直に知らせる。
+        if freedMB < 1 {
+            lastAutoCleanSummary = "安全に空けられる余地はほとんどありませんでした。"
+            if emergency {
+                var body = "自動で空けられる安全なキャッシュ/ログはほぼありませんでした。"
+                let big = bigConsumerHints()
+                if !big.isEmpty {
+                    body += "\n容量の大きい項目: " + big.prefix(2).joined(separator: " / ") + "（アプリから個別に確認して整理できます）"
+                }
+                notify(title: "空き容量にご注意ください", body: body)
+            }
+            return
+        }
+
         let freedText = freedMB >= 1024 ? String(format: "%.1f GB", freedMB / 1024) : String(format: "%.0f MB", freedMB)
         var summary = "\(cleared)項目のキャッシュ/ログを削除し、約\(freedText)を確保しました。"
 

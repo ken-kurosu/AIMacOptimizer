@@ -53,7 +53,7 @@ struct OnboardingView: View {
                 .font(.system(size: 17, weight: .semibold))
             VStack(alignment: .leading, spacing: 12) {
                 bullet("memorychip", "ワンクリックで使われていないメモリを解放（実測表示）")
-                bullet("internaldrive", "ディスクを分析し、安全に消せるものをワンボタンで整理")
+                bullet("internaldrive", "ストレージを分析し、安全に消せるものをワンボタンで整理")
                 bullet("bell.badge", "空き容量が減る前や不調の兆しを、通知でお知らせ")
                 bullet("lock.shield", "データはMacの外に出ません。削除はゴミ箱経由で復元可能")
             }
@@ -77,7 +77,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("通知を有効にしましょう")
                 .font(.system(size: 16, weight: .semibold))
-            Text("メモリ/ディスクの圧迫や、空き容量が少なくなる前の警告をお届けします。特に「ディスクが満杯になる前の緊急アラート」は、通知が有効でないと届きません。")
+            Text("メモリ/ストレージの圧迫や、空き容量が少なくなる前の警告をお届けします。特に「ストレージが満杯になる前の緊急アラート」は、通知が有効でないと届きません。")
                 .font(.system(size: 12.5))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

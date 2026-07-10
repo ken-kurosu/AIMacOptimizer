@@ -139,7 +139,7 @@ final class WeeklyReportService {
             return "Swap が多めです。メモリ最適化や不要タブの整理が効果的です。"
         }
         if usagePercent >= 85 {
-            return "ディスク使用率が高めです。定期的な整理をおすすめします。"
+            return "ストレージ使用率が高めです。定期的な整理をおすすめします。"
         }
         return "状態は良好です。この調子でメニューバーからいつでも最適化できます。"
     }

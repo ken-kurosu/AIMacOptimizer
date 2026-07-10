@@ -124,6 +124,8 @@ final class DiskGuard: ObservableObject {
     private let lastActionKey = "diskGuardLastActionTimestamp"
     /// 同じ圧迫で何度も提案/削除しないためのクールダウン（3 時間）
     private let cooldown: TimeInterval = 3 * 60 * 60
+    /// 緊急時の再試行間隔（30 分）。緊急でも毎分スキャン/削除して重くならないようにする。
+    private let emergencyCooldown: TimeInterval = 30 * 60
 
     private init() {
         if let data = defaults.data(forKey: settingsKey),
@@ -159,13 +161,15 @@ final class DiskGuard: ObservableObject {
         // 必ず気付けるようにする。ただし削除は勝手にやらず、通知＋承認（ワンボタン）を取る。
         // ユーザーが自動削除モード(autoClean)を明示的に ON にしている場合のみ、その同意に基づき自動実行する。
         if level == .emergency {
+            // 緊急でも毎分スキャン/削除はしない。前回対応から一定時間(30分)空いた時だけ動く。
+            // ＝1回空けたら、まだ空きが少なくても30分は再スキャンしない（無駄なI/Oと体感悪化を防ぐ）。
+            guard emergencyCooldownElapsed else { return }
+            markActionTaken() // 先にクールダウンを立て、非同期削除中やスキャン中の再トリガーを防ぐ
+
             let candidates = buildCandidates()
             guard !candidates.isEmpty else {
                 // 安全に消せる物が無い緊急時 → 大物の助言つきで強く通知（削除はしない）
-                if cooldownElapsed {
-                    notify(title: "⚠️ 空き容量が極めて少なくなっています", body: emergencyBody(info))
-                    markActionTaken()
-                }
+                notify(title: "⚠️ 空き容量が極めて少なくなっています", body: emergencyBody(info))
                 return
             }
             let plan = SafeCleanupPlan(candidates: candidates,
@@ -174,13 +178,10 @@ final class DiskGuard: ObservableObject {
                 // 自動削除に同意済み → 実行
                 performCleanup(plan, auto: true, emergency: true)
             } else {
-                // 承認フロー：一覧＋ワンボタンを UI に出し、緊急として強く通知（重複通知は避ける）
-                let firstSurface = (pendingPlan == nil)
+                // 承認フロー：一覧＋ワンボタンを UI に出し、緊急として強く通知
                 pendingPlan = plan
-                if firstSurface {
-                    notify(title: "⚠️ 緊急：空き容量が極めて少ない",
-                           body: "\(emergencyBody(info))\nアプリを開けば、安全な項目をワンボタンで解放できます（削除は承認後のみ）。")
-                }
+                notify(title: "⚠️ 緊急：空き容量が極めて少ない",
+                       body: "\(emergencyBody(info))\nアプリを開けば、安全な項目をワンボタンで解放できます（削除は承認後のみ）。")
             }
             return
         }
@@ -427,6 +428,11 @@ final class DiskGuard: ObservableObject {
     private var cooldownElapsed: Bool {
         guard let last = defaults.object(forKey: lastActionKey) as? TimeInterval else { return true }
         return Date().timeIntervalSince1970 - last >= cooldown
+    }
+
+    private var emergencyCooldownElapsed: Bool {
+        guard let last = defaults.object(forKey: lastActionKey) as? TimeInterval else { return true }
+        return Date().timeIntervalSince1970 - last >= emergencyCooldown
     }
 
     private func markActionTaken() {

@@ -57,9 +57,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
         // 閾値通知などがバナー表示されず抑制される。ここでデリゲートを設定する。
         UNUserNotificationCenter.current().delegate = self
 
-        // Request notification permissions
-        NotificationService.shared.requestPermission()
-
         // スケジュール自動最適化を初期化（保存設定が有効なら定期実行を開始）
         _ = ScheduleManager.shared
 
@@ -69,10 +66,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
         // 初回起動はログイン項目に自動登録（既定ON）。以降はユーザー設定を尊重
         setupLaunchAtLoginDefault()
 
-        // 起動時に現在の状態を軽く通知して、存在を忘れられないようにする
-        scheduleLaunchSummaryNotification()
+        // 初回はオンボーディングを表示（アプリをアクティブ化した状態で通知許可を要求するため、
+        // メニューバー常駐アプリでも許可ダイアログが確実に前面表示される）。2回目以降は素通り。
+        if UserDefaults.standard.bool(forKey: "onboardingCompleted") {
+            scheduleLaunchSummaryNotification()
+        } else {
+            showOnboarding()
+        }
 
         print("=== AI Mac Optimizer started ===")
+    }
+
+    // MARK: - オンボーディング（初回のみ）
+
+    private var onboardingWindow: NSWindow?
+
+    private func showOnboarding() {
+        // 一時的に通常アプリ化して、ウィンドウと通知ダイアログを前面に出す
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        let view = OnboardingView(
+            onRequestNotifications: { completion in
+                NSApp.activate(ignoringOtherApps: true)
+                NotificationService.shared.requestPermission(completion: completion)
+            },
+            onFinish: { [weak self] in self?.finishOnboarding() }
+        )
+        let hosting = NSHostingView(rootView: view)
+        hosting.setFrameSize(hosting.fittingSize)
+
+        let win = NSWindow(
+            contentRect: NSRect(origin: .zero, size: hosting.fittingSize),
+            styleMask: [.titled, .closable],
+            backing: .buffered, defer: false
+        )
+        win.title = "AI Mac Optimizer"
+        win.contentView = hosting
+        win.isReleasedWhenClosed = false
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+
+        // ×ボタンで閉じても「完了」扱いにする（何度も出さない）
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: win, queue: .main
+        ) { [weak self] _ in
+            self?.completeOnboardingState()
+        }
+
+        self.onboardingWindow = win
+    }
+
+    private func finishOnboarding() {
+        onboardingWindow?.close() // willClose 経由で completeOnboardingState が走る
+    }
+
+    /// 完了フラグを立て、メニューバー常駐（accessory）へ戻す。
+    private func completeOnboardingState() {
+        guard !UserDefaults.standard.bool(forKey: "onboardingCompleted") else { return }
+        UserDefaults.standard.set(true, forKey: "onboardingCompleted")
+        onboardingWindow = nil
+        NSApp.setActivationPolicy(.accessory)
+        scheduleLaunchSummaryNotification()
     }
 
     /// アプリ起動中でも通知をバナー＋音で表示する（常駐アプリでは必須。無いと抑制される）
@@ -107,25 +162,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             guard UserDefaults.standard.object(forKey: "enableNotifications") == nil
                     || UserDefaults.standard.bool(forKey: "enableNotifications") else { return }
 
-            let mem = self.monitor.systemMemory
-            let storage = StorageAnalyzer().getStorageInfo()
-
-            // 軽いヘルスチェック（重い Deep Diagnosis は走らせない）
-            var health = "良好"
-            if mem.severity == .high || storage.freeGB < 10 { health = "要注意" }
-            else if mem.severity == .medium || storage.usagePercent > 85 { health = "やや注意" }
-
-            let body = "メモリ \(Int(mem.usagePercent))% ・ ストレージ空き \(String(format: "%.0f", storage.freeGB))GB ・ 状態: \(health)"
-
             let content = UNMutableNotificationContent()
             content.title = "AI Mac Optimizer 起動中"
-            content.body = body
-            content.subtitle = "メニューバーから詳しい診断・最適化ができます"
+            content.body = self.statusBody()
+            content.subtitle = "タップで詳しい診断・レポートを開けます"
             content.sound = nil
+            content.categoryIdentifier = "STATUS_DIGEST"
             let request = UNNotificationRequest(identifier: "launch-summary-\(Int(Date().timeIntervalSince1970))",
                                                 content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request)
         }
+    }
+
+    /// メモリ/ディスクの現況を1行にまとめる（起動サマリ・毎日ステータスで共用。数値は常に無料）。
+    private func statusBody() -> String {
+        let mem = self.monitor.systemMemory
+        let storage = StorageAnalyzer().getStorageInfo()
+        var health = "良好"
+        if mem.severity == .high || storage.freeGB < 10 { health = "要注意" }
+        else if mem.severity == .medium || storage.usagePercent > 85 { health = "やや注意" }
+        return "メモリ \(Int(mem.usagePercent))% ・ ストレージ空き \(String(format: "%.0f", storage.freeGB))GB ・ 状態: \(health)"
+    }
+
+    /// 毎日1回、現在のメモリ/ディスクの数値を通知で届ける（Free）。タップで詳しい診断/レポートへ。
+    private func maybeSendDailyStatus() {
+        let d = UserDefaults.standard
+        guard d.object(forKey: "enableNotifications") == nil || d.bool(forKey: "enableNotifications") else { return }
+        guard d.object(forKey: "dailyStatusEnabled") == nil || d.bool(forKey: "dailyStatusEnabled") else { return }
+        // 24時間間隔。初回は基準日だけ置いて翌日から送る。
+        if let last = d.object(forKey: "dailyStatusLastSent") as? Date {
+            guard Date().timeIntervalSince(last) >= 24 * 60 * 60 else { return }
+        } else {
+            d.set(Date(), forKey: "dailyStatusLastSent"); return
+        }
+        d.set(Date(), forKey: "dailyStatusLastSent")
+
+        let content = UNMutableNotificationContent()
+        content.title = "今日のMacの状態"
+        content.body = statusBody()
+        content.subtitle = "タップで詳しい診断・レポートを開けます"
+        content.sound = nil
+        content.categoryIdentifier = "STATUS_DIGEST"
+        let request = UNNotificationRequest(identifier: "daily-status-\(Int(Date().timeIntervalSince1970))",
+                                            content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// 通知をタップした時：アプリを前面化してパネル（診断/レポート）を開く。
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                               didReceive response: UNNotificationResponse,
+                               withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.showPopover()
+        }
+        completionHandler()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -258,6 +349,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             NotificationService.shared.checkAndNotify(memoryPercent: memPercent, diskFreeGB: storage.freeGB)
             // ストレージ圧迫を監視し、圧迫時は安全なキャッシュ/ログの削除を提案/自動実行
             Task { @MainActor in DiskGuard.shared.evaluate() }
+
+            // 毎日1回、メモリ/ディスクの数値を通知（Free・24時間未満なら即return で無コスト）
+            self.maybeSendDailyStatus()
 
             // 週次の最適化レポート（7日経過時のみ生成・通知。それ以外は即return で無コスト）
             Task { @MainActor in WeeklyReportService.shared.checkAndSendIfDue() }

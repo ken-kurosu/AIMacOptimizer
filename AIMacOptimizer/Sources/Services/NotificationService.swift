@@ -31,17 +31,14 @@ class NotificationService {
     
     // MARK: - Public Methods
     
-    func requestPermission() {
+    func requestPermission(completion: ((Bool) -> Void)? = nil) {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
                 print("Notification permission error: \(error.localizedDescription)")
-                return
-            }
-            if granted {
-                print("Notification permissions granted")
             } else {
-                print("Notification permissions denied")
+                print(granted ? "Notification permissions granted" : "Notification permissions denied")
             }
+            DispatchQueue.main.async { completion?(granted) }
         }
     }
 

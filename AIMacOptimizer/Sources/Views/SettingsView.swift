@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("enableNotifications") private var enableNotifications = true
     @AppStorage("notifyThreshold") private var notifyThreshold: Double = 80
     @AppStorage("weeklyReportEnabled") private var weeklyReportEnabled = true
+    @AppStorage("dailyStatusEnabled") private var dailyStatusEnabled = true
     @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.system.rawValue
 
     @StateObject private var license = LicenseManager.shared
@@ -547,8 +548,13 @@ struct SettingsView: View {
                 Text(L10n.notificationSettings)
             }
 
-            // 定期最適化レポート — "使い続けるほど効く"継続価値
+            // 毎日のステータス通知（数値は無料）＋ 週次の詳しいレポート
             Section {
+                Toggle("毎日のステータス通知", isOn: $dailyStatusEnabled)
+                Text("1日1回、現在のメモリ使用率とディスク空き容量を通知でお届けします（無料）。通知をタップすると詳しい診断・レポートを開けます。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
                 Toggle("週次の最適化レポート", isOn: $weeklyReportEnabled)
                 Text("何が容量を食っているか・空き容量やSwapの推移・快適に使うための助言を、週に1回まとめて通知します。実測値と履歴だけを根拠にし、誇張はしません。")
                     .font(.caption)

@@ -36,7 +36,7 @@ struct PurchaseConfig {
     // MARK: - サブスク解約（Stripe カスタマーポータルのログインリンク）
     // Stripe: 設定 → Billing → カスタマーポータル で有効化して得られる https://billing.stripe.com/p/login/… を設定。
     // 設定すると「プラン」タブに「解約ページを開く」ボタンが出る（顧客がメールで本人確認して自分で解約できる）。
-    static let manageSubscriptionURL: String? = nil
+    static let manageSubscriptionURL: String? = "https://billing.stripe.com/p/login/4gMeV6bN6fS61hv6XqgYU00"
 
     // MARK: - Pricing Display
     static let proMonthlyPrice = "¥480/月"

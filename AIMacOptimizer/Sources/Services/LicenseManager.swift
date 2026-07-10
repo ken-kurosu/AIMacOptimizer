@@ -33,6 +33,11 @@ struct PurchaseConfig {
     // Cloudflare Workers の Stripe Webhook + KV でライセンス発行/検証（月額は購読が有効な限り Pro を自動維持）
     static let licenseValidationURL: String? = "https://aimac-license-webhook.kurosu.workers.dev/validate"
 
+    // MARK: - サブスク解約（Stripe カスタマーポータルのログインリンク）
+    // Stripe: 設定 → Billing → カスタマーポータル で有効化して得られる https://billing.stripe.com/p/login/… を設定。
+    // 設定すると「プラン」タブに「解約ページを開く」ボタンが出る（顧客がメールで本人確認して自分で解約できる）。
+    static let manageSubscriptionURL: String? = nil
+
     // MARK: - Pricing Display
     static let proMonthlyPrice = "¥480/月"
     static let proLifetimePrice = "¥4,980（買い切り）"

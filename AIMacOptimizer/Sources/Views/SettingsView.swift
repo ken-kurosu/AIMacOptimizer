@@ -15,6 +15,8 @@ struct SettingsView: View {
 
     @StateObject private var license = LicenseManager.shared
     @ObservedObject private var diskGuard = DiskGuard.shared
+    @ObservedObject private var updateService = UpdateService.shared
+    @AppStorage("autoUpdateEnabled") private var autoUpdateEnabled = true
     @ObservedObject private var nav = SettingsNavigation.shared
     @ObservedObject private var scheduleManager = ScheduleManager.shared
     @State private var notifyAuthStatus: UNAuthorizationStatus = .notDetermined
@@ -310,6 +312,9 @@ struct SettingsView: View {
                     Text(L10n.cancelPlanNote)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    if let urlStr = PurchaseConfig.manageSubscriptionURL, let url = URL(string: urlStr) {
+                        Link("解約ページを開く（Stripe）", destination: url)
+                    }
                 } header: {
                     Text(L10n.cancelPlanTitle)
                 }
@@ -655,7 +660,7 @@ struct SettingsView: View {
                 .fontWeight(.bold)
 
             HStack(spacing: 4) {
-                Text(L10n.appVersion("2.0.0"))
+                Text(L10n.appVersion(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.1.0"))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 if license.currentTier.isPro {
@@ -678,6 +683,42 @@ struct SettingsView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
+
+            Divider()
+
+            // 自動アップデート（App Store 外配布のため独自アップデーター）
+            VStack(spacing: 8) {
+                Toggle("自動アップデート", isOn: $autoUpdateEnabled)
+                    .toggleStyle(.switch)
+                    .onChange(of: autoUpdateEnabled) { newValue in
+                        UpdateService.shared.autoUpdateEnabled = newValue
+                    }
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await updateService.check(userInitiated: true) }
+                    } label: {
+                        if updateService.isBusy {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("アップデートを確認")
+                        }
+                    }
+                    .disabled(updateService.isBusy)
+                    Button("リリースページ") { updateService.openReleasesPage() }
+                        .buttonStyle(.link)
+                }
+                if !updateService.statusMessage.isEmpty {
+                    Text(updateService.statusMessage)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                Text("新しいバージョンを自動でダウンロードして更新します（配布は公証済み）。")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal)
 
             Divider()
 
@@ -718,7 +759,8 @@ struct SettingsView: View {
         #else
         arch = "Intel"
         #endif
-        let body = L10n.bugReportBody(osVersion: osVersion, arch: arch, version: "2.0.0")
+        let appVer = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.1.0"
+        let body = L10n.bugReportBody(osVersion: osVersion, arch: arch, version: appVer)
         var comps = URLComponents()
         comps.scheme = "mailto"
         comps.path = supportEmail

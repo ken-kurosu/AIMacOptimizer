@@ -359,6 +359,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             // 月額購読のオンライン再検証（12時間に1回だけ実行・URL未設定なら無コスト）
             Task { @MainActor in await LicenseManager.shared.refreshSubscriptionValidationIfNeeded() }
 
+            // 自動アップデート確認（6時間に1回だけ・自動OFFなら無コスト）
+            UpdateService.shared.autoCheckIfDue()
+
             // スケジュール自動最適化が有効なときだけ、学習用にプロセスを軽く記録する
             // （パネル非表示中でも学習を進める。無効なら取得コストは発生しない）
             if ScheduleManager.shared.schedule.enabled {

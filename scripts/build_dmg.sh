@@ -8,7 +8,6 @@
 set -euo pipefail
 
 APP_NAME="AI Mac Optimizer"
-VERSION="2.0.0"
 BUNDLE_ID="com.aimacoptimizer.app"
 TEAM_ID="AUJDN6C7VB"
 SIGN_ID="Developer ID Application: KEN KUROSU (${TEAM_ID})"
@@ -16,6 +15,9 @@ NOTARY_PROFILE="AIMacOptimizer"
 
 PROJ="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$PROJ/AIMacOptimizer"
+# バージョン/ビルド番号は Info.plist を唯一の真実として読む（自動更新の比較基準）
+VERSION="$(plutil -extract CFBundleShortVersionString raw "$SRC/Info.plist")"
+BUILD="$(plutil -extract CFBundleVersion raw "$SRC/Info.plist")"
 ENTITLEMENTS="$SRC/AIMacOptimizer.entitlements"
 OUT="$PROJ/build/release"
 APP="$OUT/${APP_NAME}.app"
@@ -61,6 +63,13 @@ xcrun stapler staple "$DMG"
 
 echo "▶ 7/7 検証"
 spctl -a -t open --context context:primary-signature -vv "$DMG" || true
+echo "▶ 8/8 自動更新マニフェスト (latest.json) 生成"
+cat > "$OUT/latest.json" <<EOF
+{"build": ${BUILD}, "version": "${VERSION}", "url": "https://github.com/ken-kurosu/AIMacOptimizer/releases/latest/download/AIMacOptimizer-latest.dmg", "notes": ""}
+EOF
+echo "   $OUT/latest.json (build ${BUILD}, v${VERSION})"
+
 echo ""
 echo "✅ 完成: $DMG"
 echo "   配布: このDMGを配布すれば、Gatekeeper警告なしで起動できます。"
+echo "   リリースには DMG(AIMacOptimizer-latest.dmg) と latest.json の両方をアップロードすること。"

@@ -6,7 +6,7 @@ class NotificationService {
     
     private let defaults = UserDefaults.standard
     private let lastNotificationTimestamps = NSMutableDictionary()
-    private let notificationCooldownInterval: TimeInterval = 30 * 60 // 30 minutes
+    private let notificationCooldownInterval: TimeInterval = 2 * 60 * 60 // 2 hours（頻繁な通知を避ける）
     
     // UserDefaults keys
     private let enableNotificationsKey = "enableNotifications"

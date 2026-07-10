@@ -124,8 +124,8 @@ final class DiskGuard: ObservableObject {
     private let lastActionKey = "diskGuardLastActionTimestamp"
     /// 同じ圧迫で何度も提案/削除しないためのクールダウン（3 時間）
     private let cooldown: TimeInterval = 3 * 60 * 60
-    /// 緊急時の再試行間隔（30 分）。緊急でも毎分スキャン/削除して重くならないようにする。
-    private let emergencyCooldown: TimeInterval = 30 * 60
+    /// 緊急時の再試行間隔（1 時間）。緊急でも毎分スキャン/削除して重くならないようにする。
+    private let emergencyCooldown: TimeInterval = 60 * 60
 
     private init() {
         if let data = defaults.data(forKey: settingsKey),

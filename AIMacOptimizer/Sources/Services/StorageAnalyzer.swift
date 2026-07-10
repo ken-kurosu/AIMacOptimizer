@@ -95,6 +95,13 @@ final class StorageAnalyzer: ObservableObject {
             "\(home)/Library/Application Support/Cursor/Code Cache",
             "\(home)/Library/Application Support/Code/Cache",
             "\(home)/Library/Application Support/Code/CachedData",
+            // 開発ツールのパッケージキャッシュ（隠しフォルダに数GB溜まる定番。すべて再ダウンロードで再生成される）
+            "\(home)/.npm/_cacache",
+            "\(home)/.cache",
+            "\(home)/.gradle/caches",
+            "\(home)/.pub-cache/hosted",
+            "\(home)/Library/pnpm/store",
+            "\(home)/.yarn/cache",
         ]
 
         for path in cachePaths {
@@ -549,6 +556,17 @@ final class StorageAnalyzer: ObservableObject {
         if path.contains("Slack") { return "Slack" }
         if path.contains("discord") { return "Discord" }
         if path.contains("Spotify") { return "Spotify" }
+        if path.contains("Cursor") { return "Cursor" }
+        if path.contains("/Code/") || path.contains("Code Cache") { return "VS Code" }
+        if path.contains("Adobe") { return "Adobe" }
+        if path.contains("DerivedData") || path.contains("Xcode") { return "Xcode" }
+        // 開発ツールのキャッシュ（隠しフォルダに溜まりやすい定番の大物）
+        if path.contains("/.npm") { return "npm" }
+        if path.contains("/.gradle") { return "Gradle" }
+        if path.contains("/.pub-cache") { return "Dart/Flutter" }
+        if path.contains("pnpm") { return "pnpm" }
+        if path.contains("/.yarn") { return "Yarn" }
+        if path.contains("/.cache") { return "ユーザーキャッシュ" }
         return "システム"
     }
 }

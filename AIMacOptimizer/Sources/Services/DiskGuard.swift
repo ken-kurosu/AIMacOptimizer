@@ -335,6 +335,9 @@ final class DiskGuard: ObservableObject {
             ("\(home)/.ollama/models", "Ollamaモデル"),
             ("\(home)/Library/Developer/CoreSimulator/Devices", "iOSシミュレータ"),
             ("\(home)/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw", "Dockerイメージ"),
+            // iCloud関連の隠れた大物（削除ではなく退避/自動purgeで空ける。安全キャッシュには含めない）
+            ("\(home)/Library/Caches/CloudKit", "CloudKitキャッシュ(iCloud管理)"),
+            ("\(home)/Library/Mobile Documents/com~apple~CloudDocs", "iCloud Driveローカル(退避で空く)"),
             ("\(home)/Downloads", "ダウンロード"),
         ]
         var hints: [(String, Double)] = []
@@ -383,10 +386,16 @@ final class DiskGuard: ObservableObject {
                                      includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
                                      options: [.skipsHiddenFiles]) else { return nil }
         var total: Double = 0
+        var scanned = 0
+        // メインスレッドを固めないよう走査上限を設ける（CloudKit等の巨大キャッシュ対策）。
+        // 上限に達しても「大物」と分かれば十分なので途中打ち切りでよい（サイズは下限扱い）。
+        let maxEntries = 40_000
         for case let url as URL in en {
             if let s = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize {
                 total += Double(s)
             }
+            scanned += 1
+            if scanned >= maxEntries { break }
         }
         return total / 1_000_000
     }

@@ -327,7 +327,30 @@ final class DiskGuard: ObservableObject {
                 hints.append(("\(label) \(String(format: "%.1fGB", mb / 1024))", mb))
             }
         }
-        return hints.sorted { $0.1 > $1.1 }.map { $0.0 }
+        var result = hints.sorted { $0.1 > $1.1 }.map { $0.0 }
+        // ローカル Time Machine スナップショットは容量を食う定番。存在すれば最優先で知らせる。
+        let snaps = localSnapshotCount()
+        if snaps > 0 { result.insert("Time Machineローカルスナップショット \(snaps)個", at: 0) }
+        return result
+    }
+
+    /// ローカル Time Machine スナップショットの数を返す（tmutil。容量圧迫の定番要因の検出）。
+    private func localSnapshotCount() -> Int {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tmutil")
+        p.arguments = ["listlocalsnapshots", "/"]
+        let outPipe = Pipe()
+        p.standardOutput = outPipe
+        p.standardError = Pipe()
+        do {
+            try p.run()
+            p.waitUntilExit()
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let out = String(data: data, encoding: .utf8) ?? ""
+            return out.split(separator: "\n").filter { $0.contains("com.apple.TimeMachine") }.count
+        } catch {
+            return 0
+        }
     }
 
     /// ざっくりディレクトリ/ファイルサイズ(MB)。厳密さより速度優先。
@@ -355,8 +378,10 @@ final class DiskGuard: ObservableObject {
     /// 万一アプリ操作もままならない極限状態のためのフォールバック（コピーして外部ターミナルで実行）。
     static let emergencyTerminalCommands: [String] = [
         "rm -rf ~/Library/Developer/Xcode/DerivedData/*",
-        "rm -rf ~/Library/Caches/*",
-        "xcrun simctl delete unavailable"
+        "rm -rf ~/Library/Caches/* ~/.cache/*",
+        "npm cache clean --force; brew cleanup -s",
+        "xcrun simctl delete unavailable",
+        "sudo tmutil thinlocalsnapshots / 999999999999 4"
     ]
 
     // MARK: - 候補生成
@@ -404,6 +429,8 @@ final class DiskGuard: ObservableObject {
         content.title = title
         content.body = body
         content.sound = .default
+        // ストレージ圧迫は重要。集中モード中でも気付けるよう time-sensitive にする。
+        content.interruptionLevel = .timeSensitive
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }

@@ -769,6 +769,12 @@ struct StorageTabView: View {
                 .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // なぜほぼリスク0か・何を消すのかを明示（データ損失の不安を取り除く）
+            Text("対象は、アプリ・ブラウザ・開発ツールが自動で作り直すキャッシュ/ログだけです。写真・書類・アプリ本体・設定・フォントは対象外で、削除してもデータは失われません（各項目の内訳は下に表示）。")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             // 何を消すか + 安全度の内訳
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {

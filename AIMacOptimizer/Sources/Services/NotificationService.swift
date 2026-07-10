@@ -145,7 +145,9 @@ class NotificationService {
         content.body = body
         content.sound = .default
         content.badge = NSNumber(value: 1)
-        
+        // メモリ/ディスクの警告は重要。集中モード中でも届きやすいよう time-sensitive にする。
+        content.interruptionLevel = .timeSensitive
+
         // Add subtitle with the suggestion
         content.subtitle = suggestion
         

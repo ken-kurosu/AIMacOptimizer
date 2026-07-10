@@ -84,8 +84,6 @@ struct DiskGuardSettings: Codable {
     var criticalFreeGB: Double = 5
     /// 空き容量がこの値(GB)未満で「緊急」とみなす
     var emergencyFreeGB: Double = 2
-    /// 緊急時は autoClean 設定に関わらず、リスク0のキャッシュ/ログを自動で解放する（0バイト到達の防止）
-    var emergencyAutoReclaim: Bool = true
 
     init() {}
 
@@ -98,7 +96,6 @@ struct DiskGuardSettings: Codable {
         minFreeGB = try c.decodeIfPresent(Double.self, forKey: .minFreeGB) ?? 10
         criticalFreeGB = try c.decodeIfPresent(Double.self, forKey: .criticalFreeGB) ?? 5
         emergencyFreeGB = try c.decodeIfPresent(Double.self, forKey: .emergencyFreeGB) ?? 2
-        emergencyAutoReclaim = try c.decodeIfPresent(Bool.self, forKey: .emergencyAutoReclaim) ?? true
     }
 }
 
@@ -158,22 +155,33 @@ final class DiskGuard: ObservableObject {
         pressureLevel = level
         guard level != .normal else { return }
 
-        // 【緊急】autoClean 設定・クールダウンに関わらず、リスク0を即時解放して 0バイト到達を防ぐ。
-        // （0バイトになると OS や他アプリ、そしてこのアプリ自身の動作にも支障が出るため、待たずに動く）
+        // 【緊急】0バイト到達（OS/他アプリ/自アプリが不安定になる）を避けるため、クールダウンを無視して
+        // 必ず気付けるようにする。ただし削除は勝手にやらず、通知＋承認（ワンボタン）を取る。
+        // ユーザーが自動削除モード(autoClean)を明示的に ON にしている場合のみ、その同意に基づき自動実行する。
         if level == .emergency {
-            if settings.emergencyAutoReclaim {
-                let candidates = buildCandidates()
-                if !candidates.isEmpty {
-                    let plan = SafeCleanupPlan(candidates: candidates,
-                                              usagePercentBefore: info.usagePercent, freeGBBefore: info.freeGB)
-                    performCleanup(plan, auto: true, emergency: true)
-                    return
+            let candidates = buildCandidates()
+            guard !candidates.isEmpty else {
+                // 安全に消せる物が無い緊急時 → 大物の助言つきで強く通知（削除はしない）
+                if cooldownElapsed {
+                    notify(title: "⚠️ 空き容量が極めて少なくなっています", body: emergencyBody(info))
+                    markActionTaken()
+                }
+                return
+            }
+            let plan = SafeCleanupPlan(candidates: candidates,
+                                      usagePercentBefore: info.usagePercent, freeGBBefore: info.freeGB)
+            if settings.autoClean {
+                // 自動削除に同意済み → 実行
+                performCleanup(plan, auto: true, emergency: true)
+            } else {
+                // 承認フロー：一覧＋ワンボタンを UI に出し、緊急として強く通知（重複通知は避ける）
+                let firstSurface = (pendingPlan == nil)
+                pendingPlan = plan
+                if firstSurface {
+                    notify(title: "⚠️ 緊急：空き容量が極めて少ない",
+                           body: "\(emergencyBody(info))\nアプリを開けば、安全な項目をワンボタンで解放できます（削除は承認後のみ）。")
                 }
             }
-            // 安全に消せる物が無い緊急時 → 大物の助言つきで強く通知（UIバナーは安全項目がある時のみ）
-            notify(title: "⚠️ 空き容量が極めて少なくなっています",
-                   body: emergencyBody(info))
-            markActionTaken()
             return
         }
 

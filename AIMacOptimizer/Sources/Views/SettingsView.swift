@@ -409,9 +409,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    Toggle("緊急時は自動でリスク0を解放", isOn: $diskGuard.settings.emergencyAutoReclaim)
-
-                    Text("空きが約\(Int(diskGuard.settings.emergencyFreeGB))GB未満になると、通常の自動削除設定に関わらず、再生成される安全なキャッシュ/ログだけを即座に解放します（0バイト到達＝OSや他アプリが不安定になる前に手を打つため）。")
+                    Text("空きが約\(Int(diskGuard.settings.emergencyFreeGB))GB未満になると「緊急」として強く通知し、安全に消せる項目の一覧とワンボタンをすぐ出します。削除は勝手に行わず、必ず承認を取ります（上の自動削除をONにした場合のみ、その同意に基づき自動実行）。")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

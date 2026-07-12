@@ -47,6 +47,13 @@ final class UpdateService: ObservableObject {
         Task { await check(userInitiated: false) }
     }
 
+    /// 起動時チェック（6時間の間隔を無視）。起動のたびに最新へ自動更新するため。
+    func checkOnLaunch() {
+        guard autoUpdateEnabled else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastCheckKey)
+        Task { await check(userInitiated: false) }
+    }
+
     // MARK: - チェック本体
     /// userInitiated=true（設定の「アップデートを確認」）なら結果を必ず statusMessage に出す。
     func check(userInitiated: Bool) async {

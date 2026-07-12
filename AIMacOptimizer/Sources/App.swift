@@ -70,6 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
         // メニューバー常駐アプリでも許可ダイアログが確実に前面表示される）。2回目以降は素通り。
         if UserDefaults.standard.bool(forKey: "onboardingCompleted") {
             scheduleLaunchSummaryNotification()
+            // 起動時に最新版へ自動更新（少し待ってからバックグラウンドで）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                UpdateService.shared.checkOnLaunch()
+            }
         } else {
             showOnboarding()
         }

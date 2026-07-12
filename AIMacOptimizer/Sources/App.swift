@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             scheduleLaunchSummaryNotification()
             // 起動時に最新版へ自動更新（少し待ってからバックグラウンドで）
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                UpdateService.shared.checkOnLaunch()
+                Task { @MainActor in UpdateService.shared.checkOnLaunch() }
             }
         } else {
             showOnboarding()
@@ -364,7 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             Task { @MainActor in await LicenseManager.shared.refreshSubscriptionValidationIfNeeded() }
 
             // 自動アップデート確認（6時間に1回だけ・自動OFFなら無コスト）
-            UpdateService.shared.autoCheckIfDue()
+            Task { @MainActor in UpdateService.shared.autoCheckIfDue() }
 
             // スケジュール自動最適化が有効なときだけ、学習用にプロセスを軽く記録する
             // （パネル非表示中でも学習を進める。無効なら取得コストは発生しない）

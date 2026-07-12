@@ -174,8 +174,8 @@ final class DiskGuard: ObservableObject {
             }
             let plan = SafeCleanupPlan(candidates: candidates,
                                       usagePercentBefore: info.usagePercent, freeGBBefore: info.freeGB)
-            if settings.autoClean {
-                // 自動削除に同意済み → 実行
+            if settings.autoClean && LicenseManager.shared.canAutoGuard {
+                // 自動削除に同意済み(かつPro) → 実行。Freeは下の承認フローへ
                 performCleanup(plan, auto: true, emergency: true)
             } else {
                 // 承認フロー：一覧＋ワンボタンを UI に出し、緊急として強く通知
@@ -208,8 +208,8 @@ final class DiskGuard: ObservableObject {
             freeGBBefore: info.freeGB
         )
 
-        if settings.autoClean {
-            // 承認済み → 自動で空けて通知のみ
+        if settings.autoClean && LicenseManager.shared.canAutoGuard {
+            // 承認済み(かつPro) → 自動で空けて通知のみ。Freeは下の承認フローへ
             performCleanup(plan, auto: true, emergency: false)
         } else {
             // 手動 → 提案を UI に出し、気付けるよう通知（危険域ほど強い文言）

@@ -113,10 +113,20 @@ final class WeeklyReportService {
                                 usagePercent: storage.usagePercent)
         lines.append("提案: " + advice)
 
-        // 通知は要点だけに凝縮（最大の整理候補＋助言）
+        // 通知は要点だけに凝縮。Free は「予告編」（重要1事実＋助言＋Pro誘導）、Pro は推移も含むフル。
+        let isPro = LicenseManager.shared.canViewFullReport
         var body = ""
         if let t = top.first { body = "最大の整理候補は \(t.name)（\(fmt(t.sizeMB))）。" }
-        body += advice
+        if isPro {
+            if !freeTrendText.isEmpty { body += freeTrendText + "。" }
+            body += advice
+        } else {
+            body += advice
+            let more = max(0, top.count - 1)
+            body += more > 0
+                ? "（他\(more)件と1週間の推移・詳細はProで）"
+                : "（1週間の推移・詳細はProで）"
+        }
 
         return Summary(
             title: "今週のMac最適化レポート",

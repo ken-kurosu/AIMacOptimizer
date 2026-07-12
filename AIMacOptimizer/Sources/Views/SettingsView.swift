@@ -423,13 +423,38 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    Toggle(L10n.autoFreeOnPressure, isOn: $diskGuard.settings.autoClean)
-
-                    Text(diskGuard.settings.autoClean
-                        ? L10n.autoFreeOnDesc
-                        : L10n.autoFreeOffDesc)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if license.currentTier.isPro {
+                        Toggle(L10n.autoFreeOnPressure, isOn: $diskGuard.settings.autoClean)
+                        Text(diskGuard.settings.autoClean
+                            ? L10n.autoFreeOnDesc
+                            : L10n.autoFreeOffDesc)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        // Free：自動ガード(自動削除)はProの automation 機能。ロック＋アップグレード導線
+                        Button {
+                            nav.selectedTab = 1 // 「プラン」タブへ
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 10)).foregroundColor(.orange)
+                                Text(L10n.autoFreeOnPressure)
+                                Text("Pro")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(Color.orange.opacity(0.15))
+                                    .foregroundColor(.orange).cornerRadius(4)
+                                Spacer()
+                                Text("アップグレード")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Text("圧迫時に自動で解放するのはProの機能です。無料でも「通知＋ワンボタンの手動解放」は使えます。")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
 
                     Text("空きが約\(Int(diskGuard.settings.emergencyFreeGB))GB未満になると「緊急」として強く通知し、安全に消せる項目の一覧とワンボタンをすぐ出します。削除は勝手に行わず、必ず承認を取ります（上の自動削除をONにした場合のみ、その同意に基づき自動実行）。")
                         .font(.caption)

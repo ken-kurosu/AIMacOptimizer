@@ -72,6 +72,12 @@ final class LicenseManager: ObservableObject {
     /// Whether scheduled auto-optimization is allowed（Pro限定）
     var canUseSchedule: Bool { currentTier.isPro }
 
+    /// 圧迫時の「自動」削除＝自動ガード（Pro限定）。Free は通知＋手動ワンボタンまで（automation の壁）
+    var canAutoGuard: Bool { currentTier.isPro }
+
+    /// 週次レポートのフル表示（Free は予告編のみ）。時間軸・推移・全項目は Pro
+    var canViewFullReport: Bool { currentTier.isPro }
+
     /// 言語切替は全ユーザー可（多言語対応は基本機能）
     var canUseMultiLanguage: Bool { true }
 

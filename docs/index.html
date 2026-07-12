@@ -31,6 +31,8 @@ summary::-webkit-details-marker{display:none}
 .btn-primary:hover{transform:translateY(-2px)}
 .btn-secondary:hover{color:#1D1D1F !important}
 .btn-outline:hover{color:#0066CC !important}
+/* Apple原則「押した瞬間に反応」: 押下フィードバックを即時・短時間で（release待ちにしない） */
+.btn-primary:active,.btn-outline:active,.js-download:active,a[data-t="proCta"]:active{transform:scale(0.96) !important;transition:transform 80ms ease-out !important}
 .feature-card{transition:all .2s ease-out}
 .feature-card:hover{transform:translateY(-4px);border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 1px rgba(59,130,246,0.25),0 12px 40px rgba(0,0,0,0.08)}
 .plus{transition:transform .2s}

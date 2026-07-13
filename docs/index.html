@@ -2,6 +2,9 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-W0CQVD8YXN"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag("js",new Date());gtag("config","G-W0CQVD8YXN");</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Mac Optimizer — Macをもっと軽く｜実測で正直なメモリ最適化</title>
 <meta name="description" content="使われていないメモリをワンクリックで解放。実際に軽くなった分だけを実測で表示する、メニューバー常駐のMacオプティマイザ。AI相談つき、追加費用0円。Apple公証済み・macOS 13+。">
@@ -876,6 +879,23 @@ function drawGraph(){
   startGraph();
   setupChatReveal();
   setupDemoTrigger();
+})();
+</script>
+<!-- GA4 コンバージョン計測: DLクリック / 購入開始 / 購入完了 -->
+<script>
+(function(){
+  function ev(name, params){ if(typeof gtag==='function'){ gtag('event', name, params||{}); } }
+  document.querySelectorAll('.js-download, a[href*="releases"], a[href$=".dmg"]').forEach(function(el){
+    el.addEventListener('click', function(){ ev('download_click', { location: (el.getAttribute('data-t')||el.className||'link') }); });
+  });
+  document.querySelectorAll('a[href*="buy.stripe.com"]').forEach(function(el){
+    el.addEventListener('click', function(){
+      var href = el.getAttribute('href')||'';
+      var plan = href.indexOf('00w9AM')>-1 ? 'lifetime' : (href.indexOf('4gMeV6')>-1 ? 'monthly' : 'unknown');
+      ev('begin_checkout', { plan: plan });
+    });
+  });
+  try { var p = new URLSearchParams(location.search); if (p.get('purchase')==='success' || p.get('checkout')==='success') { ev('purchase', {}); } } catch(e){}
 })();
 </script>
 </body>

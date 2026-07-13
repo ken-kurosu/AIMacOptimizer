@@ -739,6 +739,11 @@ struct StorageTabView: View {
                     }
             }
         }
+        // 表示時と、削除で空きが変わった時に「〇〇GB空き」を即更新する
+        .onAppear { analyzer.storageInfo = analyzer.getStorageInfo() }
+        .onChange(of: diskGuard.lastAutoCleanSummary) { _ in
+            analyzer.storageInfo = analyzer.getStorageInfo()
+        }
     }
 
     // MARK: - ストレージ圧迫「安全に空ける」提案バナー
@@ -812,13 +817,14 @@ struct StorageTabView: View {
                                 Text(item.reason)
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)
-                                    .lineLimit(2)
+                                    .lineLimit(1)
                             }
                         }
                     }
                 }
             }
-            .frame(maxHeight: 110)
+            .frame(maxHeight: 150)
+            .scrollIndicators(.visible)
 
             Toggle(isOn: $enableAutoFromNow) {
                 Text(L10n.autoCleanFromNow)
@@ -1026,11 +1032,15 @@ struct StorageExpandableRow: View {
             HStack(spacing: 8) {
                 // Expand button
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
-                        if isExpanded && !subItemsLoaded {
-                            item.subItems = analyzer.getSubItems(for: item)
-                            subItemsLoaded = true
+                    // 展開自体は即反応させ、重いファイルI/O(サブ項目取得)は背景で行ってから反映する
+                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                    if isExpanded && !subItemsLoaded {
+                        subItemsLoaded = true
+                        let snapshot = item
+                        let analyzer = analyzer
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let subs = analyzer.getSubItems(for: snapshot)
+                            DispatchQueue.main.async { item.subItems = subs }
                         }
                     }
                 }) {

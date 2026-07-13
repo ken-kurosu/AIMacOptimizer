@@ -1,6 +1,14 @@
 import SwiftUI
 import AppKit
 
+/// 通知タップ等から「ポップオーバーの表示タブ」を外部指定するための共有ナビ
+final class PopoverNavigation: ObservableObject {
+    static let shared = PopoverNavigation()
+    /// 表示したいタブ(0=メモリ,1=ストレージ,2=診断,3=ツール)。処理後 nil に戻す
+    @Published var requestedTab: Int?
+    private init() {}
+}
+
 /// Main popover view with Memory, Storage, and Diagnosis tabs
 struct PopoverView: View {
     @ObservedObject var monitor: ProcessMonitor
@@ -8,6 +16,7 @@ struct PopoverView: View {
     @StateObject private var diagnosisEngine: DeepDiagnosisEngine
     @StateObject private var chatService = AIChatService()
     @StateObject private var batteryMonitor = BatteryMonitor()
+    @ObservedObject private var popNav = PopoverNavigation.shared
     @State private var selectedTab = 0
     /// 「設定」タブはウィンドウを開くランチャーなので、実際に表示する内容タブは別管理（チラつき防止）
     @State private var lastContentTab = 0
@@ -70,6 +79,20 @@ struct PopoverView: View {
             }
         }
         .frame(width: 320, height: 580)
+        // 通知タップ等でタブ指定が来たら切り替える（例: レポート通知→診断タブ）
+        .onChange(of: popNav.requestedTab) { newValue in
+            guard let t = newValue else { return }
+            selectedTab = t
+            lastContentTab = t
+            popNav.requestedTab = nil
+        }
+        .onAppear {
+            if let t = popNav.requestedTab {
+                selectedTab = t
+                lastContentTab = t
+                popNav.requestedTab = nil
+            }
+        }
     }
 
     private var tierBadge: some View {

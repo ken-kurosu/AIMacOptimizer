@@ -396,14 +396,18 @@ final class DeepDiagnosisEngine: ObservableObject {
         }
 
         // Check for node_modules in iCloud Drive
-        // iCloud(evict済み等)へのアクセスはブロックし得るので、メイン外＋最大3秒で打ち切る（UIフリーズ防止）
+        // iCloud(evict済み等)へのアクセスは無期限にブロックし得る。走査は別スレッドに投げ、
+        // 3秒で「待つのをやめて」先へ進む（ブロックしたスレッドは放棄。TaskGroupだと子完了を待つため不可）。
         let icloudDocs = "\(NSHomeDirectory())/Library/Mobile Documents/com~apple~CloudDocs"
-        let nodeModulesInICloud: [String] = await withTaskGroup(of: [String]?.self) { group in
-            group.addTask(priority: .utility) { Self.findNodeModulesInICloud(basePath: icloudDocs) }
-            group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000); return nil }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first ?? []
+        let nodeModulesInICloud: [String] = await withCheckedContinuation { (cont: CheckedContinuation<[String], Never>) in
+            let lock = NSLock()
+            var finished = false
+            func finish(_ value: [String]) {
+                lock.lock(); let already = finished; finished = true; lock.unlock()
+                if !already { cont.resume(returning: value) }
+            }
+            DispatchQueue.global(qos: .utility).async { finish(Self.findNodeModulesInICloud(basePath: icloudDocs)) }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) { finish([]) }
         }
         if !nodeModulesInICloud.isEmpty {
             findings.append(DiagnosisFinding(

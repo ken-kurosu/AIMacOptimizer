@@ -75,6 +75,7 @@ class NotificationService {
         if !subtitle.isEmpty { content.subtitle = subtitle }
         content.body = body
         content.sound = .default
+        content.categoryIdentifier = "STATUS_DIGEST" // タップで診断タブ(週次レポート)へ遷移させる
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error { print("Report notification failed: \(error.localizedDescription)") }

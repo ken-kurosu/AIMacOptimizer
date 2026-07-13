@@ -219,8 +219,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                didReceive response: UNNotificationResponse,
                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let category = response.notification.request.content.categoryIdentifier
         DispatchQueue.main.async { [weak self] in
             NSApp.activate(ignoringOtherApps: true)
+            // 「詳しい診断・レポートを開けます」系の通知は、診断タブ(週次レポートカードがある)へ遷移
+            if category == "STATUS_DIGEST" {
+                PopoverNavigation.shared.requestedTab = 2
+            }
             self?.showPopover()
         }
         completionHandler()

@@ -23,6 +23,7 @@ struct DiagnosisView: View {
     @State private var riskyResults: [String] = []
     @State private var weeklyReport: WeeklyReportService.Summary?
     @State private var isBuildingReport = false
+    @State private var spinAngle: Double = 0
 
     // MARK: - 週次レポート（Pro の顔。Free は予告編＋ロック、Pro はフル）
     @ViewBuilder
@@ -145,21 +146,41 @@ struct DiagnosisView: View {
     
     // MARK: - Running State
     private var runningView: some View {
-        VStack(spacing: 16) {
-            Spacer().frame(height: 60)
+        VStack(spacing: 14) {
+            Spacer().frame(height: 44)
+            // 動きのある円形スピナー＋アイコンで「診断中」を明確に
+            ZStack {
+                Circle()
+                    .stroke(Color.blue.opacity(0.15), lineWidth: 4)
+                    .frame(width: 64, height: 64)
+                Circle()
+                    .trim(from: 0, to: 0.28)
+                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 64, height: 64)
+                    .rotationEffect(.degrees(spinAngle))
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(.blue)
+            }
+            .onAppear {
+                spinAngle = 0
+                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { spinAngle = 360 }
+            }
+
+            Text("\(Int(engine.progress * 100))%")
+                .font(.title2).fontWeight(.bold).foregroundColor(.blue)
+                .monospacedDigit()
             ProgressView(value: engine.progress)
                 .progressViewStyle(.linear)
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 50)
             Text(engine.currentStep)
-                .font(.caption)
-                .foregroundColor(.secondary)
-            Text("\(Int(engine.progress * 100))%")
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.blue)
+                .font(.caption).foregroundColor(.secondary)
+                .id(engine.currentStep)
+                .transition(.opacity)
             Spacer()
         }
         .padding()
+        .animation(.easeInOut(duration: 0.25), value: engine.currentStep)
     }
     
     // MARK: - Report View

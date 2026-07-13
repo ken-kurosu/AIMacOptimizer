@@ -66,8 +66,9 @@ final class LicenseManager: ObservableObject {
     // それ以外（メモリ最適化提案・診断・ローカルAI相談・言語切替）は全て Free で無制限。
     // （有料APIモードは廃止済み。以前の「AI提案 週3回」制限は funnel を損ねるため撤廃）
 
-    /// Whether storage file deletion is allowed（Pro限定）
-    var canDeleteStorage: Bool { currentTier.isPro }
+    /// ストレージのファイル削除は Free でも可能（Finderで手動でもできる＝壁にする意味が薄く funnel を損ねる）。
+    /// Pro の価値は「自動化（スケジュール/自動ガード）」と「時間軸（履歴・トレンド・詳細レポート）」に集約。
+    var canDeleteStorage: Bool { true }
 
     /// Whether scheduled auto-optimization is allowed（Pro限定）
     var canUseSchedule: Bool { currentTier.isPro }

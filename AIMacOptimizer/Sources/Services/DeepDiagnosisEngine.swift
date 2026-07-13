@@ -396,8 +396,15 @@ final class DeepDiagnosisEngine: ObservableObject {
         }
 
         // Check for node_modules in iCloud Drive
+        // iCloud(evict済み等)へのアクセスはブロックし得るので、メイン外＋最大3秒で打ち切る（UIフリーズ防止）
         let icloudDocs = "\(NSHomeDirectory())/Library/Mobile Documents/com~apple~CloudDocs"
-        let nodeModulesInICloud = findNodeModulesInICloud(basePath: icloudDocs)
+        let nodeModulesInICloud: [String] = await withTaskGroup(of: [String]?.self) { group in
+            group.addTask(priority: .utility) { Self.findNodeModulesInICloud(basePath: icloudDocs) }
+            group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? []
+        }
         if !nodeModulesInICloud.isEmpty {
             findings.append(DiagnosisFinding(
                 category: .icloudSync, severity: .warning,
@@ -785,14 +792,16 @@ final class DeepDiagnosisEngine: ObservableObject {
         return Array(results.prefix(10))
     }
 
-    /// Find node_modules directories in iCloud Drive
-    private func findNodeModulesInICloud(basePath: String) -> [String] {
+    /// Find node_modules directories in iCloud Drive（メイン外で実行可能な純関数。走査上限つき）
+    private nonisolated static func findNodeModulesInICloud(basePath: String) -> [String] {
         var results: [String] = []
         let fm = FileManager.default
+        let deadline = Date().addingTimeInterval(2.5) // 個々のI/Oが返る限り走査を打ち切る保険
 
         guard let items = try? fm.contentsOfDirectory(atPath: basePath) else { return [] }
 
         for item in items {
+            if Date() > deadline { break }
             let fullPath = "\(basePath)/\(item)"
             var isDir: ObjCBool = false
             fm.fileExists(atPath: fullPath, isDirectory: &isDir)

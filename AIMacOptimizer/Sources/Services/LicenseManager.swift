@@ -93,13 +93,13 @@ final class LicenseManager: ObservableObject {
     /// 言語切替は全ユーザー可（多言語対応は基本機能）
     var canUseMultiLanguage: Bool { true }
 
-    /// 診断は全ユーザー無制限
+    /// 基本診断（9項目の健康チェック・スコア・事実）は全ユーザー無制限＝無料の入口
     var canUseDiagnosis: Bool { true }
 
-    /// AI相談（ローカル/オンデバイス）は全ユーザー可
-    var canUseAIChat: Bool { true }
+    /// AIで原因を深掘り・相談する = Pro（"助言価値"。基本診断の事実は無料、AIの解釈・対話はPro）
+    var canUseAIChat: Bool { currentTier.isPro }
 
-    /// メモリ最適化提案は全ユーザー無制限
+    /// メモリ最適化提案は全ユーザー無制限（実測ベースの提案は無料の主役）
     var canUseAISuggestions: Bool { true }
 
     /// -1 = 無制限

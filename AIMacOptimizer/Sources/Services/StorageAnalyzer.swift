@@ -44,6 +44,7 @@ final class StorageAnalyzer: ObservableObject {
         let installers = scanInstallers()
         let largeFiles = scanLargeFiles()
         let devBig = scanDeveloperBigConsumers()
+        let nodeMods = scanNodeModules()
 
         var results: [StorageItem] = []
         results.append(contentsOf: caches)
@@ -51,6 +52,7 @@ final class StorageAnalyzer: ObservableObject {
         results.append(contentsOf: installers)
         results.append(contentsOf: largeFiles)
         results.append(contentsOf: devBig)
+        results.append(contentsOf: nodeMods)
         results.sort(by: >)
         let finalResults = results  // 並行クロージャに渡すため不変コピーを作る（Swift 6対応）
 
@@ -446,6 +448,70 @@ final class StorageAnalyzer: ObservableObject {
             }
         }
         return (success, failed)
+    }
+
+    // MARK: - iCloud Drive のローカル退避（evict：クラウドに残しローカルだけ空ける・安全）
+
+    /// iCloud Drive(CloudDocs)のローカル実体サイズ(MB)。未ダウンロード分は含まないので概算。
+    func iCloudLocalSizeMB() -> Double {
+        let path = NSHomeDirectory() + "/Library/Mobile Documents/com~apple~CloudDocs"
+        return directorySize(path) ?? 0
+    }
+
+    /// iCloud Drive のローカル実体を退避(evict)。クラウドには残る＝データ損失なし。解放したMBを返す。
+    @discardableResult
+    func evictICloudDrive() -> Double {
+        let path = NSHomeDirectory() + "/Library/Mobile Documents/com~apple~CloudDocs"
+        let before = getStorageInfo().freeGB
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/brctl")
+        p.arguments = ["evict", path]
+        do { try p.run(); p.waitUntilExit() } catch { return 0 }
+        let after = getStorageInfo().freeGB
+        return max(0, (after - before) * 1000) // GB差→MB概算
+    }
+
+    // MARK: - node_modules 横断検出（再生成可・満杯の主犯になりがち。削除は無料）
+
+    /// よく使う開発ルート配下の node_modules を検出（>200MBのみ提示・削除で再生成可）
+    private func scanNodeModules() -> [StorageItem] {
+        let home = NSHomeDirectory()
+        let roots = [
+            "\(home)/Dev", "\(home)/ikasa_platform", "\(home)/ikasa_Workspace",
+            "\(home)/TAMA", "\(home)/slide-studio", "\(home)/LINE harness", "\(home)/Projects", "\(home)/src"
+        ]
+        var found = Set<String>()
+        for root in roots {
+            for p in findNodeModules(in: root, maxDepth: 3) { found.insert(p) }
+        }
+        var items: [StorageItem] = []
+        for path in found {
+            guard let mb = directorySize(path), mb > 200 else { continue }
+            let project = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+            items.append(StorageItem(
+                path: path,
+                name: "node_modules — \(project)",
+                sizeMB: mb,
+                category: .largeFile,
+                isDirectory: true
+            ))
+        }
+        return items
+    }
+
+    /// 指定ルート配下の node_modules ディレクトリを深さ制限つきで探す（node_modules内は再帰しない）
+    private func findNodeModules(in basePath: String, maxDepth: Int) -> [String] {
+        guard maxDepth > 0, let entries = try? fileManager.contentsOfDirectory(atPath: basePath) else { return [] }
+        var results: [String] = []
+        for entry in entries {
+            if entry.hasPrefix(".") { continue }
+            let full = "\(basePath)/\(entry)"
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue else { continue }
+            if entry == "node_modules" { results.append(full); continue }
+            results.append(contentsOf: findNodeModules(in: full, maxDepth: maxDepth - 1))
+        }
+        return results
     }
 
     // MARK: - Sub-Item Scanning

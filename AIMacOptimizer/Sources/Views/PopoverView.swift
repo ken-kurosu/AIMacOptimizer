@@ -724,6 +724,7 @@ struct StorageTabView: View {
             }
 
             storageOverview
+            iCloudEvictAction
             storageAffiliateCTA
             Divider()
 
@@ -938,6 +939,41 @@ struct StorageTabView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.orange.opacity(0.06))
+    }
+
+    // iCloud Drive をローカルから退避（evict）。空きが少ない時に表示。クラウドには残る＝安全
+    @ViewBuilder
+    private var iCloudEvictAction: some View {
+        if analyzer.storageInfo.totalGB > 0, analyzer.storageInfo.freeGB < 20 {
+            Button {
+                cleanupMessage = "iCloud Driveを退避中…"
+                let analyzer = analyzer
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let freed = analyzer.evictICloudDrive()
+                    DispatchQueue.main.async {
+                        analyzer.storageInfo = analyzer.getStorageInfo()
+                        cleanupMessage = freed > 100
+                            ? "iCloud Driveを退避し約\(Int(freed))MB空けました（クラウドには残っています）"
+                            : "iCloud Driveの退避を実行しました（反映に少し時間がかかる場合があります）"
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "icloud.and.arrow.down")
+                        .font(.system(size: 11)).foregroundColor(.blue)
+                    Text("iCloud Driveをローカルから退避（クラウドに残す）")
+                        .font(.system(size: 10.5)).foregroundColor(.primary).lineLimit(1)
+                    Spacer()
+                    Image(systemName: "arrow.right").font(.system(size: 10)).foregroundColor(.secondary)
+                }
+                .padding(8)
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(8)
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // 拡張ストレージ アフィリCTA（URL未設定なら非表示。空きが少ない時だけ・コピーはローテーション＋匿名計測）

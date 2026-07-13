@@ -447,18 +447,36 @@ struct DiagnosisView: View {
                 .cornerRadius(8)
             }
 
-            // Chat button (Pro feature or limited for Free)
-            Button(action: onOpenChat) {
-                HStack {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                    Text(L10n.askAI)
-                        .fontWeight(.medium)
+            // AIで原因を深掘り・相談 = Pro（基本診断の結果は無料で全部見える）
+            if license.canUseAIChat {
+                Button(action: onOpenChat) {
+                    HStack {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                        Text(L10n.askAI)
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+            } else {
+                Button(action: { SettingsWindowController.shared.showSettings(initialTab: 1) }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.fill").font(.system(size: 11))
+                        Text("AIで原因を深掘り・相談する")
+                            .fontWeight(.medium)
+                        Text("Pro")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.white.opacity(0.25)).cornerRadius(4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.purple)
             
             // Re-run diagnosis
             Button(action: {

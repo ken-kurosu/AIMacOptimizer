@@ -41,6 +41,17 @@ struct PurchaseConfig {
     // MARK: - Pricing Display
     static let proMonthlyPrice = "¥480/月"
     static let proLifetimePrice = "¥4,980（買い切り）"
+
+    // MARK: - 拡張ストレージ アフィリエイトCTA（アプリ内から外部の拡張ストレージ購入へ誘導）
+    // 実アフィリリンクを設定すると、空きが少ない時にストレージタブへCTAが出る。
+    // コピーは CTR 最適化のため複数用意しローテーション（表示/クリックを匿名計測 → 後で勝ちコピーを選定）。
+    static let storageUpgradeURL: String? = nil
+    static let storageUpgradeCopies: [String] = [
+        "空き容量が足りない？ 外付けSSDで一気に解決",
+        "整理に疲れたら、大容量ストレージという選択",
+        "削除しても足りないなら、増やすのが早い",
+        "写真も動画もそのまま — 拡張ストレージを見る"
+    ]
 }
 
 /// Manages license state, promo codes, purchase flow, and feature gating

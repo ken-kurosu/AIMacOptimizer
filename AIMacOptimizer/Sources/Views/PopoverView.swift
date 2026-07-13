@@ -39,6 +39,10 @@ struct PopoverView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 .onChange(of: selectedTab) { newValue in
+                    // どのタブを見たか（匿名）
+                    let tabName = ["memory", "storage", "diagnosis", "tools", "settings"]
+                    let idx = [0, 1, 2, 3, 4].firstIndex(of: newValue) ?? 0
+                    AnalyticsService.shared.track("tab_view", ["tab": tabName[idx]])
                     // 一番右「設定」は独立ウィンドウで開き、タブ表示は直前の内容へ戻す
                     if newValue == 4 {
                         openSettings()
@@ -605,6 +609,8 @@ struct StorageTabView: View {
     @State private var confirmCategory: StorageCategory?
     @State private var cleanupMessage: String?
     @State private var enableAutoFromNow = false
+    // 拡張ストレージCTAのコピー(CTR最適化用にローテーション)
+    @State private var ctaVariant = Int.random(in: 0..<max(1, PurchaseConfig.storageUpgradeCopies.count))
 
     var body: some View {
         VStack(spacing: 0) {
@@ -695,6 +701,7 @@ struct StorageTabView: View {
             }
 
             storageOverview
+            storageAffiliateCTA
             Divider()
 
             if analyzer.isScanning {
@@ -908,6 +915,40 @@ struct StorageTabView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.orange.opacity(0.06))
+    }
+
+    // 拡張ストレージ アフィリCTA（URL未設定なら非表示。空きが少ない時だけ・コピーはローテーション＋匿名計測）
+    @ViewBuilder
+    private var storageAffiliateCTA: some View {
+        if let urlStr = PurchaseConfig.storageUpgradeURL, let url = URL(string: urlStr),
+           analyzer.storageInfo.totalGB > 0, analyzer.storageInfo.freeGB < 20 {
+            let copies = PurchaseConfig.storageUpgradeCopies
+            let copy = copies.isEmpty ? "拡張ストレージを見る" : copies[ctaVariant % copies.count]
+            Link(destination: url) {
+                HStack(spacing: 8) {
+                    Image(systemName: "externaldrive.badge.plus")
+                        .foregroundColor(.blue)
+                    Text(copy)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .background(Color.blue.opacity(0.06))
+                .cornerRadius(8)
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+            }
+            .buttonStyle(.plain)
+            .onAppear { AnalyticsService.shared.track("storage_cta_impression", ["variant": ctaVariant]) }
+            .simultaneousGesture(TapGesture().onEnded {
+                AnalyticsService.shared.track("storage_cta_click", ["variant": ctaVariant])
+            })
+        }
     }
 
     private var storageOverview: some View {

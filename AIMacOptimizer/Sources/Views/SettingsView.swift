@@ -17,6 +17,7 @@ struct SettingsView: View {
     @ObservedObject private var diskGuard = DiskGuard.shared
     @ObservedObject private var updateService = UpdateService.shared
     @AppStorage("autoUpdateEnabled") private var autoUpdateEnabled = true
+    @AppStorage("analyticsEnabled") private var analyticsEnabled = true
     @ObservedObject private var nav = SettingsNavigation.shared
     @ObservedObject private var scheduleManager = ScheduleManager.shared
     @State private var notifyAuthStatus: UNAuthorizationStatus = .notDetermined
@@ -739,6 +740,22 @@ struct SettingsView: View {
                         .multilineTextAlignment(.center)
                 }
                 Text("新しいバージョンを自動でダウンロードして更新します（配布は公証済み）。")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal)
+
+            Divider()
+
+            // 匿名の使用統計（オプトアウト可）。ブランド「データはローカルから出ない」との整合を明示
+            VStack(spacing: 6) {
+                Toggle("匿名の使用統計を送信", isOn: $analyticsEnabled)
+                    .toggleStyle(.switch)
+                    .onChange(of: analyticsEnabled) { newValue in
+                        AnalyticsService.shared.enabled = newValue
+                    }
+                Text("どのボタン・タブを使ったか等の匿名イベントのみを送信し、改善に使います。ファイル名・メモリ内容・個人データは一切送信しません。")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

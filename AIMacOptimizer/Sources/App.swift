@@ -78,6 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             showOnboarding()
         }
 
+        // 匿名の使用イベント（起動）。設定でオフ可・個人データは送らない
+        AnalyticsService.shared.track("app_open")
+
         print("=== AI Mac Optimizer started ===")
     }
 

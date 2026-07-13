@@ -87,45 +87,63 @@ final class WeeklyReportService {
         let avgMem = recent.isEmpty ? 0 : recent.map { $0.memUsedPercent }.reduce(0, +) / Double(recent.count)
         let avgSwap = recent.isEmpty ? 0 : recent.map { $0.swapMB }.reduce(0, +) / Double(recent.count)
 
-        var freeTrendText = ""
-        if recent.count >= 2, let first = recent.first, let latest = recent.last {
-            let delta = latest.diskFreePercent - first.diskFreePercent
-            if abs(delta) >= 1 {
-                freeTrendText = String(format: "この1週間で空きが %@ %.0fpt", delta < 0 ? "減少" : "増加", abs(delta))
+        // ① 方向性（先週比 良化/悪化）と ② 予測（このままだと何日で危険域か）
+        var direction = "横ばい"
+        var freeDeltaPt = 0.0
+        var predictionText: String?
+        if recent.count >= 2, let first = recent.first, let last = recent.last {
+            freeDeltaPt = last.diskFreePercent - first.diskFreePercent
+            if freeDeltaPt >= 1 { direction = String(format: "改善（空き +%.0fpt）", freeDeltaPt) }
+            else if freeDeltaPt <= -1 { direction = String(format: "悪化（空き −%.0fpt）", -freeDeltaPt) }
+            let daysSpan = last.date.timeIntervalSince(first.date) / 86400
+            let dailyDrop = daysSpan >= 1.5 ? (first.diskFreePercent - last.diskFreePercent) / daysSpan : 0
+            if dailyDrop > 0.05 {
+                let toGo = last.diskFreePercent - 5.0 // 残5%を危険域とする
+                if toGo > 0 {
+                    let days = Int((toGo / dailyDrop).rounded())
+                    if days <= 120 { predictionText = "この減り方だと約\(days)日で空きが危険域（残5%）に達します" }
+                }
             }
         }
 
-        // アプリ内表示用の詳細行
-        var lines: [String] = []
-        lines.append(String(format: "空き容量: %@ / %@（使用 %.0f%%）",
-                            storage.freeFormatted, storage.totalFormatted, storage.usagePercent))
-        if !freeTrendText.isEmpty { lines.append(freeTrendText) }
-        if !top.isEmpty {
-            lines.append("大きい項目: " + top.map { "\($0.name) \(fmt($0.sizeMB))" }.joined(separator: " / "))
-        }
-        if !recent.isEmpty {
-            lines.append(String(format: "メモリ使用 平均 %.0f%% ・ Swap 平均 %@", avgMem, fmt(avgSwap)))
-        }
+        // 健康状態（一言）
+        let health: String
+        if storage.freeGB < 10 || avgSwap >= 2000 { health = "要注意" }
+        else if storage.usagePercent > 85 || avgMem >= 85 { health = "やや注意" }
+        else { health = "良好" }
 
         let advice = makeAdvice(freeGB: storage.freeGB,
                                 topMB: top.first?.sizeMB ?? 0,
                                 avgSwap: avgSwap,
                                 usagePercent: storage.usagePercent)
-        lines.append("提案: " + advice)
 
-        // 通知は要点だけに凝縮。Free は「予告編」（重要1事実＋助言＋Pro誘導）、Pro は推移も含むフル。
+        // アプリ内表示用の詳細行（「勝ってる?/このままだと?/何が犯人?/何すれば?」に答える構成）
+        var lines: [String] = []
+        lines.append("状態: \(health)（先週比 \(direction)）")
+        lines.append(String(format: "空き: %@ / %@（使用 %.0f%%）",
+                            storage.freeFormatted, storage.totalFormatted, storage.usagePercent))
+        if let pred = predictionText { lines.append("⚠️ " + pred) }
+        if let t = top.first { lines.append("最も容量を食っている: \(t.name)（\(fmt(t.sizeMB))）") }
+        if top.count > 1 {
+            lines.append("次点: " + top.dropFirst().map { "\($0.name) \(fmt($0.sizeMB))" }.joined(separator: " / "))
+        }
+        if !recent.isEmpty {
+            lines.append(String(format: "負荷の傾向: メモリ平均 %.0f%% ・ Swap平均 %@", avgMem, fmt(avgSwap)))
+        }
+        lines.append("今週の一手: \(advice)")
+
+        // 通知は要点だけに凝縮。Free は「予告編」（犯人＋予測＋助言＋Pro誘導）、Pro は推移も含むフル。
         let isPro = LicenseManager.shared.canViewFullReport
         var body = ""
-        if let t = top.first { body = "最大の整理候補は \(t.name)（\(fmt(t.sizeMB))）。" }
+        if let t = top.first { body = "最も容量を食っているのは \(t.name)（\(fmt(t.sizeMB))）。" }
         if isPro {
-            if !freeTrendText.isEmpty { body += freeTrendText + "。" }
+            if let pred = predictionText { body += pred + "。" }
+            else if freeDeltaPt != 0 { body += "先週比 \(direction)。" }
             body += advice
         } else {
+            if let pred = predictionText { body += pred + "。" } // 予告編でも"予測"は見せる＝価値の証明
             body += advice
-            let more = max(0, top.count - 1)
-            body += more > 0
-                ? "（他\(more)件と1週間の推移・詳細はProで）"
-                : "（1週間の推移・詳細はProで）"
+            body += "（推移・全項目・今週の一手はProで）"
         }
 
         return Summary(

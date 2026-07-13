@@ -43,17 +43,19 @@ struct DiagnosisView: View {
                 Spacer()
             }
             if let r = weeklyReport ?? WeeklyReportService.shared.lastReport {
-                let shown = isPro ? r.lines : Array(r.lines.prefix(2))
+                // Free は「状態・空き・予測・犯人」まで見せて価値を証明、"次点/傾向/今週の一手"はProで
+                let freePreview = 4
+                let shown = isPro ? r.lines : Array(r.lines.prefix(freePreview))
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
-                    Text("・" + line)
-                        .font(.system(size: 11)).foregroundColor(.secondary)
+                    Text((line.hasPrefix("⚠️") ? "" : "・") + line)
+                        .font(.system(size: 11)).foregroundColor(line.hasPrefix("⚠️") ? .orange : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if !isPro && r.lines.count > 2 {
+                if !isPro && r.lines.count > freePreview {
                     Button { SettingsWindowController.shared.showSettings(initialTab: 1) } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "lock.fill").font(.system(size: 10)).foregroundColor(.orange)
-                            Text("推移・全項目・提案はProで（残り\(r.lines.count - 2)項目）")
+                            Text("次点の項目・負荷の傾向・今週の一手はProで")
                                 .font(.system(size: 10.5))
                             Spacer()
                             Text("アップグレード").font(.system(size: 10.5, weight: .medium)).foregroundColor(.blue)

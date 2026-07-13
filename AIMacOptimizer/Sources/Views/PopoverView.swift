@@ -183,11 +183,12 @@ struct MemoryTabView: View {
             // Pro/Free 問わず表示する（おすすめ商品は有料ユーザーにも掲載してよい）
             if affiliateRecs.isEmpty {
                 let storageInfo = StorageAnalyzer().getStorageInfo()
+                // ストレージ系(外付けSSD等)はストレージタブに集約するので、メモリタブでは除外
                 affiliateRecs = AffiliateManager.shared.getRecommendations(
                     memoryUsagePercent: monitor.systemMemory.usagePercent,
                     storageFreeGB: storageInfo.freeGB,
                     storageTotalGB: storageInfo.totalGB
-                )
+                ).filter { $0.category != .storage }
             }
         }
     }
@@ -632,8 +633,8 @@ struct StorageTabView: View {
     @State private var confirmCategory: StorageCategory?
     @State private var cleanupMessage: String?
     @State private var enableAutoFromNow = false
-    // 拡張ストレージCTAのコピー(CTR最適化用にローテーション)
-    @State private var ctaVariant = Int.random(in: 0..<max(1, PurchaseConfig.storageUpgradeCopies.count))
+    // ストレージ文脈のおすすめ（アフィリ）＝外付けSSD等。空き容量の直下に表示
+    @State private var affiliateRecs: [AffiliateRecommendation] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -724,8 +725,8 @@ struct StorageTabView: View {
             }
 
             storageOverview
+            storageAffiliateBanner
             iCloudEvictAction
-            storageAffiliateCTA
             Divider()
 
             if analyzer.isScanning {
@@ -771,7 +772,15 @@ struct StorageTabView: View {
             }
         }
         // 表示時と、削除で空きが変わった時に「〇〇GB空き」を即更新する
-        .onAppear { analyzer.storageInfo = analyzer.getStorageInfo() }
+        .onAppear {
+            analyzer.storageInfo = analyzer.getStorageInfo()
+            // ストレージ文脈のおすすめ（外付けSSD等）を空き容量の直下に表示
+            affiliateRecs = AffiliateManager.shared.getRecommendations(
+                memoryUsagePercent: 0,
+                storageFreeGB: analyzer.storageInfo.freeGB,
+                storageTotalGB: analyzer.storageInfo.totalGB
+            ).filter { $0.category == .storage }
+        }
         .onChange(of: diskGuard.lastAutoCleanSummary) { _ in
             analyzer.storageInfo = analyzer.getStorageInfo()
         }
@@ -976,37 +985,47 @@ struct StorageTabView: View {
         }
     }
 
-    // 拡張ストレージ アフィリCTA（URL未設定なら非表示。空きが少ない時だけ・コピーはローテーション＋匿名計測）
+    // ストレージ文脈のおすすめ（アフィリ＝AffiliateManager・外付けSSD等）。空き容量の直下に分かりやすく表示
     @ViewBuilder
-    private var storageAffiliateCTA: some View {
-        if let urlStr = PurchaseConfig.storageUpgradeURL, let url = URL(string: urlStr),
-           analyzer.storageInfo.totalGB > 0, analyzer.storageInfo.freeGB < 20 {
-            let copies = PurchaseConfig.storageUpgradeCopies
-            let copy = copies.isEmpty ? "拡張ストレージを見る" : copies[ctaVariant % copies.count]
-            Link(destination: url) {
-                HStack(spacing: 8) {
+    private var storageAffiliateBanner: some View {
+        if !affiliateRecs.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
                     Image(systemName: "externaldrive.badge.plus")
-                        .foregroundColor(.blue)
-                    Text(copy)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
+                        .font(.system(size: 11)).foregroundColor(.blue)
+                    Text("空きを増やす — おすすめ")
+                        .font(.system(size: 11, weight: .semibold))
                     Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
+                    Text("AD")
+                        .font(.system(size: 8, weight: .bold)).foregroundColor(.secondary)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.gray.opacity(0.15)).cornerRadius(3)
                 }
-                .padding(8)
-                .background(Color.blue.opacity(0.06))
-                .cornerRadius(8)
-                .padding(.horizontal, 8)
-                .padding(.top, 4)
+                ForEach(affiliateRecs) { rec in
+                    Button {
+                        AffiliateManager.shared.trackClick(recommendation: rec)
+                        AnalyticsService.shared.track("storage_affiliate_click", ["title": rec.title])
+                        if let url = URL(string: rec.affiliateURL) { NSWorkspace.shared.open(url) }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: rec.icon)
+                                .font(.system(size: 14)).foregroundColor(.blue).frame(width: 24)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(rec.title).font(.system(size: 11, weight: .medium)).foregroundColor(.primary)
+                                Text(rec.description).font(.system(size: 9)).foregroundColor(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square").font(.system(size: 10)).foregroundColor(.blue)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 7)
+                        .background(Color.blue.opacity(0.06)).cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
-            .onAppear { AnalyticsService.shared.track("storage_cta_impression", ["variant": ctaVariant]) }
-            .simultaneousGesture(TapGesture().onEnded {
-                AnalyticsService.shared.track("storage_cta_click", ["variant": ctaVariant])
-            })
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+            .onAppear { AnalyticsService.shared.track("storage_affiliate_impression", ["count": affiliateRecs.count]) }
         }
     }
 

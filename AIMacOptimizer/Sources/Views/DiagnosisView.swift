@@ -21,7 +21,70 @@ struct DiagnosisView: View {
     @State private var showFixResults = false
     @State private var pendingRisky: [DiagnosisFinding] = []
     @State private var riskyResults: [String] = []
-    
+    @State private var weeklyReport: WeeklyReportService.Summary?
+    @State private var isBuildingReport = false
+
+    // MARK: - 週次レポート（Pro の顔。Free は予告編＋ロック、Pro はフル）
+    @ViewBuilder
+    private var weeklyReportCard: some View {
+        let isPro = license.currentTier.isPro
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.system(size: 12)).foregroundColor(.blue)
+                Text("週次レポート")
+                    .font(.system(size: 12, weight: .semibold))
+                if !isPro {
+                    Text("Pro").font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.15)).foregroundColor(.orange).cornerRadius(4)
+                }
+                Spacer()
+            }
+            if let r = weeklyReport ?? WeeklyReportService.shared.lastReport {
+                let shown = isPro ? r.lines : Array(r.lines.prefix(2))
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
+                    Text("・" + line)
+                        .font(.system(size: 11)).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !isPro && r.lines.count > 2 {
+                    Button { SettingsWindowController.shared.showSettings(initialTab: 1) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "lock.fill").font(.system(size: 10)).foregroundColor(.orange)
+                            Text("推移・全項目・提案はProで（残り\(r.lines.count - 2)項目）")
+                                .font(.system(size: 10.5))
+                            Spacer()
+                            Text("アップグレード").font(.system(size: 10.5, weight: .medium)).foregroundColor(.blue)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            } else {
+                Text(isPro ? "使うほど蓄積される最適化レポート。今すぐ生成できます。"
+                           : "使うほど溜まる履歴から、毎週の最適化レポートを生成します（フルはPro）。")
+                    .font(.system(size: 10.5)).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    isBuildingReport = true
+                    Task {
+                        weeklyReport = await WeeklyReportService.shared.generateNow()
+                        isBuildingReport = false
+                    }
+                } label: {
+                    if isBuildingReport { ProgressView().controlSize(.small) }
+                    else { Text("今週のレポートを生成").font(.system(size: 11, weight: .medium)) }
+                }
+                .buttonStyle(.bordered).controlSize(.small)
+                .disabled(isBuildingReport)
+            }
+        }
+        .padding(10)
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(10)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -38,6 +101,9 @@ struct DiagnosisView: View {
                     Divider().padding(.vertical, 4)
                     HealthTrendView()
                         .padding(.bottom, 10)
+                    weeklyReportCard
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
                 }
             }
         }

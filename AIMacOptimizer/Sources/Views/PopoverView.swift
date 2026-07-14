@@ -420,20 +420,32 @@ struct MemoryTabView: View {
 
     private var actionSection: some View {
         VStack(spacing: 8) {
-            // ① 押す前に「これから何をするか」を予告（中身が見えるように）
+            // ① 押す前に「これから何をするか」＋「安全である」ことを予告（中身が見えるように）
             if !viewModel.isOptimizing, let preview = viewModel.optimizePreview {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10))
-                        .foregroundColor(.blue)
-                    Text("実行内容: \(preview.summary) → 見込み 約\(preview.estimatedFormatted)")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10))
+                            .foregroundColor(.blue)
+                        Text("\(preview.actionText)（約\(preview.estimatedFormatted)）")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.green)
+                        Text(preview.riskNote)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 6)
+                .padding(.vertical, 7)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.blue.opacity(0.05))
                 .cornerRadius(8)
@@ -2003,7 +2015,8 @@ final class PopoverViewModel: ObservableObject {
     /// 押す前に「これから何をするか」を要約したプレビュー。
     struct OptimizePreview {
         let count: Int
-        let summary: String
+        let actionText: String   // 何をするか（例: "キャッシュを削除・一時ファイルを整理"）
+        let riskNote: String     // リスクがないことの一言（不安を取り除く）
         let estimatedMB: Double
         var estimatedFormatted: String {
             estimatedMB >= 1024 ? String(format: "%.1f GB", estimatedMB / 1024)
@@ -2012,32 +2025,57 @@ final class PopoverViewModel: ObservableObject {
     }
 
     /// 現在の選択状態から、実行内容の予告を組み立てる（選択が無ければ nil）。
+    /// 「何をするか」を人が読める動作名で並べ、あわせて安全性の一言を添える。
     var optimizePreview: OptimizePreview? {
         let active = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
         guard !active.isEmpty else { return nil }
-        var tabs = 0, apps = 0, cacheMB = 0.0, purge = false, est = 0.0
+
+        var labels: [String] = []
+        var est = 0.0
+        var hasQuit = false, hasTab = false
         for s in active {
             est += s.estimatedSavingMB
-            switch s.type {
-            case .closeTab, .closeSafariTab:
-                tabs += s.detailItems.isEmpty ? 1 : s.detailItems.filter(\.isSelected).count
-            case .quitApp:
-                apps += 1
-            case .purgeRAM:
-                purge = true
-            default:
-                cacheMB += s.estimatedSavingMB
-            }
+            if s.type == .quitApp { hasQuit = true }
+            if s.type == .closeTab || s.type == .closeSafariTab { hasTab = true }
+            let name = Self.previewActionName(for: s)
+            if !labels.contains(name) { labels.append(name) }
         }
-        var parts: [String] = []
-        if tabs > 0 { parts.append("タブ×\(tabs)") }
-        if apps > 0 { parts.append("アプリ×\(apps)") }
-        if cacheMB >= 1 {
-            parts.append("キャッシュ" + (cacheMB >= 1024 ? String(format: "%.1fGB", cacheMB / 1024)
-                                                        : String(format: "%.0fMB", cacheMB)))
+
+        // 動作名を並べる（多すぎる時は先頭3つ＋「ほか」）
+        let actionText: String
+        if labels.count > 3 {
+            actionText = labels.prefix(3).joined(separator: "・") + " ほか"
+        } else {
+            actionText = labels.joined(separator: "・")
         }
-        if purge { parts.append("RAMを解放") }
-        return OptimizePreview(count: active.count, summary: parts.joined(separator: "・"), estimatedMB: est)
+
+        // 安全性の一言（アプリ終了/タブを閉じる時は「開き直せる」ことを、キャッシュ系は「自動で作り直される」ことを伝える）
+        let riskNote: String
+        if hasQuit && hasTab {
+            riskNote = "閉じたアプリ・タブは開き直せます。ファイルは削除しません。"
+        } else if hasQuit {
+            riskNote = "終了したアプリは開き直せます。ファイルは消えません（未保存の作業だけご確認を）。"
+        } else if hasTab {
+            riskNote = "閉じたタブは開き直せます。データは削除しません。"
+        } else {
+            riskNote = "キャッシュ等は使う時に自動で作り直されます。写真・書類・アプリは対象外です。"
+        }
+
+        return OptimizePreview(count: active.count, actionText: actionText, riskNote: riskNote, estimatedMB: est)
+    }
+
+    /// 予告に出す、人が読める動作名（短い動詞句）。
+    static func previewActionName(for s: OptimizationSuggestion) -> String {
+        switch s.type {
+        case .closeTab, .closeSafariTab: return "使っていないタブを閉じる"
+        case .quitApp: return "使っていないアプリを終了"
+        case .purgeRAM: return "メモリのキャッシュを解放"
+        case .clearCache, .clearBrowserCache: return "キャッシュを削除"
+        case .clearTmpFiles: return "一時ファイルを削除"
+        case .flushDNS: return "DNSキャッシュを更新"
+        case .flushFontCache: return "フォントキャッシュを再構築"
+        default: return "不要データを整理"
+        }
     }
 
     /// 各候補を「何をするか」の短い名詞句にする（実況の行ラベル）。

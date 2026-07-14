@@ -1743,8 +1743,8 @@ struct AppUninstallRow: View {
     @State private var isExpanded = false
     @State private var resultMessage: String?
     @State private var pendingAction: PendingUninstallAction?
-    /// チェックを外した残留パス（既定は全選択）
-    @State private var deselected: Set<String> = []
+    /// チェックを入れた残留パス（既定は空＝すべて未選択。誤削除を防ぐため）
+    @State private var selected: Set<String> = []
 
     /// 確認待ちの破壊的操作
     private enum PendingUninstallAction: Equatable {
@@ -1754,7 +1754,23 @@ struct AppUninstallRow: View {
 
     /// 残留削除で実際に消す対象（選択中のパス）
     private var selectedLeftoverPaths: [String] {
-        app.leftovers.map(\.path).filter { !deselected.contains($0) }
+        app.leftovers.map(\.path).filter { selected.contains($0) }
+    }
+
+    // MARK: マスターチェック（アプリ名の左＝クリックで全選択/全解除）
+    private var allSelected: Bool {
+        !app.leftovers.isEmpty && selected.count == app.leftovers.count
+    }
+    private var someSelected: Bool { !selected.isEmpty }
+    private var masterIcon: String {
+        allSelected ? "checkmark.square.fill" : (someSelected ? "minus.square.fill" : "square")
+    }
+    private var masterColor: Color { someSelected ? .blue : .gray }
+
+    /// マスターチェックのトグル：全選択済みなら全解除、そうでなければ全選択。
+    private func toggleAllLeftovers() {
+        if allSelected { selected.removeAll() }
+        else { selected = Set(app.leftovers.map(\.path)) }
     }
 
     private func leftoverRiskColor(_ risk: LeftoverRisk) -> Color {
@@ -1763,40 +1779,53 @@ struct AppUninstallRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
-                HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                // 展開トグル（シェブロン）
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                         .frame(width: 12)
-                    
-                    // App icon placeholder
-                    Image(systemName: "app.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.blue)
-                    
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(app.name)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .lineLimit(1)
-                        HStack(spacing: 4) {
-                            if app.leftoverSizeMB > 0 {
-                                Text(L10n.leftoverLabel(formatSize(app.leftoverSizeMB)))
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.orange)
-                            }
-                            Text(L10n.totalLabel(formatSize(app.totalSizeMB)))
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Spacer()
+                        .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                // マスターチェック：クリックでこのアプリの残留を全選択/全解除（既定は未選択）
+                Button(action: toggleAllLeftovers) {
+                    Image(systemName: masterIcon)
+                        .font(.system(size: 14))
+                        .foregroundColor(masterColor)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(app.leftovers.isEmpty)
+                .help("このアプリの残留ファイルをすべて選択/解除")
+
+                // 名前＋サイズ（タップで展開）
+                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(app.name)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .lineLimit(1)
+                            HStack(spacing: 4) {
+                                if app.leftoverSizeMB > 0 {
+                                    Text(L10n.leftoverLabel(formatSize(app.leftoverSizeMB)))
+                                        .font(.system(size: 9))
+                                        .foregroundColor(.orange)
+                                }
+                                Text(L10n.totalLabel(formatSize(app.totalSizeMB)))
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
             
@@ -1813,9 +1842,9 @@ struct AppUninstallRow: View {
                             .font(.system(size: 10, weight: .medium))
                             .fixedSize(horizontal: false, vertical: true)
                         ForEach(app.leftovers) { item in
-                            let isOn = !deselected.contains(item.path)
+                            let isOn = selected.contains(item.path)
                             Button(action: {
-                                if isOn { deselected.insert(item.path) } else { deselected.remove(item.path) }
+                                if isOn { selected.remove(item.path) } else { selected.insert(item.path) }
                             }) {
                                 HStack(alignment: .top, spacing: 6) {
                                     Image(systemName: isOn ? "checkmark.square.fill" : "square")
@@ -1859,10 +1888,15 @@ struct AppUninstallRow: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 if app.leftoverSizeMB > 0 {
                                     actionChoice(
-                                        title: L10n.leftoverRemoveTitle,
+                                        title: selectedLeftoverPaths.isEmpty
+                                            ? L10n.leftoverRemoveTitle
+                                            : "\(L10n.leftoverRemoveTitle)（\(selectedLeftoverPaths.count)件）",
                                         tint: .orange,
                                         risk: L10n.riskLow,
-                                        desc: L10n.leftoverRemoveDesc,
+                                        desc: selectedLeftoverPaths.isEmpty
+                                            ? "上のチェックで消す残留を選ぶか、アプリ名の左の □ で全選択してください。"
+                                            : L10n.leftoverRemoveDesc,
+                                        disabled: selectedLeftoverPaths.isEmpty,
                                         action: { pendingAction = .leftoversOnly }
                                     )
                                 }
@@ -1906,9 +1940,9 @@ struct AppUninstallRow: View {
         return String(format: "%.0f MB", mb)
     }
 
-    /// 選択肢（ボタン＋リスク＋効果説明）
+    /// 選択肢（ボタン＋リスク＋効果説明）。disabled 時はボタンを無効化する。
     @ViewBuilder
-    private func actionChoice(title: String, tint: Color, risk: String, desc: String, action: @escaping () -> Void) -> some View {
+    private func actionChoice(title: String, tint: Color, risk: String, desc: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
                 Button(action: action) {
@@ -1917,6 +1951,7 @@ struct AppUninstallRow: View {
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
                 .controlSize(.small)
+                .disabled(disabled)
                 Text(risk)
                     .font(.system(size: 9, weight: .bold))
                     .foregroundColor(tint)

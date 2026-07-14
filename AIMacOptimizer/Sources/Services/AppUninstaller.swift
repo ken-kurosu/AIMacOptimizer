@@ -146,23 +146,26 @@ class AppUninstaller: ObservableObject {
         return UninstallResult(removedCount: removedCount, freedMB: freedMB, errors: errors)
     }
 
-    /// Calculates the total size of a directory or file in MB
+    /// Calculates the actual on-disk size of a directory or file in MB.
+    /// 論理サイズ(.size)ではなく「実際にディスクを占有している量」(allocatedSize)で測る。
+    /// 例: Xcode.app は APFS 圧縮のため論理 8.8GB でも実体は約 4.0GB。`du` と一致し、
+    /// 「削除して実際に空く量」を正しく表す。
     func getDirectorySizeMB(_ path: String) -> Double {
+        let url = URL(fileURLWithPath: path)
         var isDir: ObjCBool = false
         guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
 
-        // ディレクトリは中身を再帰集計する。
-        // （attributesOfItem はディレクトリでも例外を投げず、ディレクトリ自体の
-        //  数KBの値を返すだけなので、以前はフォルダが常に≒0MBになっていた）
         if isDir.boolValue {
-            return calculateDirectorySizeRecursive(path)
+            return calculateDirectorySizeRecursive(url)
         }
+        return Double(allocatedSizeBytes(url)) / (1024 * 1024)
+    }
 
-        if let attributes = try? fileManager.attributesOfItem(atPath: path),
-           let size = attributes[.size] as? NSNumber {
-            return Double(size.int64Value) / (1024 * 1024)
-        }
-        return 0
+    /// 1ファイルの実ディスク占有量(bytes)。圧縮/スパースを反映する totalFileAllocatedSize を使う。
+    private func allocatedSizeBytes(_ url: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        guard let v = try? url.resourceValues(forKeys: keys) else { return 0 }
+        return Int64(v.totalFileAllocatedSize ?? v.fileAllocatedSize ?? 0)
     }
 
     // MARK: - Private Methods
@@ -328,21 +331,22 @@ class AppUninstaller: ObservableObject {
         return nil
     }
 
-    private func calculateDirectorySizeRecursive(_ path: String) -> Double {
+    private func calculateDirectorySizeRecursive(_ url: URL) -> Double {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isSymbolicLinkKey]
         var totalSize: Int64 = 0
 
-        if let enumerator = fileManager.enumerator(atPath: path) {
-            for case let file as String in enumerator {
-                let filePath = (path as NSString).appendingPathComponent(file)
-                do {
-                    let attributes = try fileManager.attributesOfItem(atPath: filePath)
-                    if let fileSize = attributes[.size] as? NSNumber {
-                        totalSize += fileSize.int64Value
-                    }
-                } catch {
-                    continue
-                }
-            }
+        // シンボリックリンクは辿らず(実体を二重計上しない)、実ディスク占有量を積算する＝`du` と一致。
+        guard let enumerator = fileManager.enumerator(
+            at: url,
+            includingPropertiesForKeys: Array(keys),
+            options: [],
+            errorHandler: { _, _ in true }
+        ) else { return 0 }
+
+        for case let fileURL as URL in enumerator {
+            guard let v = try? fileURL.resourceValues(forKeys: keys) else { continue }
+            if v.isSymbolicLink == true { continue }
+            totalSize += Int64(v.totalFileAllocatedSize ?? v.fileAllocatedSize ?? 0)
         }
 
         return Double(totalSize) / (1024 * 1024)

@@ -451,7 +451,12 @@ final class MemoryOptimizer {
     // MARK: - Batch Optimization
 
     /// Execute a list of optimization suggestions
-    func executeOptimizations(_ suggestions: [OptimizationSuggestion]) async -> OptimizationResult {
+    /// - Parameter onProgress: 1件ごとに (index, done) を MainActor で通知する。
+    ///   done=false は「その項目の処理を開始」、done=true は「完了」。UI のステップ実況に使う。
+    func executeOptimizations(
+        _ suggestions: [OptimizationSuggestion],
+        onProgress: (@MainActor (_ index: Int, _ done: Bool) -> Void)? = nil
+    ) async -> OptimizationResult {
         var closedTabs = 0
         var quitApps: [String] = []
         var purged = false
@@ -460,7 +465,8 @@ final class MemoryOptimizer {
         // 実際に解放されたメモリを測るため、実行前の空きを記録
         let freeBefore = currentFreeMemoryMB()
 
-        for suggestion in suggestions {
+        for (index, suggestion) in suggestions.enumerated() {
+            if let onProgress { await MainActor.run { onProgress(index, false) } }
             // 選択中の detailItems だけを処理対象にする
             let outcome = await suggestion.action(suggestion.detailItems)
             // キャッシュ/一時ファイル等が空けたディスク容量を実測ベースで積算
@@ -477,6 +483,7 @@ final class MemoryOptimizer {
                     break
                 }
             }
+            if let onProgress { await MainActor.run { onProgress(index, true) } }
         }
 
         // アプリ終了(terminate は非同期)のメモリ返却が反映されるまで、

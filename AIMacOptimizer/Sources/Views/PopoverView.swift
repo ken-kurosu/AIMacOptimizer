@@ -411,8 +411,34 @@ struct MemoryTabView: View {
 
     // MARK: - Actions
 
+    /// ボタン文言：実行中は状況、待機中は「ワンクリック最適化（N件）」で件数を見せる。
+    private var optimizeButtonLabel: String {
+        if viewModel.isOptimizing { return viewModel.optimizingStatus }
+        if let preview = viewModel.optimizePreview { return "\(L10n.oneClickOptimize)（\(preview.count)件）" }
+        return L10n.oneClickOptimize
+    }
+
     private var actionSection: some View {
         VStack(spacing: 8) {
+            // ① 押す前に「これから何をするか」を予告（中身が見えるように）
+            if !viewModel.isOptimizing, let preview = viewModel.optimizePreview {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10))
+                        .foregroundColor(.blue)
+                    Text("実行内容: \(preview.summary) → 見込み 約\(preview.estimatedFormatted)")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(8)
+            }
+
             Button(action: {
                 Task { await viewModel.optimize(systemMemory: monitor.systemMemory, processes: monitor.topProcesses, license: license) }
             }) {
@@ -423,7 +449,7 @@ struct MemoryTabView: View {
                     } else {
                         Image(systemName: "bolt.fill")
                     }
-                    Text(viewModel.isOptimizing ? viewModel.optimizingStatus : L10n.oneClickOptimize)
+                    Text(optimizeButtonLabel)
                         .fontWeight(.medium)
                 }
                 .frame(maxWidth: .infinity)
@@ -432,6 +458,41 @@ struct MemoryTabView: View {
             .buttonStyle(.borderedProminent)
             .tint(.blue)
             .disabled(viewModel.isOptimizing)
+
+            // ② 実行中は「今どの処理をしているか」を1件ずつ実況（チェックが付いていく）
+            if viewModel.isOptimizing, !viewModel.steps.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(viewModel.steps.enumerated()), id: \.element.id) { idx, step in
+                        let isActive = !step.done && viewModel.steps.prefix(idx).allSatisfy(\.done)
+                        HStack(spacing: 6) {
+                            if step.done {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            } else if isActive {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .scaleEffect(0.6)
+                                    .frame(width: 11, height: 11)
+                            } else {
+                                Image(systemName: "circle")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary.opacity(0.4))
+                            }
+                            Text(isActive ? step.label + "…" : step.label)
+                                .font(.system(size: 10))
+                                .foregroundColor(step.done || isActive ? .primary : .secondary)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.blue.opacity(0.04))
+                .cornerRadius(8)
+                .transition(.opacity)
+            }
 
             if let result = viewModel.lastResult {
                 Text("✅ " + optimizeResultMessage(result))
@@ -635,8 +696,13 @@ struct StorageTabView: View {
     @State private var enableAutoFromNow = false
     // ストレージ文脈のおすすめ（アフィリ）＝外付けSSD等。空き容量の直下に表示
     @State private var affiliateRecs: [AffiliateRecommendation] = []
+    // iCloud Drive のローカル実体サイズ（退避で空けられる見込み量）と退避中フラグ
+    @State private var iCloudLocalMB: Double = 0
+    @State private var iCloudEvicting = false
 
     var body: some View {
+        // 画面全体をスクロール可能に（バナーが増えても下のスキャン/一覧まで到達できる）
+        ScrollView {
         VStack(spacing: 0) {
             // ストレージ圧迫検知時の「安全に空ける」提案バナー
             if let plan = diskGuard.pendingPlan, !plan.isEmpty {
@@ -730,11 +796,9 @@ struct StorageTabView: View {
             Divider()
 
             if analyzer.isScanning {
-                Spacer()
                 ProgressView(L10n.analyzing)
-                Spacer()
+                    .padding(.vertical, 40)
             } else if analyzer.items.isEmpty {
-                Spacer()
                 VStack(spacing: 8) {
                     Image(systemName: "checkmark.circle")
                         .font(.largeTitle)
@@ -743,7 +807,7 @@ struct StorageTabView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                Spacer()
+                .padding(.top, 30)
 
                 Button(L10n.startScan) {
                     Task { await analyzer.scan() }
@@ -770,6 +834,7 @@ struct StorageTabView: View {
                         }
                     }
             }
+        }
         }
         // 表示時と、削除で空きが変わった時に「〇〇GB空き」を即更新する
         .onAppear {
@@ -950,38 +1015,88 @@ struct StorageTabView: View {
         .background(Color.orange.opacity(0.06))
     }
 
-    // iCloud Drive をローカルから退避（evict）。空きが少ない時に表示。クラウドには残る＝安全
+    /// MB を読みやすい単位に。
+    private func fmtGB(_ mb: Double) -> String {
+        mb >= 1024 ? String(format: "%.1fGB", mb / 1024) : String(format: "%.0fMB", mb)
+    }
+
+    // iCloud Drive をローカルから退避（evict）。空きが少ない時に表示。クラウドには残る＝安全。
+    // 「何が起きて・どれだけ空くか」を明示して効果を分かりやすくする。
     @ViewBuilder
     private var iCloudEvictAction: some View {
         if analyzer.storageInfo.totalGB > 0, analyzer.storageInfo.freeGB < 20 {
-            Button {
-                cleanupMessage = "iCloud Driveを退避中…"
-                let analyzer = analyzer
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let freed = analyzer.evictICloudDrive()
-                    DispatchQueue.main.async {
-                        analyzer.storageInfo = analyzer.getStorageInfo()
-                        cleanupMessage = freed > 100
-                            ? "iCloud Driveを退避し約\(Int(freed))MB空けました（クラウドには残っています）"
-                            : "iCloud Driveの退避を実行しました（反映に少し時間がかかる場合があります）"
-                    }
-                }
-            } label: {
+            let hasSize = iCloudLocalMB >= 100
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Image(systemName: "icloud.and.arrow.down")
-                        .font(.system(size: 11)).foregroundColor(.blue)
-                    Text("iCloud Driveをローカルから退避（クラウドに残す）")
-                        .font(.system(size: 10.5)).foregroundColor(.primary).lineLimit(1)
+                        .font(.system(size: 12)).foregroundColor(.blue)
+                    Text("iCloud Driveをローカルから退避")
+                        .font(.system(size: 11, weight: .semibold))
                     Spacer()
-                    Image(systemName: "arrow.right").font(.system(size: 10)).foregroundColor(.secondary)
+                    if hasSize {
+                        Text("約\(fmtGB(iCloudLocalMB))解放")
+                            .font(.system(size: 10, weight: .bold)).foregroundColor(.blue)
+                    }
                 }
-                .padding(8)
-                .background(Color.blue.opacity(0.05))
-                .cornerRadius(8)
-                .padding(.horizontal, 8)
-                .padding(.top, 4)
+
+                // 効果（どれだけ空くか）
+                Text(hasSize
+                     ? "今この Mac には iCloud のファイル実体が約\(fmtGB(iCloudLocalMB))ぶん保存されています。退避するとその実体を消して、これだけ空きが増えます。"
+                     : "同期のためローカルに保持しているiCloudファイルの実体を消して空きを増やします。")
+                    .font(.system(size: 9)).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // 安全性（データは消えない）
+                Text("ファイルはiCloud上にそのまま残り、開いた時に自動で再ダウンロードされます。写真・書類は失われません。")
+                    .font(.system(size: 9)).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    iCloudEvicting = true
+                    cleanupMessage = "iCloud Driveを退避中…"
+                    let analyzer = analyzer
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let freed = analyzer.evictICloudDrive()
+                        DispatchQueue.main.async {
+                            analyzer.storageInfo = analyzer.getStorageInfo()
+                            iCloudEvicting = false
+                            iCloudLocalMB = 0
+                            cleanupMessage = freed > 100
+                                ? "iCloud Driveを退避し約\(fmtGB(freed))空けました（クラウドには残っています）"
+                                : "iCloud Driveの退避を実行しました（反映に少し時間がかかる場合があります）"
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if iCloudEvicting {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.down.circle.fill").font(.system(size: 11))
+                        }
+                        Text(hasSize ? "今すぐ退避して約\(fmtGB(iCloudLocalMB))空ける" : "iCloud Driveを退避")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent).tint(.blue).controlSize(.small)
+                .disabled(iCloudEvicting)
             }
-            .buttonStyle(.plain)
+            .padding(10)
+            .background(Color.blue.opacity(0.05))
+            .cornerRadius(8)
+            .padding(.horizontal, 8)
+            .padding(.top, 4)
+            .onAppear {
+                // ローカル占有サイズを一度だけ背景で測る（UIはブロックしない）
+                if iCloudLocalMB == 0, !iCloudEvicting {
+                    let analyzer = analyzer
+                    DispatchQueue.global(qos: .utility).async {
+                        let mb = analyzer.iCloudLocalSizeMB()
+                        DispatchQueue.main.async { iCloudLocalMB = mb }
+                    }
+                }
+            }
         }
     }
 
@@ -1069,8 +1184,8 @@ struct StorageTabView: View {
     }
 
     private var storageItemsList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 2) {
+        // 外側が ScrollView なので、ここは素の LazyVStack（二重スクロールを避ける）
+        LazyVStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(analyzer.items.enumerated()), id: \.element.id) { index, item in
                     StorageExpandableRow(
                         item: $analyzer.items[index],
@@ -1100,7 +1215,6 @@ struct StorageTabView: View {
                 }
             }
             .padding(.vertical, 4)
-        }
     }
 
     private func executeConfirmedAction() {
@@ -1876,6 +1990,70 @@ final class PopoverViewModel: ObservableObject {
     @Published var isOptimizing = false
     @Published var optimizingStatus: String = ""
     @Published var lastResult: MemoryOptimizer.OptimizationResult?
+    /// 実行中の各ステップ（1件ずつチェックが付く実況表示に使う）
+    @Published var steps: [OptStep] = []
+
+    /// ワンクリック実行の1ステップ。UI で ✓ / 実行中… / 待機 を出し分ける。
+    struct OptStep: Identifiable {
+        let id = UUID()
+        let label: String
+        var done: Bool = false
+    }
+
+    /// 押す前に「これから何をするか」を要約したプレビュー。
+    struct OptimizePreview {
+        let count: Int
+        let summary: String
+        let estimatedMB: Double
+        var estimatedFormatted: String {
+            estimatedMB >= 1024 ? String(format: "%.1f GB", estimatedMB / 1024)
+                                : String(format: "%.0f MB", estimatedMB)
+        }
+    }
+
+    /// 現在の選択状態から、実行内容の予告を組み立てる（選択が無ければ nil）。
+    var optimizePreview: OptimizePreview? {
+        let active = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
+        guard !active.isEmpty else { return nil }
+        var tabs = 0, apps = 0, cacheMB = 0.0, purge = false, est = 0.0
+        for s in active {
+            est += s.estimatedSavingMB
+            switch s.type {
+            case .closeTab, .closeSafariTab:
+                tabs += s.detailItems.isEmpty ? 1 : s.detailItems.filter(\.isSelected).count
+            case .quitApp:
+                apps += 1
+            case .purgeRAM:
+                purge = true
+            default:
+                cacheMB += s.estimatedSavingMB
+            }
+        }
+        var parts: [String] = []
+        if tabs > 0 { parts.append("タブ×\(tabs)") }
+        if apps > 0 { parts.append("アプリ×\(apps)") }
+        if cacheMB >= 1 {
+            parts.append("キャッシュ" + (cacheMB >= 1024 ? String(format: "%.1fGB", cacheMB / 1024)
+                                                        : String(format: "%.0fMB", cacheMB)))
+        }
+        if purge { parts.append("RAMを解放") }
+        return OptimizePreview(count: active.count, summary: parts.joined(separator: "・"), estimatedMB: est)
+    }
+
+    /// 各候補を「何をするか」の短い名詞句にする（実況の行ラベル）。
+    static func stepLabel(for s: OptimizationSuggestion) -> String {
+        switch s.type {
+        case .closeTab: return "使っていないタブを閉じる"
+        case .closeSafariTab: return "Safariの重いタブを閉じる"
+        case .quitApp: return "\(s.title) を終了"
+        case .purgeRAM: return "RAMキャッシュをパージ"
+        case .clearCache, .clearBrowserCache: return "キャッシュを削除"
+        case .flushDNS: return "DNSキャッシュをフラッシュ"
+        case .flushFontCache: return "フォントキャッシュをクリア"
+        case .clearTmpFiles: return "一時ファイルを削除"
+        default: return "\(s.title) を実行"
+        }
+    }
 
     private let advisor = SmartAdvisor()
     private let optimizer = MemoryOptimizer()
@@ -1914,6 +2092,7 @@ final class PopoverViewModel: ObservableObject {
     func optimize(systemMemory: SystemMemoryInfo, processes: [ProcessMemoryInfo], license: LicenseManager) async {
         isOptimizing = true
         lastResult = nil
+        steps = []
 
         // 表示中の候補と選択をそのまま実行する。
         // （以前はここで loadSuggestions を呼び直しており、推定値の再計算と選択リセットで
@@ -1927,8 +2106,14 @@ final class PopoverViewModel: ObservableObject {
         let toExecute = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
         let executedTypes = Set(toExecute.map(\.type))
 
+        // 実況ステップを先に並べる（すべて未完了）。実行に合わせて1件ずつチェックが付く。
+        steps = toExecute.map { OptStep(label: Self.stepLabel(for: $0)) }
+
         optimizingStatus = L10n.optimizing(count: toExecute.count)
-        lastResult = await optimizer.executeOptimizations(toExecute)
+        lastResult = await optimizer.executeOptimizations(toExecute) { [weak self] index, done in
+            guard let self, done, index < self.steps.count else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { self.steps[index].done = true }
+        }
 
         // Mark executed types as recently optimized
         recentlyOptimizedTypes = executedTypes
@@ -1938,6 +2123,7 @@ final class PopoverViewModel: ObservableObject {
 
         optimizingStatus = ""
         isOptimizing = false
+        steps = []
 
         // Clear the recently optimized filter after 60 seconds so they can reappear on next analysis
         Task {

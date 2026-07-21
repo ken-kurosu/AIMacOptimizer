@@ -1,9 +1,18 @@
 # AIMacOptimizer リリース残作業と手順
 
-最終更新: 2026-07-07 / 対象ブランチ: `quality/warnings-fix`(= origin/main)
+最終更新: 2026-07-21 / 対象ブランチ: `main`(= origin/main, build14/v2.1.11)
 
-現状: Mac版アプリは**署名・公証済みDMGが配布可能**（`build/release/AIMacOptimizer-v2.0.0.dmg`）。
-残っているのは主に**課金の配線(Stripe + Webhook)**、**LP実装/公開**、**月額のライブ検証**。
+現状: Mac版アプリは**署名・公証済みDMGを配布中**（GitHub Releases v2.0.0, latest.json=build14）。
+LPは**公開済み**（https://aimacoptimizer.github.io/ , GA4=G-W0CQVD8YXN）。
+課金Webhookは**Cloudflareにデプロイ済み・稼働中**（`https://aimac-license-webhook.kurosu.workers.dev`,
+全シークレット設定済み・署名検証/オンライン検証`/validate`とも200応答, KVバインド済み）。
+
+**残っているのは実質2点だけ:**
+1. **notarytoolプロファイルの再登録**（新PC移行で消失。build15以降のDMG公証に必要 → App用パスワード発行が必要）
+2. **購入→キー発行の実地テスト**（Stripeテストモードで1回。インフラは完成済みだがKVにレコード0＝一度も通していない）
+
+> 注: 課金の全ライフサイクル（checkout.session.completed / invoice.paid / customer.subscription.deleted /
+> customer.subscription.updated）はworkerで実装・デプロイ済み。月額の「毎月キー貼り直し」はKVオンライン検証で不要化済み。
 
 ---
 

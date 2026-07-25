@@ -71,7 +71,7 @@ Xcodeユーザーなら、`~/Library/Developer/Xcode/DerivedData` が**数十GB�
 
 ## AI Mac Optimizer なら、安全な対象だけを実測で
 
-私たちが作っている [**AI Mac Optimizer**](https://aimacoptimizer.github.io/?utm_source=note&utm_medium=article&utm_campaign=system-data) は、まさにこの「判断」を肩代わりするメニューバー常駐アプリです。
+私たちが作っている [**AI Mac Optimizer**](https://aimacoptimizer.com/?utm_source=note&utm_medium=article&utm_campaign=system-data) は、まさにこの「判断」を肩代わりするメニューバー常駐アプリです。
 
 - **安全な対象だけを自動検出**：`DerivedData`やAdobe・Cursorの大型キャッシュなど、再生成される一時データだけを見つけます。ストレージのスキャンは**無料で無制限**。
 - **「実測で正直」**：多くのアプリは「解放できる"はず"の容量」を予測表示しますが、本アプリは**削除前後の実サイズ差だけ**を表示します。数字が体感と一致します。
@@ -82,7 +82,7 @@ Xcodeユーザーなら、`~/Library/Developer/Xcode/DerivedData` が**数十GB�
 > 掃除して**実際に○GB空いた**——その数字だけを見せる。これが「実測で正直」の意味です。
 
 **無料でダウンロード（.dmg / Apple公証済み・警告なしで開けます / macOS 13+）:**
-👉 https://aimacoptimizer.github.io/?utm_source=note&utm_medium=article&utm_campaign=system-data
+👉 https://aimacoptimizer.com/?utm_source=note&utm_medium=article&utm_campaign=system-data
 
 ## よくある質問
 
@@ -103,4 +103,4 @@ A. 一時的に、次回起動時だけキャッシュを作り直すため僅�
 - 難しいのは作業ではなく**判断**。そこを自動化し、**実際に空いた分だけ**を見せるのが AI Mac Optimizer
 
 自分のMacで今どれだけ空くか、まずは無料のスキャンで確かめてみてください。
-👉 [AI Mac Optimizer を無料で試す](https://aimacoptimizer.github.io/?utm_source=note&utm_medium=article&utm_campaign=system-data)
+👉 [AI Mac Optimizer を無料で試す](https://aimacoptimizer.com/?utm_source=note&utm_medium=article&utm_campaign=system-data)

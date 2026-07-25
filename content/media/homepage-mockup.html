@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mac実測ラボ — 盛らない。測る。Macを軽くする実測メディア</title>
+<meta name="description" content="Macの容量とスピードの話から「盛った数字」をなくす。すべての記事に実機計測のBefore/Afterを付けて、安全にMacを軽くする方法を届けます。">
+<style>
+  /* ============ Design Tokens ============ */
+  :root {
+    --bg: #f5f5f7;
+    --surface: #ffffff;
+    --surface-2: #fafafc;
+    --text: #1d1d1f;
+    --text-2: #55555c;
+    --text-3: #86868b;
+    --line: #e3e3e8;
+    --accent: #0a66c2;          /* 落ち着いたブルー: リンク・アクション */
+    --accent-ink: #ffffff;
+    --measured: #1a7f4e;        /* 実測値グリーン: 計測済みの数字だけに使う */
+    --measured-bg: #e8f5ee;
+    --before: #c9c9cf;          /* Before バー */
+    --after: #34a06b;           /* After バー */
+    --badge-bg: #eef4fb;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --radius: 14px;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e0e10;
+      --surface: #1a1a1e;
+      --surface-2: #202024;
+      --text: #f2f2f4;
+      --text-2: #b9b9c1;
+      --text-3: #7f7f88;
+      --line: #2c2c32;
+      --accent: #5aa4e8;
+      --accent-ink: #0b1522;
+      --measured: #4fc98b;
+      --measured-bg: #14301f;
+      --before: #45454d;
+      --after: #34a06b;
+      --badge-bg: #1b2733;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f5f7; --surface: #ffffff; --surface-2: #fafafc;
+    --text: #1d1d1f; --text-2: #55555c; --text-3: #86868b; --line: #e3e3e8;
+    --accent: #0a66c2; --accent-ink: #ffffff;
+    --measured: #1a7f4e; --measured-bg: #e8f5ee;
+    --before: #c9c9cf; --after: #34a06b; --badge-bg: #eef4fb;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e0e10; --surface: #1a1a1e; --surface-2: #202024;
+    --text: #f2f2f4; --text-2: #b9b9c1; --text-3: #7f7f88; --line: #2c2c32;
+    --accent: #5aa4e8; --accent-ink: #0b1522;
+    --measured: #4fc98b; --measured-bg: #14301f;
+    --before: #45454d; --after: #34a06b; --badge-bg: #1b2733;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+
+  /* ============ Base ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  img, svg { max-width: 100%; }
+  .num {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  section { padding: 56px 0; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .section-title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+  .section-sub { color: var(--text-3); font-size: 13.5px; }
+  .more-link { color: var(--accent); font-size: 14px; font-weight: 600; white-space: nowrap; }
+  .more-link:hover { text-decoration: underline; }
+
+  /* ============ Header ============ */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .header-inner { display: flex; align-items: center; gap: 20px; height: 56px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; }
+  .brand-mark { width: 26px; height: 26px; flex: none; }
+  nav.global { display: flex; gap: 4px; margin-left: auto; overflow-x: auto; }
+  nav.global a { font-size: 13.5px; color: var(--text-2); padding: 6px 10px; border-radius: 8px; white-space: nowrap; }
+  nav.global a:hover { background: var(--surface-2); color: var(--text); }
+  .theme-toggle {
+    flex: none; border: 1px solid var(--line); background: var(--surface);
+    color: var(--text-2); border-radius: 999px; width: 34px; height: 34px;
+    cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  @media (max-width: 720px) { nav.global { display: none; } }
+
+  /* ============ Hero ============ */
+  .hero { padding: 72px 0 56px; }
+  .hero-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 48px; align-items: center; }
+  @media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; gap: 32px; } }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--measured-bg); color: var(--measured);
+    font-size: 12.5px; font-weight: 700; padding: 5px 12px; border-radius: 999px; margin-bottom: 18px;
+  }
+  .hero h1 { font-size: clamp(30px, 5.4vw, 46px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.25; margin-bottom: 16px; }
+  .hero h1 .accent-line { color: var(--accent); }
+  .hero p.lede { color: var(--text-2); font-size: 16.5px; max-width: 34em; margin-bottom: 26px; }
+  .hero-cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 12px 22px; border-radius: 999px; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-ghost { border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+
+  /* Hero: 実測パネル */
+  .hero-panel {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 24px; min-width: 0;
+  }
+  .hero-panel .panel-title { display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--text-3); font-weight: 600; margin-bottom: 18px; }
+  .panel-env { font-size: 11.5px; color: var(--text-3); }
+  .meter-row { margin-bottom: 16px; }
+  .meter-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); margin-bottom: 6px; }
+  .meter-label strong { color: var(--text); }
+  .bar { height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 999px; }
+  .bar .fill-before { background: var(--before); }
+  .bar .fill-after { background: var(--after); }
+  .panel-result {
+    margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--line);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .panel-result .delta { color: var(--measured); font-weight: 800; font-size: 26px; }
+  .measured-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--measured-bg); color: var(--measured);
+    font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+  }
+
+  /* ============ 編集方針ストリップ ============ */
+  .principles { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); padding: 22px 0; }
+  .principles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 720px) { .principles-grid { grid-template-columns: 1fr; gap: 14px; } }
+  .principle { display: flex; gap: 12px; align-items: flex-start; }
+  .principle .p-icon { flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--badge-bg); display: grid; place-items: center; font-size: 16px; }
+  .principle h3 { font-size: 14.5px; font-weight: 700; }
+  .principle p { font-size: 12.5px; color: var(--text-3); line-height: 1.6; }
+
+  /* ============ 記事カード ============ */
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 860px) { .card-grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, box-shadow .15s;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .card-visual { padding: 20px 20px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .card-visual .mini-label { font-size: 11px; color: var(--text-3); font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .mini-bars { display: grid; gap: 7px; }
+  .mini-bar-row { display: grid; grid-template-columns: 44px 1fr 64px; gap: 8px; align-items: center; font-size: 11.5px; color: var(--text-3); }
+  .mini-bar-row .val { text-align: right; color: var(--text-2); }
+  .card-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .cat-tag { font-size: 11.5px; font-weight: 700; color: var(--accent); }
+  .card h3 { font-size: 16px; font-weight: 700; line-height: 1.5; letter-spacing: -0.01em; }
+  .card h3 a:hover { color: var(--accent); }
+  .card .excerpt { font-size: 13px; color: var(--text-3); line-height: 1.65; }
+  .card-meta { margin-top: auto; padding-top: 10px; display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-3); }
+
+  /* ============ 実測データ特集 ============ */
+  .labs { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .labs-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 44px; align-items: center; }
+  @media (max-width: 860px) { .labs-grid { grid-template-columns: 1fr; gap: 28px; } }
+  .labs h2 { font-size: 26px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.35; margin: 10px 0 14px; }
+  .labs p { color: var(--text-2); font-size: 15px; margin-bottom: 22px; }
+  .labs-chart {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; min-width: 0;
+  }
+  .labs-chart .chart-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .labs-chart .chart-env { font-size: 11.5px; color: var(--text-3); margin-bottom: 18px; }
+  .hbar-row { display: grid; grid-template-columns: 88px 1fr 72px; gap: 10px; align-items: center; margin-bottom: 12px; font-size: 12.5px; }
+  .hbar-row .name { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hbar-row .val { text-align: right; color: var(--text); font-weight: 600; }
+  .hbar { height: 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+  .hbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, var(--after))); border-radius: 999px; }
+  .chart-note { font-size: 11px; color: var(--text-3); margin-top: 14px; }
+
+  /* ============ カテゴリ ============ */
+  .pillar-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .pillar-grid { grid-template-columns: 1fr; } }
+  .pillar {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px; display: flex; gap: 16px; align-items: flex-start; transition: border-color .15s;
+  }
+  .pillar:hover { border-color: var(--accent); }
+  .pillar .p-emoji { flex: none; width: 42px; height: 42px; border-radius: 11px; background: var(--badge-bg); display: grid; place-items: center; font-size: 20px; }
+  .pillar h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .pillar p { font-size: 13px; color: var(--text-3); line-height: 1.65; }
+  .pillar .count { font-size: 11.5px; color: var(--text-3); margin-top: 6px; display: block; }
+
+  /* ============ アプリCTA ============ */
+  .app-cta {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+    box-shadow: var(--shadow); padding: 40px; display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: center;
+  }
+  @media (max-width: 860px) { .app-cta { grid-template-columns: 1fr; padding: 28px; } }
+  .app-cta .app-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--line); padding: 5px 12px; border-radius: 999px; margin-bottom: 14px; }
+  .app-cta h2 { font-size: 25px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.4; margin-bottom: 12px; }
+  .app-cta .app-desc { color: var(--text-2); font-size: 14.5px; margin-bottom: 20px; }
+  .check-list { list-style: none; display: grid; gap: 8px; margin-bottom: 24px; }
+  .check-list li { font-size: 13.5px; color: var(--text-2); display: flex; gap: 9px; align-items: baseline; }
+  .check-list li::before { content: "✓"; color: var(--measured); font-weight: 800; flex: none; }
+  .price-note { font-size: 12px; color: var(--text-3); margin-top: 10px; }
+  .app-visual {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; min-width: 0;
+  }
+  .app-visual .menu-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; padding: 9px 4px; border-bottom: 1px solid var(--line); color: var(--text-2); }
+  .app-visual .menu-row:last-child { border-bottom: 0; }
+  .app-visual .menu-row strong { color: var(--text); }
+
+  /* ============ Footer ============ */
+  footer { border-top: 1px solid var(--line); padding: 40px 0 56px; color: var(--text-3); font-size: 13px; }
+  .footer-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 32px; margin-bottom: 28px; }
+  @media (max-width: 720px) { .footer-grid { grid-template-columns: 1fr; } }
+  footer h4 { font-size: 12.5px; font-weight: 700; color: var(--text-2); margin-bottom: 10px; }
+  footer ul { list-style: none; display: grid; gap: 7px; }
+  footer a:hover { color: var(--accent); }
+  .footer-note { border-top: 1px solid var(--line); padding-top: 20px; font-size: 12px; line-height: 1.7; }
+</style>
+</head>
+<body>
+
+<!-- ================= Header ================= -->
+<header>
+  <div class="container header-inner">
+    <a class="brand" href="#">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" stroke-width="2.4"/>
+        <!-- ゲージ(メーター)モチーフ -->
+        <path d="M8 21 A8.5 8.5 0 0 1 24 21" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        <line x1="16" y1="21" x2="21" y2="13.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+      Mac実測ラボ
+    </a>
+    <nav class="global" aria-label="カテゴリ">
+      <a href="#pillars">Macが重い</a>
+      <a href="#pillars">ストレージ</a>
+      <a href="#pillars">メモリと速度</a>
+      <a href="#pillars">比較と選び方</a>
+      <a href="#labs">実測レポート</a>
+      <a href="#app">アプリ</a>
+    </nav>
+    <button class="theme-toggle" id="themeToggle" aria-label="テーマ切替" title="ライト/ダーク切替">◐</button>
+  </div>
+</header>
+
+<!-- ================= Hero ================= -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="hero-eyebrow">● すべての記事に実機計測のBefore/After</span>
+      <h1>盛らない。測る。<br><span class="accent-line">だから、Macは軽くなる。</span></h1>
+      <p class="lede">Mac実測ラボは、「Macを軽く・快適に使う」ための実測メディアです。「○GB空くはず」という予測は書きません。実機で計測して、実際に空いた数字だけをお見せします。</p>
+      <div class="hero-cta-row">
+        <a class="btn btn-primary" href="#featured">実測記事を読む</a>
+        <a class="btn btn-ghost" href="#labs">今月の定点計測を見る</a>
+      </div>
+    </div>
+    <div class="hero-panel" aria-label="実測サンプル">
+      <div class="panel-title">
+        <span>ストレージ最適化の実測例</span>
+        <span class="panel-env num">M2 MacBook Air / macOS 15.5</span>
+      </div>
+      <div class="meter-row">
+        <div class="meter-label"><span>最適化前</span><strong class="num">使用 228.4 GB / 256 GB</strong></div>
+        <div class="bar"><i class="fill-before" style="width:89%"></i></div>
+      </div>
+      <div class="meter-row">
+        <div class="meter-label"><span>最適化後</span><strong class="num">使用 209.1 GB / 256 GB</strong></div>
+        <div class="bar"><i class="fill-after" style="width:82%"></i></div>
+      </div>
+      <div class="panel-result">
+        <div>
+          <span class="delta num">−19.3 GB</span>
+          <span style="font-size:12.5px; color: var(--text-3);">　実際に空いた容量</span>
+        </div>
+        <span class="measured-chip">✓ 前後の実測差</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 編集方針 ================= -->
+<div class="principles">
+  <div class="container principles-grid">
+    <div class="principle">
+      <div class="p-icon">📏</div>
+      <div>
+        <h3>予測値ではなく実測値</h3>
+        <p>「解放できるはず」は書かない。削除前後の実サイズ差だけを掲載します。</p>
+      </div>
+    </div>
+    <div class="principle">
+      <div class="p-icon">🛡️</div>
+      <div>
+        <h3>安全側に倒した手順だけ</h3>
+        <p>「消していい/触ってはいけない」を必ず明示。リスクの低い順に紹介します。</p>
+      </div>
+    </div>
+    <div class="principle">
+      <div class="p-icon">🔬</div>
+      <div>
+        <h3>計測環境をすべて開示</h3>
+        <p>機種・チップ・macOSバージョン・計測日を全記事に記載。再現できる記事だけを公開します。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 注目記事 ================= -->
+<section id="featured">
+  <div class="container">
+    <div class="section-head">
+      <h2 class="section-title">注目の実測記事</h2>
+      <a class="more-link" href="#">すべての記事 →</a>
+    </div>
+    <div class="card-grid">
+
+      <article class="card">
+        <div class="card-visual">
+          <div class="mini-label"><span>システムデータの実測</span><span class="num">M2 Air / 15.5</span></div>
+          <div class="mini-bars">
+            <div class="mini-bar-row"><span>前</span><div class="bar"><i class="fill-before" style="width:84%"></i></div><span class="val num">78.2 GB</span></div>
+            <div class="mini-bar-row"><span>後</span><div class="bar"><i class="fill-after" style="width:63%"></i></div><span class="val num">58.9 GB</span></div>
+          </div>
+        </div>
+        <div class="card-body">
+          <span class="cat-tag">ストレージを空ける</span>
+          <h3><a href="#">Macストレージの「システムデータ」が肥大する本当の原因と、安全に減らす方法</a></h3>
+          <p class="excerpt">グレーの「システムデータ」だけで数十GB。その正体と、今日すぐ・安全にできる減らし方を実測値つきで解説します。</p>
+          <div class="card-meta"><span class="measured-chip">✓ 実測 −19.3 GB</span><span>2026-07-20 更新</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-visual">
+          <div class="mini-label"><span>表示値と実測値のズレ</span><span class="num">3アプリ比較</span></div>
+          <div class="mini-bars">
+            <div class="mini-bar-row"><span>表示</span><div class="bar"><i class="fill-before" style="width:92%"></i></div><span class="val num">24.6 GB</span></div>
+            <div class="mini-bar-row"><span>実測</span><div class="bar"><i class="fill-after" style="width:41%"></i></div><span class="val num">10.8 GB</span></div>
+          </div>
+        </div>
+        <div class="card-body">
+          <span class="cat-tag">比較と選び方</span>
+          <h3><a href="#">クリーナーアプリ3種の「解放できる容量」表示と実測値のズレを測った</a></h3>
+          <p class="excerpt">「24.6GB解放可能」と表示されたのに、実際に空いたのは10.8GB。予測表示のカラクリを計測データで検証します。</p>
+          <div class="card-meta"><span class="measured-chip">✓ 5回試行の平均</span><span>2026-07-14 更新</span></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-visual">
+          <div class="mini-label"><span>メモリプレッシャー推移</span><span class="num">8GB / 16GBで比較</span></div>
+          <div class="mini-bars">
+            <div class="mini-bar-row"><span>解放前</span><div class="bar"><i class="fill-before" style="width:78%"></i></div><span class="val num">圧迫 78%</span></div>
+            <div class="mini-bar-row"><span>解放後</span><div class="bar"><i class="fill-after" style="width:46%"></i></div><span class="val num">圧迫 46%</span></div>
+          </div>
+        </div>
+        <div class="card-body">
+          <span class="cat-tag">メモリと速度</span>
+          <h3><a href="#">Macのメモリ解放は意味があるのか──実測で分かった「効くケース・効かないケース」</a></h3>
+          <p class="excerpt">「メモリ解放は無意味」説は半分正しく、半分間違い。スワップ発生条件ごとに実測して、効く条件を特定しました。</p>
+          <div class="card-meta"><span class="measured-chip">✓ 2機種で計測</span><span>2026-07-08 更新</span></div>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<!-- ================= 実測データ特集 ================= -->
+<section class="labs" id="labs">
+  <div class="container labs-grid">
+    <div>
+      <span class="measured-chip">🔬 毎月更新の定点計測</span>
+      <h2>アプリキャッシュ肥大ランキング<br><span class="num" style="font-size: .8em; color: var(--text-3);">2026年7月版</span></h2>
+      <p>主要アプリを同一Macで30日間使い、キャッシュがどれだけ育つかを毎月定点計測しています。「どのアプリから掃除すべきか」の一次データです。</p>
+      <a class="btn btn-ghost" href="#">計測の全データを見る →</a>
+    </div>
+    <div class="labs-chart" role="img" aria-label="30日間のキャッシュ増加量ランキング">
+      <div class="chart-title">30日間のキャッシュ増加量（実測）</div>
+      <div class="chart-env num">MacBook Pro M3 / macOS 15.5 / 2026-06-25 〜 07-25 計測</div>
+      <div class="hbar-row"><span class="name">Chrome</span><div class="hbar"><i style="width:100%"></i></div><span class="val num">6.4 GB</span></div>
+      <div class="hbar-row"><span class="name">Adobe CC</span><div class="hbar"><i style="width:81%"></i></div><span class="val num">5.2 GB</span></div>
+      <div class="hbar-row"><span class="name">Cursor</span><div class="hbar"><i style="width:56%"></i></div><span class="val num">3.6 GB</span></div>
+      <div class="hbar-row"><span class="name">Slack</span><div class="hbar"><i style="width:33%"></i></div><span class="val num">2.1 GB</span></div>
+      <div class="hbar-row"><span class="name">Spotify</span><div class="hbar"><i style="width:25%"></i></div><span class="val num">1.6 GB</span></div>
+      <div class="chart-note">※ 各アプリを通常業務相当で使用した場合の実測値。使い方により増減します。計測手順は記事内で公開。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= カテゴリ（編集ピラー） ================= -->
+<section id="pillars">
+  <div class="container">
+    <div class="section-head">
+      <h2 class="section-title">カテゴリから探す</h2>
+      <span class="section-sub">症状・目的に合わせて、リスクの低い手順から紹介しています</span>
+    </div>
+    <div class="pillar-grid">
+      <a class="pillar" href="#">
+        <span class="p-emoji">🐢</span>
+        <div>
+          <h3>「Macが重い」を直す</h3>
+          <p>動作が遅い・固まる・虹色カーソル。原因の切り分け方から、実測で効果のあった対処の順番まで。</p>
+          <span class="count num">12記事</span>
+        </div>
+      </a>
+      <a class="pillar" href="#">
+        <span class="p-emoji">💾</span>
+        <div>
+          <h3>ストレージを空ける</h3>
+          <p>システムデータ・キャッシュ・「その他」容量。消していい場所とダメな場所を明確にして安全に空ける。</p>
+          <span class="count num">15記事</span>
+        </div>
+      </a>
+      <a class="pillar" href="#">
+        <span class="p-emoji">⚡</span>
+        <div>
+          <h3>メモリと速度</h3>
+          <p>メモリ解放は効くのか、スワップやメモリプレッシャーの読み方。仕組みと実測で「体感」を数字にする。</p>
+          <span class="count num">9記事</span>
+        </div>
+      </a>
+      <a class="pillar" href="#">
+        <span class="p-emoji">⚖️</span>
+        <div>
+          <h3>アプリの比較と選び方</h3>
+          <p>CleanMyMacは高い？無料クリーナーは安全？サブスクと買い切りの総コストまで、事実と実測で比較。</p>
+          <span class="count num">7記事</span>
+        </div>
+      </a>
+      <a class="pillar" href="#" style="grid-column: 1 / -1;">
+        <span class="p-emoji">🔬</span>
+        <div>
+          <h3>実測レポート（Labs）</h3>
+          <p>毎月の定点計測と検証企画。「再起動で容量は本当に空くのか」「クリーナーの表示値はどれだけ盛られているか」──他の記事すべての根拠になる一次データ集。</p>
+          <span class="count num">毎月更新・6レポート</span>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= アプリ紹介CTA ================= -->
+<section id="app">
+  <div class="container">
+    <div class="app-cta">
+      <div>
+        <span class="app-badge">◫ このメディアの運営元アプリ</span>
+        <h2>判断の難しさを、AI Mac Optimizerが肩代わりします</h2>
+        <p class="app-desc">難しいのは「消す作業」ではなく「どれを消していいかの判断」。当ラボの計測知見をそのまま実装した、メニューバー常駐の最適化アプリです。表示するのは、削除前後の実サイズ差──実際に空いた分だけ。</p>
+        <ul class="check-list">
+          <li>メモリ解放・診断・AI相談・ストレージスキャンは<strong>無料で無制限</strong></li>
+          <li>安全な一時データだけを自動検出。削除はゴミ箱経由で復元可能</li>
+          <li>「解放できるはず」ではなく<strong>実測値だけを表示</strong></li>
+          <li>Apple公証済み .dmg／macOS 13以降対応／日本語・英語・中国語</li>
+        </ul>
+        <a class="btn btn-primary" href="https://aimacoptimizer.github.io/?utm_source=media&amp;utm_medium=article&amp;utm_campaign=home&amp;utm_content=app-cta">無料でダウンロード</a>
+        <p class="price-note">Pro（ストレージ削除の自動実行・スケジュール化）: 月額 <span class="num">¥480</span> または 買い切り <span class="num">¥4,980</span>。サブスク疲れの方には買い切りをどうぞ。</p>
+      </div>
+      <div class="app-visual" aria-label="アプリ画面イメージ">
+        <div class="menu-row"><span>◫ AI Mac Optimizer</span><span class="num" style="color: var(--text-3);">メニューバー</span></div>
+        <div class="menu-row"><span>メモリ</span><strong class="num">5.2 GB 解放済み</strong></div>
+        <div class="menu-row"><span>ストレージスキャン</span><strong class="num">検出 14.7 GB（安全な一時データ）</strong></div>
+        <div class="menu-row"><span>前回の最適化</span><strong class="num" style="color: var(--measured);">−19.3 GB（実測）</strong></div>
+        <div class="menu-row"><span>AIに相談</span><span style="color: var(--text-3);">「最近Macが重い」→ 原因を診断</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= Footer ================= -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <div class="brand" style="margin-bottom: 10px;">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" style="width:22px;height:22px;">
+            <rect x="1.5" y="1.5" width="29" height="29" rx="8" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M8 21 A8.5 8.5 0 0 1 24 21" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            <line x1="16" y1="21" x2="21" y2="13.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+          Mac実測ラボ
+        </div>
+        <p>「Macを軽く・快適に」の実測メディア。すべての記事に実機計測のBefore/Afterを掲載しています。AI Mac Optimizer 開発チームが運営。</p>
+      </div>
+      <div>
+        <h4>カテゴリ</h4>
+        <ul>
+          <li><a href="#pillars">「Macが重い」を直す</a></li>
+          <li><a href="#pillars">ストレージを空ける</a></li>
+          <li><a href="#pillars">メモリと速度</a></li>
+          <li><a href="#pillars">アプリの比較と選び方</a></li>
+          <li><a href="#labs">実測レポート</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>ラボについて</h4>
+        <ul>
+          <li><a href="#">編集方針「実測で正直」とは</a></li>
+          <li><a href="#">計測環境の開示</a></li>
+          <li><a href="#app">AI Mac Optimizer について</a></li>
+          <li><a href="#">お問い合わせ</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-note">
+      © 2026 Mac実測ラボ / AI Mac Optimizer.　掲載している計測値はすべて記事内に明記した環境での実測です。環境により結果は異なります。当メディアは AI Mac Optimizer の開発チームが運営しており、その旨を各記事で開示しています。
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ライト/ダーク切替（システム設定に追従 + 手動トグルで上書き）
+  (function () {
+    var btn = document.getElementById('themeToggle');
+    var root = document.documentElement;
+    btn.addEventListener('click', function () {
+      var systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var current = root.getAttribute('data-theme') || (systemDark ? 'dark' : 'light');
+      root.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+    });
+  })();
+</script>
+</body>
+</html>

@@ -114,6 +114,8 @@ final class LicenseManager: ObservableObject {
     // オンライン購読検証（月額の「毎月キー貼り直し」を不要にするための猶予管理）
     private let subscriptionValidUntilKey = "subscription_valid_until"
     private let lastValidatedKey = "subscription_last_validated"
+    /// サーバーが明示的に無効と返した月額キー。署名期限内でも解約・支払い失敗を優先する。
+    private let invalidatedSubscriptionKey = "subscription_invalidated_key"
     /// オンライン検証が成功したら付与する猶予。この期間内に再検証できれば Pro は途切れない。
     private let validationGraceSec: TimeInterval = 40 * 24 * 60 * 60
 
@@ -140,15 +142,21 @@ final class LicenseManager: ObservableObject {
         // 署名キー/プロモコードを毎回再検証して導出する。
         // （tier 文字列を信用すると `defaults write <bundleID> license_tier pro_lifetime`
         //   だけで永久Pro化できてしまうため。署名検証はオフラインで偽造不可）
+        let storedKey = UserDefaults.standard.string(forKey: licenseKeyKey)
+        let invalidatedKey = UserDefaults.standard.string(forKey: invalidatedSubscriptionKey)
         var derived: LicenseTier = .free
-        if let key = UserDefaults.standard.string(forKey: licenseKeyKey),
-           let v = SignedLicense.verify(key), !v.isExpired {
-            // 月額など期限付きキーは、期限切れなら自動的に Free へ戻る
-            derived = v.tier
-        } else if let code = UserDefaults.standard.string(forKey: promoCodeKey),
-                  let tier = validPromoCodes[code] {
+        if let key = storedKey, let verified = SignedLicense.verify(key), !verified.isExpired {
+            // 買い切りは署名だけで有効。月額はサーバーが明示的に無効化した状態を優先する。
+            if verified.tier == .proLifetime || invalidatedKey != key {
+                derived = verified.tier
+            }
+        }
+        if derived == .free,
+           let code = UserDefaults.standard.string(forKey: promoCodeKey),
+           let tier = validPromoCodes[code] {
             derived = tier
-        } else if UserDefaults.standard.string(forKey: licenseKeyKey) != nil,
+        } else if derived == .free,
+                  let key = storedKey, invalidatedKey != key,
                   let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
                   until > Date() {
             // 署名キーはオフライン期限切れだが、オンライン検証で購読が有効と確認できている（月額の自動維持）
@@ -163,14 +171,15 @@ final class LicenseManager: ObservableObject {
     /// 購読の有効性をオンラインで確認し、有効なら Pro を自動維持する（月額の毎月キー貼り直しを不要にする）。
     /// - URL 未設定 or キー未保存 or 12時間以内に確認済みなら何もしない（無コスト・オフライン安全）。
     /// - 有効 → 猶予(40日)を更新。無効(解約等) → 猶予を消して再評価。
-    /// - 通信失敗 → 現状維持（既存の署名キー/猶予で判断）。この設計により、この経路は Pro を延長こそすれ、決して破壊しない。
+    /// - 通信失敗 → 現状維持（既存の署名キー/猶予で判断）。明示的な valid:false のみ月額を無効化する。
     func refreshSubscriptionValidationIfNeeded(force: Bool = false) async {
         guard let urlStr = PurchaseConfig.licenseValidationURL,
               let url = URL(string: urlStr),
               let key = UserDefaults.standard.string(forKey: licenseKeyKey) else { return }
+        // 買い切りはオフライン署名が正本。KV障害や古い発行キーの未登録で無効化しない。
+        if let verified = SignedLicense.verify(key), verified.tier == .proLifetime { return }
         if !force, let last = UserDefaults.standard.object(forKey: lastValidatedKey) as? Date,
            Date().timeIntervalSince(last) < 12 * 60 * 60 { return }
-        UserDefaults.standard.set(Date(), forKey: lastValidatedKey)
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -183,17 +192,22 @@ final class LicenseManager: ObservableObject {
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let valid = obj["valid"] as? Bool else { return }
+            // 通信失敗を12時間キャッシュしない。意味のある応答を受けた時だけ検証時刻を更新する。
+            UserDefaults.standard.set(Date(), forKey: lastValidatedKey)
             if valid {
                 let until = Date().addingTimeInterval(validationGraceSec)
                 UserDefaults.standard.set(until, forKey: subscriptionValidUntilKey)
-                if currentTier == .free {
-                    currentTier = (obj["tier"] as? String) == "lifetime" ? .proLifetime : .pro
-                    saveState()
+                if UserDefaults.standard.string(forKey: invalidatedSubscriptionKey) == key {
+                    UserDefaults.standard.removeObject(forKey: invalidatedSubscriptionKey)
                 }
+                currentTier = (obj["tier"] as? String) == "lifetime" ? .proLifetime : .pro
+                saveState()
             } else {
-                // 明示的に無効（解約・支払い失敗）→ 猶予を破棄して再評価
+                // 明示的に無効（解約・支払い失敗）→ 署名期限より優先して再評価
+                UserDefaults.standard.set(key, forKey: invalidatedSubscriptionKey)
                 UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
                 loadState()
+                saveState()
             }
         } catch {
             // オフライン等は現状維持（Pro を落とさない）
@@ -268,8 +282,13 @@ final class LicenseManager: ObservableObject {
         // 署名付きライセンスキーを検証（秘密鍵を持つ発行者が署名したキーのみ有効＝偽造不可・オフライン検証）
         if let v = SignedLicense.verify(key) {
             if v.isExpired {
-                licenseKeyMessage = "このライセンスキーは有効期限が切れています。月額プランは更新後にお送りする新しいキーをご利用ください。"
-                licenseKeySuccess = false
+                if v.tier == .pro {
+                    // 月額キーは署名期限後も購読が継続していればサーバー検証で復元できる。
+                    prepareExpiredMonthlyKeyForOnlineValidation(key)
+                } else {
+                    licenseKeyMessage = "このライセンスキーは有効期限が切れています。"
+                    licenseKeySuccess = false
+                }
             } else {
                 applyLicenseKey(key, tier: v.tier)
             }
@@ -331,10 +350,30 @@ final class LicenseManager: ObservableObject {
     private func applyLicenseKey(_ key: String, tier: LicenseTier) {
         currentTier = tier
         UserDefaults.standard.set(key, forKey: licenseKeyKey)
+        UserDefaults.standard.removeObject(forKey: invalidatedSubscriptionKey)
+        UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
+        UserDefaults.standard.removeObject(forKey: lastValidatedKey)
         saveState()
         licenseKeyMessage = "\(tier.displayName) にアップグレードしました！"
         licenseKeySuccess = true
         licenseKeyInput = ""
+        if tier == .pro {
+            Task { await refreshSubscriptionValidationIfNeeded(force: true) }
+        }
+    }
+
+    /// 期限切れの月額署名キーは、購読が現在も有効な場合だけオンラインで復元する。
+    private func prepareExpiredMonthlyKeyForOnlineValidation(_ key: String) {
+        currentTier = .free
+        UserDefaults.standard.set(key, forKey: licenseKeyKey)
+        UserDefaults.standard.removeObject(forKey: invalidatedSubscriptionKey)
+        UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
+        UserDefaults.standard.removeObject(forKey: lastValidatedKey)
+        saveState()
+        licenseKeyMessage = "月額プランの購読状態をオンラインで確認しています。"
+        licenseKeySuccess = false
+        licenseKeyInput = ""
+        Task { await refreshSubscriptionValidationIfNeeded(force: true) }
     }
 
     // MARK: - Promo Code Activation
@@ -383,6 +422,7 @@ final class LicenseManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: licenseKeyKey)
         UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
         UserDefaults.standard.removeObject(forKey: lastValidatedKey)
+        UserDefaults.standard.removeObject(forKey: invalidatedSubscriptionKey)
         saveState()
     }
 }

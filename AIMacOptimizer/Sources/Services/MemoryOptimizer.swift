@@ -573,17 +573,8 @@ final class MemoryOptimizer {
     }
 
     func getDirectorySizeMB(_ path: String) -> Double {
-        let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(atPath: path) else { return 0 }
-        var totalSize: UInt64 = 0
-        while let file = enumerator.nextObject() as? String {
-            let fullPath = "\(path)/\(file)"
-            if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-               let fileSize = attrs[.size] as? UInt64 {
-                totalSize += fileSize
-            }
-        }
-        return Double(totalSize) / 1024 / 1024
+        // 論理サイズ(.size)ではなく物理割当サイズで測る（削除して実際に空く量に一致させる）。
+        return DiskSize.allocatedMB(atPath: path)
     }
 
     private func getItemSizeMB(_ path: String) -> Double {

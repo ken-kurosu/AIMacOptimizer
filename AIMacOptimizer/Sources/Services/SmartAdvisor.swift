@@ -295,19 +295,21 @@ final class SmartAdvisor {
         }
 
         // 9. DNS cache flush + Font cache (safe mode only)
-        let dnsEstimate: Double = 15
+        // ⚠️ DNS/フォントのフラッシュは「解放される容量」を実測できない（固定の見込み値は出さない）。
+        // 監査指摘に従い、効果量(MB)を偽装せず、メンテナンス系の情報項目として扱う（estimatedSaving=0）。
+        let dnsEstimate: Double = 0
         let dnsDetails = [
             SuggestionDetailItem(
                 name: "DNSキャッシュ",
-                detail: "名前解決のキャッシュを削除。安全に削除でき、ネットワーク問題の解消にも有効です。削除後は自動再構築されます",
-                sizeMB: 15,
+                detail: "名前解決のキャッシュをクリアします。解放容量は計測できないため数値は表示しません。ネットワーク不調の解消に有効で、削除後は自動再構築されます。",
+                sizeMB: 0,
                 isSelected: true,
                 isRecommended: true
             ),
             SuggestionDetailItem(
                 name: "フォントキャッシュ（安全モード）",
-                detail: "フォントサーバーのメモリキャッシュのみフラッシュします。フォントファイルは削除しません。⚠️ フォントDB削除はブラウザのフォント読み込みに影響するため行いません",
-                sizeMB: 10,
+                detail: "フォントサーバーのメモリキャッシュのみフラッシュします（フォントファイルは削除しません）。解放容量は計測できないため数値は表示しません。⚠️ フォントDB削除はブラウザのフォント読み込みに影響するため行いません",
+                sizeMB: 0,
                 isSelected: false,  // デフォルトOFF — ユーザーが明示的に選択
                 isRecommended: false
             )
@@ -316,7 +318,7 @@ final class SmartAdvisor {
         suggestions.append(OptimizationSuggestion(
             type: .flushDNS,
             title: L10n.suggestClearDNSCache,
-            description: L10n.estimatedFreeMB(Int(dnsEstimate)),
+            description: "メンテナンス（解放容量は非表示）",
             estimatedSavingMB: dnsEstimate,
             detailItems: dnsDetails,
             action: { [weak self] selected in

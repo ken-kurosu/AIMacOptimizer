@@ -329,12 +329,20 @@ final class StorageAnalyzer: ObservableObject {
     }
 
     /// キャッシュを削除し、実際に減った容量(MB)を返す。
-    /// （スキャン時の満額ではなく実測差分。保護/ロックでスキップした分を「確保」に含めないため）
+    /// 「ボリュームの空き容量が実際に何MB増えたか」を第一の指標にする（監査指摘: 表示≠実解放）。
+    /// 空き容量差が信頼できない場合（他プロセスの同時書き込み等）は、削除対象の物理サイズ差にフォールバック。
     func clearCacheMeasuringFreed(_ item: StorageItem) -> Double {
-        let before = directorySize(item.path) ?? item.sizeMB
+        let freeBefore = DiskSize.volumeFreeBytes()
+        let sizeBefore = DiskSize.allocatedMB(atPath: item.path)
         guard clearCache(item) else { return 0 }
-        let after = directorySize(item.path) ?? 0
-        return max(0, before - after)
+        let freeAfter = DiskSize.volumeFreeBytes()
+        let freedByVolumeMB = Double(freeAfter - freeBefore) / (1024 * 1024)
+        if freedByVolumeMB > 0 {
+            return freedByVolumeMB
+        }
+        // フォールバック: 削除前後の物理占有量の差（スナップショット等で空きが即増えない場合）
+        let sizeAfter = DiskSize.allocatedMB(atPath: item.path)
+        return max(0, sizeBefore - sizeAfter)
     }
 
     /// Move an item to Trash (requires user confirmation)
@@ -597,23 +605,14 @@ final class StorageAnalyzer: ObservableObject {
     // MARK: - Helpers
 
     private func fileSize(_ path: String) -> Double? {
-        guard let attrs = try? fileManager.attributesOfItem(atPath: path) else { return nil }
-        let bytes = (attrs[.size] as? Int64) ?? 0
-        return Double(bytes) / 1024 / 1024
+        // 論理サイズ(.size)ではなく物理割当サイズで測る（APFS圧縮/スパース等の乖離対策）。
+        let mb = DiskSize.allocatedMB(atPath: path)
+        return mb > 0 ? mb : nil
     }
 
     private func directorySize(_ path: String) -> Double? {
-        guard let enumerator = fileManager.enumerator(atPath: path) else { return nil }
-        var totalBytes: Int64 = 0
-
-        while let file = enumerator.nextObject() as? String {
-            let fullPath = "\(path)/\(file)"
-            if let attrs = try? fileManager.attributesOfItem(atPath: fullPath) {
-                totalBytes += (attrs[.size] as? Int64) ?? 0
-            }
-        }
-
-        let mb = Double(totalBytes) / 1024 / 1024
+        // 実占有量（totalFileAllocatedSize）で合算。シンボリックリンクはスキップ。
+        let mb = DiskSize.allocatedMB(atPath: path)
         return mb > 0 ? mb : nil
     }
 

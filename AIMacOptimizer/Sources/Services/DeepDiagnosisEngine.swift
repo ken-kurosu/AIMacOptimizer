@@ -356,14 +356,23 @@ final class DeepDiagnosisEngine: ObservableObject {
             let sizeMB = optimizer.getDirectorySizeMB(path)
             if sizeMB > 500 {
                 let sizeStr = sizeMB >= 1024 ? String(format: "%.1f GB", sizeMB / 1024) : String(format: "%.0f MB", sizeMB)
+
+                // ⚠️ CoreSimulator は「単なるキャッシュ」ではない。配下には Simulator 内アプリ・
+                // ログイン状態・開発中データが含まれ、フォルダ全体を一括削除すると失われる。
+                // よって「全て修復」の自動削除対象にはせず（isAutoFixable: false）、案内のみに留める。
+                let isSimulator = path.contains("CoreSimulator")
                 findings.append(DiagnosisFinding(
                     category: .disk, severity: sizeMB > 5000 ? .warning : .info,
                     title: "\(name) が \(sizeStr) を使用",
-                    detail: "削除しても自動再生成されるため安全に削除できます。",
-                    suggestion: "ストレージタブから削除するか、「\(name)の削除」をAIチャットで相談してください。",
-                    isAutoFixable: true,
-                    fixAction: name.contains("DerivedData") ? .clearDerivedData : .clearCache,
-                    fixTarget: path,
+                    detail: isSimulator
+                        ? "Simulator内のアプリ・ログイン状態・開発中データを含むため、フォルダ全体の一括削除は行いません。"
+                        : "削除しても自動再生成されるため安全に削除できます。",
+                    suggestion: isSimulator
+                        ? "不要なシミュレータのみ Xcode か `xcrun simctl delete unavailable` で個別に削除してください。"
+                        : "ストレージタブから削除するか、「\(name)の削除」をAIチャットで相談してください。",
+                    isAutoFixable: !isSimulator,
+                    fixAction: isSimulator ? .none : (name.contains("DerivedData") ? .clearDerivedData : .clearCache),
+                    fixTarget: isSimulator ? "" : path,
                     rawData: ["path": path, "size_mb": "\(Int(sizeMB))"]
                 ))
             }

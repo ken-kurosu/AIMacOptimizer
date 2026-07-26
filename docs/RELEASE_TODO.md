@@ -1,18 +1,9 @@
 # AIMacOptimizer リリース残作業と手順
 
-最終更新: 2026-07-21 / 対象ブランチ: `main`(= origin/main, build14/v2.1.11)
+最終更新: 2026-07-26 / 対象ブランチ: `main`（build15 / v2.1.12）
 
-現状: Mac版アプリは**署名・公証済みDMGを配布中**（GitHub Releases v2.0.0, latest.json=build14）。
-LPは**公開済み**（https://aimacoptimizer.github.io/ , GA4=G-W0CQVD8YXN）。
-課金Webhookは**Cloudflareにデプロイ済み・稼働中**（`https://aimac-license-webhook.kurosu.workers.dev`,
-全シークレット設定済み・署名検証/オンライン検証`/validate`とも200応答, KVバインド済み）。
-
-**残っているのは実質2点だけ:**
-1. **notarytoolプロファイルの再登録**（新PC移行で消失。build15以降のDMG公証に必要 → App用パスワード発行が必要）
-2. **購入→キー発行の実地テスト**（Stripeテストモードで1回。インフラは完成済みだがKVにレコード0＝一度も通していない）
-
-> 注: 課金の全ライフサイクル（checkout.session.completed / invoice.paid / customer.subscription.deleted /
-> customer.subscription.updated）はworkerで実装・デプロイ済み。月額の「毎月キー貼り直し」はKVオンライン検証で不要化済み。
+現状: 一般販売前の必須作業は完了。Mac版アプリは**署名・Apple公証済みDMGをGitHub Releasesで配布中**。
+LPは `https://aimacoptimizer.com/` でHTTPS公開済み。課金WebhookはCloudflare Workersで本番稼働し、購入・メール到達・Pro化・解約後のFree化まで実地確認済み。
 
 ---
 
@@ -27,7 +18,7 @@ LPは**公開済み**（https://aimacoptimizer.github.io/ , GA4=G-W0CQVD8YXN）�
 2. **Payment Links** で上記2本が存在し、
    - 月額が `¥480/月`のサブスク、買い切りが `¥4,980`の一回払いになっているか
    - 商品名・税設定・請求先メール収集(顧客メール)が有効か（キー送付に必須）
-3. **金額の整合**: Webhook は `amount >= 4980` を買い切り、未満を月額と判定（`wrangler.toml` の `LIFETIME_AMOUNT="4980"`）。¥4,980と¥480ならこの閾値でOK
+3. Webhook は Checkout Session の `mode`（subscription/payment）でプランを判定。`mode` 欠落時のみ `LIFETIME_AMOUNT="4980"` をフォールバックに使用
 
 > 私に検証させる場合は、**読み取り専用APIキー(`rk_...`)** を渡してもらえれば Payment Link/商品/金額をAPIで突合します。
 
@@ -58,7 +49,7 @@ npx wrangler deploy                             # → https://aimac-license-webh
 ### Stripe 側の Webhook 設定（上でURLが出た後）
 1. Stripe → Developers → Webhooks → **Add endpoint**
 2. Endpoint URL = 上で発行された Workers の URL
-3. 受信イベント = **`checkout.session.completed`** と **`invoice.paid`**（月額更新用）
+3. 受信イベント = **`checkout.session.completed`**、**`checkout.session.async_payment_succeeded`**、**`invoice.paid`**、**`customer.subscription.updated`**、**`customer.subscription.deleted`**
 4. 表示される **Signing secret（`whsec_...`）** をコピー →
    ```bash
    cd ~/AIMacOptimizer/server/license-webhook
@@ -67,31 +58,32 @@ npx wrangler deploy                             # → https://aimac-license-webh
    ```
 
 ### 動作
-- 初回決済 → 金額でtier判定 → 署名キー `AIMAC-...` を生成 → 購入者メールへ送付
-- 月額更新(`invoice.paid`/subscription_cycle) → 毎月あらたな35日キーを再発行して送付
+- 初回決済 → プラン判定 → 署名キー `AIMAC-...` を生成 → 購入者メールへ一度だけ送付
+- 月額更新(`invoice.paid`) → 購読状態をactiveに更新（キー再発行・再送なし）
+- 解約・支払い遅延 → KVの購読状態を更新し、次回オンライン確認でFree化
+- Checkout Session IDとResendの冪等キーで重複発行・重複メールを防止。メール失敗時は非2xxでStripeに再試行させる
 - ※秘密鍵は本セッションでローテーション済み（旧鍵は無効）。Workerには**新しい鍵**を入れること
 
 ---
 
 ## 3. 月額プランのライブ検証（本番で月額を売る前に必須）
 
-キーの有効期限(オフライン)は実装・検証済みだが、サブスクの更新/解約の実挙動はライブ確認が必要。
-1. Stripe **テストモード**で月額を購入 → 初回キーがメール到達・アプリで Pro になる
-2. `invoice.paid`(subscription_cycle) のテストイベント送信 → 更新キーがメール到達
-3. サブスク解約 → 期限(35日)到達後にアプリが自動で Free に戻る
-
-**これらが確認できるまでは、アプリ内/LP の月額導線は出さず「買い切りのみ」を推奨。**（買い切りは期限問題なし）
+本番用署名シークレットだけをWorkerに設定しているため、テストモードではなく本番モードで確認済み。
+1. ✅ 月額購入 → 初回キーがメール到達 → アプリでPro化
+2. ✅ 購入後の解約・返金
+3. ✅ Worker修正版を本番デプロイ（Version `21ad5c30-2a0d-4a12-9855-b1952398ccd7`）
+4. ✅ Stripe本番Webhookを5イベント購読へ更新
+5. ✅ 解約済みキーの `/validate` が `valid:false` を返すことを確認
+6. ✅ build15実機で `pro → free`、無効化記録、猶予削除を確認
 
 ---
 
 ## 4. LP（ランディングページ）
 
-- 設計書: `docs/LP_DESIGN_BRIEF.md`（競合調査＋構成＋デザイン＋アニメ＋コピー＋アセット）
-- 実装は **Claude Design** で行い、コードで納品 → このリポの `docs/` に反映（GitHub Pages 公開想定）
-- 実装前に埋める確定情報（設計書 第9章の要確認事項）:
-  - 独自ドメイン有無 / DMGダウンロードURL（GitHub Releases 等）/ 上記Stripeリンク / 税込表記 / 最小macOS要件(現状 macOS 13+) / プロダクト名表記(`AIMacOptimizer` か `AI Mac Optimizer`)
-- 既存 `docs/index.html` は旧内容（機能・料金が古い）。新LPで置換予定
-- `docs/tokushoho.html`（特定商取引法）の記載内容も最新の価格/事業者情報に更新
+- ✅ 本番LPを `https://aimacoptimizer.com/` で公開（GitHub Pages、HTTPS強制）
+- ✅ apex / www / 旧github.ioの301、canonical、OG、JSON-LD、sitemap、robotsを新ドメインへ統一
+- ✅ GitHub Organizationのドメイン所有権検証、Google Search Console登録、サイトマップ送信
+- オウンドメディアは `https://aimacoptimizer.com/blog/` 前提でソース統一済み。コンテンツ完成後に公開する
 
 ---
 
@@ -107,9 +99,10 @@ npx wrangler deploy                             # → https://aimac-license-webh
 ---
 
 ## 現在の到達点（済み）
-- ✅ 署名・公証済みDMG（Gatekeeper警告なし配布可能）
+- ✅ v2.1.12 / build15の署名・Apple公証・ステープル済みDMGをGitHub Releasesで公開
 - ✅ 課金モデル確定（Free=最適化/診断/AI相談 無制限、Pro=ストレージ削除＋スケジュール）
 - ✅ 署名ライセンス(v2・有効期限対応)＋鍵ローテーション
 - ✅ 解放量の表示=実測（過大表示の撲滅）／通知の抑制修正／日英中i18n
-- ✅ Webhookコード完成（未デプロイ）
-- ✅ LP設計書完成（未実装）
+- ✅ Webhookの重複防止・メール失敗再試行・順不同イベント処理を実装し、本番デプロイ済み
+- ✅ 本番購入、キーのメール到達、Pro化、解約・返金、Free復帰を実地確認済み
+- ✅ LPの独自ドメイン・HTTPS・SEO移行を完了

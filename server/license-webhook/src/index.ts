@@ -1,189 +1,382 @@
 import * as ed25519 from '@noble/ed25519';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { sha512 } from '@noble/hashes/sha2.js';
 
 // noble-ed25519 v2 に sha512 を供給（Cloudflare Workers でも動く純JS実装）
 ed25519.etc.sha512Sync = (...m: Uint8Array[]) => sha512(ed25519.etc.concatBytes(...m));
 
 export interface Env {
-  STRIPE_WEBHOOK_SECRET: string; // Stripe Webhook 署名シークレット (whsec_...)
-  PRIVATE_KEY_B64: string;       // Ed25519 秘密鍵 seed(32byte) の base64（~/.aimac_license_private_key の中身）
-  RESEND_API_KEY: string;        // Resend API キー
-  FROM_EMAIL: string;            // 例: "AI Mac Optimizer <license@yourdomain.com>"
-  LIFETIME_AMOUNT?: string;      // 買い切りの金額(円)。これ以上なら Lifetime。既定 4980
-  LICENSES?: KVNamespace;        // ライセンス⇔購読状態の対応表（オンライン検証用）
+  STRIPE_WEBHOOK_SECRET: string;
+  PRIVATE_KEY_B64: string;
+  RESEND_API_KEY: string;
+  FROM_EMAIL: string;
+  LIFETIME_AMOUNT?: string;
+  LICENSES?: KVNamespace;
 }
 
-// KV に保存するライセンス状態
 interface LicenseRecord {
   tier: 'pro' | 'lifetime';
   status: 'active' | 'canceled' | 'past_due';
   email?: string;
   subscriptionId?: string;
+  statusEventCreated: number;
   updatedAt: number;
 }
 
-// ---- helpers ----
+interface SubscriptionState {
+  status: LicenseRecord['status'];
+  eventCreated: number;
+  updatedAt: number;
+}
+
+interface CheckoutEventRecord {
+  status: 'prepared' | 'processed';
+  stripeEventId: string;
+  checkoutSessionId: string;
+  licenseKey: string;
+  email: string;
+  tier: LicenseRecord['tier'];
+  resendEmailId?: string;
+  updatedAt: number;
+}
+
+interface StripeEvent {
+  id: string;
+  type: string;
+  created: number;
+  data: { object: Record<string, unknown> };
+}
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly publicMessage: string,
+  ) {
+    super(publicMessage);
+  }
+}
+
 function b64urlFromBytes(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
+
 function b64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-}
-
-// Stripe Webhook 署名検証（HMAC-SHA256）
-async function verifyStripe(payload: string, sigHeader: string, secret: string): Promise<boolean> {
-  const parts: Record<string, string> = {};
-  for (const kv of sigHeader.split(',')) {
-    const [k, v] = kv.split('=');
-    if (k && v) parts[k.trim()] = v.trim();
+  try {
+    const bin = atob(b64.trim());
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    throw new HttpError(500, 'license signing key is invalid');
   }
-  const t = parts['t'];
-  const v1 = parts['v1'];
-  if (!t || !v1) return false;
-  // 5分以上前のものは拒否（リプレイ対策）
-  if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
-
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${t}.${payload}`));
-  const macHex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (macHex.length !== v1.length) return false;
-  let diff = 0;
-  for (let i = 0; i < macHex.length; i++) diff |= macHex.charCodeAt(i) ^ v1.charCodeAt(i);
-  return diff === 0;
 }
 
-// 2025-01-01 00:00:00 UTC からの日数（アプリの SignedLicense と同じ基準）
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  });
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new HttpError(400, `missing ${field}`);
+  }
+  return value;
+}
+
+function requireKV(env: Env): KVNamespace {
+  if (!env.LICENSES) throw new HttpError(503, 'license storage is unavailable');
+  return env.LICENSES;
+}
+
+function parseStripeEvent(payload: string): StripeEvent {
+  let value: unknown;
+  try {
+    value = JSON.parse(payload);
+  } catch {
+    throw new HttpError(400, 'invalid JSON');
+  }
+  if (!value || typeof value !== 'object') throw new HttpError(400, 'invalid event');
+  const candidate = value as Partial<StripeEvent>;
+  if (
+    typeof candidate.id !== 'string' ||
+    typeof candidate.type !== 'string' ||
+    typeof candidate.created !== 'number' ||
+    !candidate.data ||
+    typeof candidate.data.object !== 'object' ||
+    candidate.data.object === null
+  ) {
+    throw new HttpError(400, 'invalid event');
+  }
+  return candidate as StripeEvent;
+}
+
+// Stripe Webhook 署名検証（HMAC-SHA256）。鍵ローテーション時の複数 v1 署名にも対応する。
+async function verifyStripe(payload: string, sigHeader: string, secret: string): Promise<boolean> {
+  if (!secret || !sigHeader) return false;
+  let timestamp = '';
+  const signatures: string[] = [];
+  for (const part of sigHeader.split(',')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    const key = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    if (key === 't') timestamp = value;
+    if (key === 'v1') signatures.push(value);
+  }
+  const timestampNumber = Number(timestamp);
+  if (!Number.isFinite(timestampNumber) || signatures.length === 0) return false;
+  if (Math.abs(Date.now() / 1000 - timestampNumber) > 300) return false;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${payload}`));
+  const expected = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return signatures.some((signature) => {
+    if (signature.length !== expected.length) return false;
+    let difference = 0;
+    for (let i = 0; i < expected.length; i++) {
+      difference |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+    }
+    return difference === 0;
+  });
+}
+
 const LICENSE_EPOCH = 1_735_689_600;
-// 月額キーの有効日数（更新猶予込み）。オンライン検証が主経路で、これはオフライン時のフォールバック期限。
 const MONTHLY_VALID_DAYS = 35;
 
-// 署名付きライセンスキー生成（アプリの SignedLicense.verify と同じ v2 形式）
-//   message = [version(2), tier(1: 1=Pro / 2=Lifetime), expiryHi, expiryLo, nonce(2)]
-//   expiry = LICENSE_EPOCH からの日数(UInt16)。0 = 無期限（買い切り）。
-//   key = "AIMAC-" + base64url(message + signature(64))
-function generateKey(seed: Uint8Array, tier: number): string {
-  // 月額(tier=1)は今日+35日で失効。買い切り(tier=2)は無期限(0)。
-  const expiryDays =
-    tier === 1 ? Math.floor((Date.now() / 1000 - LICENSE_EPOCH) / 86400) + MONTHLY_VALID_DAYS : 0;
-  const nonce = crypto.getRandomValues(new Uint8Array(2));
+// Checkout Session ID から nonce を決定的に作るため、Stripe の再試行や同時配送でも同じキーになる。
+function generateKey(seed: Uint8Array, tier: number, sessionId: string, eventCreated: number): string {
+  if (seed.length !== 32) throw new HttpError(500, 'license signing key is invalid');
+  const createdDay = Math.floor((eventCreated - LICENSE_EPOCH) / 86400);
+  const expiryDays = tier === 1 ? createdDay + MONTHLY_VALID_DAYS : 0;
+  if (expiryDays < 0 || expiryDays > 0xffff) throw new HttpError(500, 'license expiry is out of range');
+  const nonce = sha256(new TextEncoder().encode(`aimac-license-v2:${sessionId}`)).slice(0, 2);
   const message = new Uint8Array([2, tier, (expiryDays >> 8) & 0xff, expiryDays & 0xff, ...nonce]);
-  const sig = ed25519.sign(message, seed);
-  const keyData = new Uint8Array(message.length + sig.length);
+  const signature = ed25519.sign(message, seed);
+  const keyData = new Uint8Array(message.length + signature.length);
   keyData.set(message, 0);
-  keyData.set(sig, message.length);
+  keyData.set(signature, message.length);
   return 'AIMAC-' + b64urlFromBytes(keyData);
 }
 
-async function sendEmail(env: Env, to: string, key: string, tierName: string): Promise<void> {
+async function sendEmail(
+  env: Env,
+  to: string,
+  key: string,
+  tierName: string,
+  idempotencyKey: string,
+): Promise<string> {
+  if (!env.RESEND_API_KEY || !env.FROM_EMAIL) throw new HttpError(500, 'email configuration is unavailable');
   const text =
     `ご購入ありがとうございます（${tierName}）。\n\n` +
     `以下のライセンスキーを、アプリの「設定 → ライセンス → ライセンスキー」に貼り付けて有効化してください。\n\n` +
     `${key}\n\n` +
     `※月額プランは、アプリがオンラインで購読状態を自動確認するため、通常このキーの貼り直しは不要です。\n` +
     `※このキーは大切に保管してください。\n— AI Mac Optimizer`;
-  await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: env.FROM_EMAIL, to: [to], subject: 'AI Mac Optimizer ライセンスキー', text }),
-  });
+  let response: Response;
+  try {
+    response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body: JSON.stringify({
+        from: env.FROM_EMAIL,
+        to: [to],
+        subject: 'AI Mac Optimizer ライセンスキー',
+        text,
+      }),
+    });
+  } catch {
+    throw new HttpError(502, 'email provider is unavailable');
+  }
+  if (!response.ok) {
+    // API キーや本文を外部応答・ログへ含めない。Stripe に非2xxを返して安全に再試行させる。
+    throw new HttpError(502, `email delivery failed (${response.status})`);
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new HttpError(502, 'email provider returned an invalid response');
+  }
+  const emailId = (body as { id?: unknown }).id;
+  if (typeof emailId !== 'string' || emailId.length === 0) {
+    throw new HttpError(502, 'email provider returned an invalid response');
+  }
+  return emailId;
 }
 
-// KV 保存ヘルパ（LICENSES 未設定でも落ちないように）
-async function saveRecord(env: Env, key: string, rec: LicenseRecord): Promise<void> {
-  if (!env.LICENSES) return;
-  await env.LICENSES.put('key:' + key, JSON.stringify(rec));
-  if (rec.subscriptionId) await env.LICENSES.put('sub:' + rec.subscriptionId, key);
-}
-async function updateStatusBySubscription(env: Env, subId: string, status: LicenseRecord['status']): Promise<void> {
-  if (!env.LICENSES) return;
-  const key = await env.LICENSES.get('sub:' + subId);
-  if (!key) return;
-  const rec = (await env.LICENSES.get('key:' + key, 'json')) as LicenseRecord | null;
-  if (!rec) return;
-  rec.status = status;
-  rec.updatedAt = Date.now();
-  await env.LICENSES.put('key:' + key, JSON.stringify(rec));
-}
-
-export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    const url = new URL(req.url);
-
-    // --- オンライン購読検証エンドポイント（アプリが定期的に叩く） ---
-    // POST /validate  { "license_key": "AIMAC-..." }  ->  { valid, tier }
-    // 購読が有効な限り valid:true を返し、アプリは Pro を自動維持する（毎月の貼り直し不要）。
-    if (req.method === 'POST' && url.pathname === '/validate') {
-      const bodyText = await req.text();
-      let licenseKey = '';
-      try { licenseKey = (JSON.parse(bodyText).license_key || '').toString(); } catch { /* ignore */ }
-      if (!licenseKey) return json({ valid: false });
-      const rec = env.LICENSES ? ((await env.LICENSES.get('key:' + licenseKey, 'json')) as LicenseRecord | null) : null;
-      if (!rec) return json({ valid: false });
-      if (rec.tier === 'lifetime') return json({ valid: true, tier: 'lifetime' });
-      return json({ valid: rec.status === 'active', tier: 'pro' });
-    }
-
-    if (req.method !== 'POST') return new Response('ok'); // ヘルスチェック用
-
-    // --- Stripe Webhook ---
-    const payload = await req.text();
-    const sig = req.headers.get('stripe-signature') || '';
-    if (!(await verifyStripe(payload, sig, env.STRIPE_WEBHOOK_SECRET))) {
-      return new Response('invalid signature', { status: 400 });
-    }
-
-    const event = JSON.parse(payload);
-    const lifetimeAmount = Number(env.LIFETIME_AMOUNT || '4980');
-    const seed = b64ToBytes(env.PRIVATE_KEY_B64);
-
-    // 初回購入（買い切り・月額とも）
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const email: string | undefined = session.customer_details?.email || session.customer_email;
-      const amount = Number(session.amount_total || 0);
-      const tier = amount >= lifetimeAmount ? 2 : 1;
-      const tierName = tier === 2 ? 'Pro (買い切り)' : 'Pro (月額)';
-      const key = generateKey(seed, tier);
-      const subscriptionId: string | undefined =
-        typeof session.subscription === 'string' ? session.subscription : undefined;
-      await saveRecord(env, key, {
-        tier: tier === 2 ? 'lifetime' : 'pro',
-        status: 'active',
-        email,
-        subscriptionId,
+async function saveRecord(env: Env, key: string, record: LicenseRecord): Promise<void> {
+  const kv = requireKV(env);
+  let merged = record;
+  if (record.subscriptionId) {
+    const latest = (await kv.get(`substate:${record.subscriptionId}`, 'json')) as SubscriptionState | null;
+    if (latest && latest.eventCreated >= record.statusEventCreated) {
+      merged = {
+        ...record,
+        status: latest.status,
+        statusEventCreated: latest.eventCreated,
         updatedAt: Date.now(),
-      });
-      if (email) await sendEmail(env, email, key, tierName);
+      };
     }
-    // 月額サブスクの更新。オンライン検証が主経路なのでキーは再発行せず、状態を active に更新するだけ。
-    else if (event.type === 'invoice.paid') {
-      const invoice = event.data.object;
-      if (invoice.billing_reason === 'subscription_cycle' && typeof invoice.subscription === 'string') {
-        await updateStatusBySubscription(env, invoice.subscription, 'active');
-      }
+  }
+  await kv.put(`key:${key}`, JSON.stringify(merged));
+  if (record.subscriptionId) await kv.put(`sub:${record.subscriptionId}`, key);
+}
+
+async function updateStatusBySubscription(
+  env: Env,
+  subscriptionId: string,
+  status: LicenseRecord['status'],
+  eventCreated: number,
+): Promise<void> {
+  const kv = requireKV(env);
+  const existingState = (await kv.get(`substate:${subscriptionId}`, 'json')) as SubscriptionState | null;
+  if (!existingState || eventCreated >= existingState.eventCreated) {
+    const state: SubscriptionState = { status, eventCreated, updatedAt: Date.now() };
+    await kv.put(`substate:${subscriptionId}`, JSON.stringify(state));
+  }
+
+  const key = await kv.get(`sub:${subscriptionId}`);
+  if (!key) return;
+  const record = (await kv.get(`key:${key}`, 'json')) as LicenseRecord | null;
+  if (!record || eventCreated < (record.statusEventCreated ?? 0)) return;
+  record.status = status;
+  record.statusEventCreated = eventCreated;
+  record.updatedAt = Date.now();
+  await kv.put(`key:${key}`, JSON.stringify(record));
+}
+
+async function processCheckout(event: StripeEvent, env: Env): Promise<Response> {
+  const kv = requireKV(env);
+  const session = event.data.object;
+  const sessionId = requireString(session.id, 'checkout session id');
+  const emailValue = (session.customer_details as { email?: unknown } | undefined)?.email ?? session.customer_email;
+  const email = requireString(emailValue, 'customer email');
+  const paymentStatus = session.payment_status;
+  if (paymentStatus !== undefined && paymentStatus !== 'paid' && paymentStatus !== 'no_payment_required') {
+    return json({ received: true, pending: true });
+  }
+
+  const eventStorageKey = `event:checkout:${sessionId}`;
+  const existing = (await kv.get(eventStorageKey, 'json')) as CheckoutEventRecord | null;
+  if (existing?.status === 'processed') return json({ received: true, duplicate: true });
+
+  const lifetimeAmount = Number(env.LIFETIME_AMOUNT || '4980');
+  if (!Number.isFinite(lifetimeAmount) || lifetimeAmount <= 0) {
+    throw new HttpError(500, 'lifetime amount is invalid');
+  }
+  const amount = Number(session.amount_total || 0);
+  const isLifetime = session.mode === 'payment' || (session.mode !== 'subscription' && amount >= lifetimeAmount);
+  const tierNumber = isLifetime ? 2 : 1;
+  const tier: LicenseRecord['tier'] = isLifetime ? 'lifetime' : 'pro';
+  const tierName = isLifetime ? 'Pro (買い切り)' : 'Pro (月額)';
+  const key = existing?.licenseKey ?? generateKey(b64ToBytes(env.PRIVATE_KEY_B64), tierNumber, sessionId, event.created);
+  const subscriptionId = typeof session.subscription === 'string' ? session.subscription : undefined;
+  const prepared: CheckoutEventRecord = {
+    status: 'prepared',
+    stripeEventId: event.id,
+    checkoutSessionId: sessionId,
+    licenseKey: key,
+    email,
+    tier,
+    updatedAt: Date.now(),
+  };
+  await kv.put(eventStorageKey, JSON.stringify(prepared));
+  await saveRecord(env, key, {
+    tier,
+    status: 'active',
+    email,
+    subscriptionId,
+    statusEventCreated: event.created,
+    updatedAt: Date.now(),
+  });
+
+  const resendEmailId = await sendEmail(env, email, key, tierName, `stripe-checkout-${sessionId}`);
+  await kv.put(
+    eventStorageKey,
+    JSON.stringify({ ...prepared, status: 'processed', resendEmailId, updatedAt: Date.now() }),
+  );
+  return json({ received: true });
+}
+
+async function processStatusEvent(event: StripeEvent, env: Env): Promise<Response> {
+  const kv = requireKV(env);
+  const eventStorageKey = `event:stripe:${event.id}`;
+  if (await kv.get(eventStorageKey)) return json({ received: true, duplicate: true });
+
+  const object = event.data.object;
+  if (event.type === 'invoice.paid') {
+    if (object.billing_reason === 'subscription_cycle' && typeof object.subscription === 'string') {
+      await updateStatusBySubscription(env, object.subscription, 'active', event.created);
     }
-    // 解約・支払い失敗 → 状態更新（アプリは次回検証で Pro を維持しなくなる）
-    else if (event.type === 'customer.subscription.deleted') {
-      const sub = event.data.object;
-      if (typeof sub.id === 'string') await updateStatusBySubscription(env, sub.id, 'canceled');
-    } else if (event.type === 'customer.subscription.updated') {
-      const sub = event.data.object;
-      if (typeof sub.id === 'string') {
-        const s = sub.status; // active / past_due / canceled / unpaid ...
-        const mapped: LicenseRecord['status'] =
-          s === 'active' || s === 'trialing' ? 'active' : s === 'past_due' ? 'past_due' : 'canceled';
-        await updateStatusBySubscription(env, sub.id, mapped);
-      }
+  } else if (event.type === 'customer.subscription.deleted') {
+    const subscriptionId = requireString(object.id, 'subscription id');
+    await updateStatusBySubscription(env, subscriptionId, 'canceled', event.created);
+  } else if (event.type === 'customer.subscription.updated') {
+    const subscriptionId = requireString(object.id, 'subscription id');
+    const stripeStatus = requireString(object.status, 'subscription status');
+    const mapped: LicenseRecord['status'] =
+      stripeStatus === 'active' || stripeStatus === 'trialing'
+        ? 'active'
+        : stripeStatus === 'past_due'
+          ? 'past_due'
+          : 'canceled';
+    await updateStatusBySubscription(env, subscriptionId, mapped, event.created);
+  }
+  await kv.put(eventStorageKey, JSON.stringify({ type: event.type, processedAt: Date.now() }));
+  return json({ received: true });
+}
+
+async function handleValidate(req: Request, env: Env): Promise<Response> {
+  const kv = requireKV(env);
+  let body: unknown;
+  try {
+    body = JSON.parse(await req.text());
+  } catch {
+    return json({ valid: false }, 400);
+  }
+  const licenseKey = (body as { license_key?: unknown }).license_key;
+  if (typeof licenseKey !== 'string' || licenseKey.length === 0) return json({ valid: false });
+  const record = (await kv.get(`key:${licenseKey}`, 'json')) as LicenseRecord | null;
+  if (!record) return json({ valid: false });
+  if (record.tier === 'lifetime') return json({ valid: true, tier: 'lifetime' });
+  return json({ valid: record.status === 'active', tier: 'pro' });
+}
+
+export async function handleRequest(req: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(req.url);
+    if (req.method === 'POST' && url.pathname === '/validate') return await handleValidate(req, env);
+    if (req.method !== 'POST') return new Response('ok');
+
+    const payload = await req.text();
+    const signature = req.headers.get('stripe-signature') || '';
+    if (!(await verifyStripe(payload, signature, env.STRIPE_WEBHOOK_SECRET))) {
+      throw new HttpError(400, 'invalid signature');
     }
-    return new Response('ok');
-  },
-};
+    const event = parseStripeEvent(payload);
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      return await processCheckout(event, env);
+    }
+    return await processStatusEvent(event, env);
+  } catch (error) {
+    if (error instanceof HttpError) return json({ error: error.publicMessage }, error.status);
+    return json({ error: 'internal server error' }, 500);
+  }
+}
+
+export default { fetch: handleRequest };

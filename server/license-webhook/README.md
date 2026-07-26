@@ -1,58 +1,61 @@
-# AI Mac Optimizer — ライセンスキー自動発行 Webhook（Cloudflare Workers）
+# AI Mac Optimizer — ライセンスキー自動発行 Webhook
 
-Stripe で決済が完了したら、署名付きライセンスキーを自動生成して購入者へメール送信する。
-サーバーレス（Cloudflare Workers 無料枠）＋ Resend（メール）で、実質ランニングコスト0。
+Stripe の本番決済完了後に署名付きライセンスキーを発行し、Resend で購入者へ送信する Cloudflare Worker。
+月額ライセンスは KV に保存した購読状態を `/validate` で確認し、解約・支払い失敗をアプリへ反映する。
 
-アプリ側は埋め込んだ公開鍵でオフライン検証するため、ここで作るキーは偽造不可。
-（ローカル手動発行 `scripts/sign_license.swift` と同じ鍵・同じ形式。互換性は検証済み）
-
-## 必要なもの（黒須さんが用意）
-- Cloudflare アカウント（無料）
-- Resend アカウント（無料枠100通/日）＋送信元ドメイン認証（または検証済みアドレス）
-- Stripe アカウント（既存）
-
-## デプロイ手順
+## セットアップ
 
 ```bash
 cd server/license-webhook
-npm install
-npx wrangler login            # Cloudflare にログイン
+npm ci
+npx wrangler login
 
-# シークレットを設定（プロンプトで値を貼り付け）
-npx wrangler secret put PRIVATE_KEY_B64        # ~/.aimac_license_private_key の中身（base64の秘密鍵seed）
-npx wrangler secret put RESEND_API_KEY         # Resend の API キー
-npx wrangler secret put FROM_EMAIL             # 例: "AI Mac Optimizer <license@あなたのドメイン>"
-# STRIPE_WEBHOOK_SECRET は Webhook 登録後に取得して設定（下記）
-
-npx wrangler deploy          # → https://aimac-license-webhook.<account>.workers.dev が発行される
+npx wrangler secret put PRIVATE_KEY_B64
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put FROM_EMAIL
+npx wrangler secret put STRIPE_WEBHOOK_SECRET
+npm run deploy
 ```
 
-## Stripe 側の設定
-1. Stripe ダッシュボード → Developers → Webhooks → Add endpoint
-2. Endpoint URL = 上で発行された Workers の URL
-3. 受信イベント = `checkout.session.completed` と `invoice.paid`（月額の更新用）
-4. 作成後に表示される **Signing secret (whsec_...)** をコピー
-5. `npx wrangler secret put STRIPE_WEBHOOK_SECRET` で設定し、再度 `npx wrangler deploy`
+本番の送信元は、Resend で認証済みの `AI Mac Optimizer <license@aimacoptimizer.com>` を使用する。
+`PRIVATE_KEY_B64` は `~/.aimac_license_private_key` にある Ed25519 seed（32 byte）の base64。コードや Git へ含めない。
 
-## 動作
-- 初回決済(`checkout.session.completed`) → 署名検証 → 金額で tier 判定
-  （`amount_total >= 4980` 円なら買い切り、それ未満は月額。`wrangler.toml` の `LIFETIME_AMOUNT` で調整可）
-- キー形式は v2（有効期限入り）。**買い切り=無期限**、**月額=発行から35日で失効**する期限付きキー。
-- **月額の更新**(`invoice.paid` の `billing_reason=subscription_cycle`) → 毎月あらたな35日キーを再発行してメール送信。
-  ユーザーはアプリに貼り直すと期限が延びる（初回は checkout 側で処理するため二重送信しない）。
-- 署名付きキー `AIMAC-...` を生成 → 購入者のメールへ Resend で送信
+## Stripe Webhook の受信イベント
 
-## ⚠️ 月額プランを本番で有効化する前に（必ずライブStripeでテスト）
-オフラインの期限チェックは実装・検証済みだが、サブスクの更新/解約の実挙動はライブ検証が必要:
-1. Stripe テストモードで月額購入 → 初回キーがメール到達・アプリで Pro になる
-2. `invoice.paid`(subscription_cycle) を送信 → 更新キーがメール到達
-3. 解約 → 期限(35日)到達後にアプリが自動で Free に戻る
-これらが確認できるまでは、アプリ内の月額導線は出さず買い切りのみ販売を推奨。
+本番エンドポイントで次を有効にする。
 
-## テスト
-- Stripe ダッシュボードの Webhook 画面から「Send test webhook」で `checkout.session.completed` を送信して確認。
-- 届いたキーをアプリの 設定 → ライセンス に貼ると Pro になる。
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `invoice.paid`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
 
-## セキュリティ注意
-- `PRIVATE_KEY_B64` は秘密鍵。Workers の Secret にのみ置き、コードやGitに含めない。
-- 本番公開前に鍵ペアを一度ローテーション（再生成→アプリの公開鍵差し替え→この Secret も更新）するとより安全。
+2026-07-26時点で本番エンドポイントは上記5イベントを購読済み。Worker Version `21ad5c30-2a0d-4a12-9855-b1952398ccd7` をデプロイ済み。
+
+現在のデプロイは本番用 `STRIPE_WEBHOOK_SECRET` だけで署名検証するため、購入フローの実地確認には Stripe 本番モードを使う。テストモードのイベントは署名シークレットが異なるため、この本番エンドポイントでは受理されない。
+
+## 処理仕様
+
+- 初回決済は Checkout Session の `mode` で月額・買い切りを判定し、欠落時だけ金額（既定 `4,980` 円）を使用する。
+- 買い切りキーは無期限、月額キーは発行から35日有効。月額は期限後も購読が active なら `/validate` で継続できる。
+- `invoice.paid` は購読状態を active に戻す。更新ごとのキー再発行・メール再送は行わない。
+- `customer.subscription.updated/deleted` は past_due・解約状態を KV に反映する。
+- Stripe イベントが順不同でも、より新しい購読状態を優先する。
+
+## 重複処理とエラー処理
+
+- Checkout Session ID ごとの処理状態を KV に保存し、処理済み決済は再処理しない。
+- 同じ Session ID から同じ署名キーを生成するため、同時配送や再試行でもキーが変わらない。
+- Resend へ `Idempotency-Key` を付与し、同一メールの重複送信も防ぐ。
+- Resend が非2xx・通信失敗・不正応答を返した場合、Webhook は `502` を返す。Stripe の再試行時に同じキー・同じメール内容で再送する。
+- KV が利用できない場合は `503` とし、ライセンス発行を成功扱いにしない。`/validate` も `503` となるため、アプリは通信失敗として現在状態を維持する。
+
+## 検証
+
+```bash
+npm test
+npm run typecheck
+npm audit
+```
+
+本番デプロイ後は、購入を発生させずに Worker の GET ヘルスチェックと、ダミーキーを使った `/validate` の `valid:false` を確認する。Checkout イベントの手動再送は、過去イベントが新しい冪等化記録を持たずメールを再送する可能性があるため行わない。

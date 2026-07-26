@@ -59,9 +59,9 @@ npx wrangler deploy                             # → https://aimac-license-webh
 
 ### 動作
 - 初回決済 → プラン判定 → 署名キー `AIMAC-...` を生成 → 購入者メールへ一度だけ送付
-- 月額更新(`invoice.paid`) → 購読状態をactiveに更新（キー再発行・再送なし）
-- 解約・支払い遅延 → KVの購読状態を更新し、次回オンライン確認でFree化
-- Checkout Session IDとResendの冪等キーで重複発行・重複メールを防止。メール失敗時は非2xxでStripeに再試行させる
+- 月額更新(`invoice.paid`/subscription_cycle) → 購読状態を active に更新（キー再発行・再送なし）
+- 解約・支払い遅延 → KV の購読状態を更新し、アプリの次回オンライン確認で Free 化
+- Checkout Session ID と Resend の冪等キーで重複発行・重複メールを防止。メール失敗時は非2xxで Stripe に再試行させる
 - ※秘密鍵は本セッションでローテーション済み（旧鍵は無効）。Workerには**新しい鍵**を入れること
 
 ---
@@ -72,6 +72,9 @@ npx wrangler deploy                             # → https://aimac-license-webh
 1. ✅ 月額購入 → 初回キーがメール到達 → アプリでPro化
 2. ✅ 購入後の解約・返金
 3. ✅ Worker修正版を本番デプロイ（Version `21ad5c30-2a0d-4a12-9855-b1952398ccd7`）
+   - GETヘルスチェック `200 ok`
+   - 不正署名POST `400 invalid signature`
+   - ダミーキーの `/validate` `200 {"valid":false}`
 4. ✅ Stripe本番Webhookを5イベント購読へ更新
 5. ✅ 解約済みキーの `/validate` が `valid:false` を返すことを確認
 6. ✅ build15実機で `pro → free`、無効化記録、猶予削除を確認
@@ -80,10 +83,13 @@ npx wrangler deploy                             # → https://aimac-license-webh
 
 ## 4. LP（ランディングページ）
 
+- 設計書: `docs/LP_DESIGN_BRIEF.md`（競合調査＋構成＋デザイン＋アニメ＋コピー＋アセット）
 - ✅ 本番LPを `https://aimacoptimizer.com/` で公開（GitHub Pages、HTTPS強制）
-- ✅ apex / www / 旧github.ioの301、canonical、OG、JSON-LD、sitemap、robotsを新ドメインへ統一
-- ✅ GitHub Organizationのドメイン所有権検証、Google Search Console登録、サイトマップ送信
-- オウンドメディアは `https://aimacoptimizer.com/blog/` 前提でソース統一済み。コンテンツ完成後に公開する
+- ✅ apex / www / 旧 `aimacoptimizer.github.io` の301、canonical、OG、JSON-LD、sitemap、robotsを新ドメインへ統一
+- ✅ GitHub Organizationでドメイン所有権を検証し、Pages乗っ取りを防止
+- ✅ Google Search ConsoleのドメインプロパティをDNS検証し、サイトマップ3ページを正常送信
+- ✅ 旧 `ken-kurosu.github.io/AIMacOptimizer/` の転送スタブも新ドメインへ更新
+- オウンドメディアは `https://aimacoptimizer.com/blog/` 前提でソースURLを統一済み。デザイン・コンテンツ完成後にLPリポへ統合して公開する
 
 ---
 
@@ -103,6 +109,7 @@ npx wrangler deploy                             # → https://aimac-license-webh
 - ✅ 課金モデル確定（Free=最適化/診断/AI相談 無制限、Pro=ストレージ削除＋スケジュール）
 - ✅ 署名ライセンス(v2・有効期限対応)＋鍵ローテーション
 - ✅ 解放量の表示=実測（過大表示の撲滅）／通知の抑制修正／日英中i18n
-- ✅ Webhookの重複防止・メール失敗再試行・順不同イベント処理を実装し、本番デプロイ済み
-- ✅ 本番購入、キーのメール到達、Pro化、解約・返金、Free復帰を実地確認済み
-- ✅ LPの独自ドメイン・HTTPS・SEO移行を完了
+- ✅ Webhook本番稼働・購入からメール到達まで実地確認済み
+- ✅ 重複処理防止・メール失敗時再試行・順不同イベント・解約反映を実装し、自動テスト5件成功・本番再デプロイ済み
+- ✅ 本番購入、キーのメール到達、Pro化、解約・返金、build15でのFree復帰を実地確認済み
+- ✅ LPを `https://aimacoptimizer.com/` で公開し、独自ドメイン・HTTPS・SEO移行を完了

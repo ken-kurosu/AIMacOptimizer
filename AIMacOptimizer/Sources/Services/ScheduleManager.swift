@@ -116,7 +116,7 @@ final class ScheduleManager: ObservableObject {
             print("Skipping auto-optimization: memory usage \(Int(snap.memory.usagePercent))% < threshold \(Int(configuredThreshold))%")
             return
         }
-        guard MemoryPressurePolicy.shouldAct(memory: snap.memory, usageThreshold: configuredThreshold) else {
+        guard AutoOptimizationPolicy.systemAllows(memory: snap.memory, usageThreshold: configuredThreshold) else {
             print("Skipping auto-optimization: memory pressure is green or no current swap activity")
             return
         }
@@ -141,7 +141,7 @@ final class ScheduleManager: ObservableObject {
 
             let eligible = await MainActor.run { () -> Bool in
                 guard let profile = learner.profiles[appName] else { return false }
-                return profile.timesOptimized > 2 && profile.idleConfidence(atHour: hour) > 0.7
+                return AutoOptimizationPolicy.profileAllows(profile, atHour: hour)
             }
             if eligible {
                 let outcome = await suggestion.action(suggestion.detailItems)

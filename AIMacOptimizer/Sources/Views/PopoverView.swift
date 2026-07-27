@@ -2160,10 +2160,6 @@ final class PopoverViewModel: ObservableObject {
 
         suggestions = newSuggestions
 
-        // Record usage for free tier
-        if !suggestions.isEmpty {
-            license.recordAISuggestionUse()
-        }
     }
 
     func optimize(systemMemory: SystemMemoryInfo, processes: [ProcessMemoryInfo], license: LicenseManager) async {

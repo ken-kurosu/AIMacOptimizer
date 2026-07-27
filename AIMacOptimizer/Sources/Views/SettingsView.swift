@@ -17,7 +17,7 @@ struct SettingsView: View {
     @ObservedObject private var diskGuard = DiskGuard.shared
     @ObservedObject private var updateService = UpdateService.shared
     @AppStorage("autoUpdateEnabled") private var autoUpdateEnabled = true
-    @AppStorage("analyticsEnabled") private var analyticsEnabled = true
+    @AppStorage("analyticsEnabled") private var analyticsEnabled = false
     @ObservedObject private var nav = SettingsNavigation.shared
     @ObservedObject private var scheduleManager = ScheduleManager.shared
     @State private var notifyAuthStatus: UNAuthorizationStatus = .notDetermined
@@ -166,16 +166,15 @@ struct SettingsView: View {
                 }
 
                 if !license.currentTier.isPro {
-                    // Feature comparison（実態に一致: Pro=ストレージ削除＋スケジュールのみ、他は無料）
+                    // Free は現在の実測と手動操作、Pro は自動化と時間軸。
                     VStack(alignment: .leading, spacing: 6) {
                         featureRow(L10n.featureMemoryOptimize, available: true)
                         featureRow(L10n.featureDiagnosisAI, available: true)
                         featureRow(L10n.featureStorageScan, available: true)
                         featureRow(L10n.featureMultiLang, available: true)
                         Divider()
-                        featureRow(L10n.featureStorageDelete, available: false)
                         featureRow(L10n.featureScheduleOptimize, available: false)
-                        featureRow(L10n.featurePrioritySupport, available: false)
+                        featureRow(L10n.featureAutoGuardReport, available: false)
                     }
                     .padding(.vertical, 4)
                 }
@@ -249,28 +248,17 @@ struct SettingsView: View {
                 }
             }
 
-            // Usage stats
-            Section {
-                HStack {
-                    Text(L10n.weeklyAISuggestionUse)
-                    Spacer()
-                    Text("\(license.weeklyAISuggestionsUsed) / \(license.currentTier.isPro ? "∞" : "3")")
-                        .foregroundColor(.secondary)
-                        .monospacedDigit()
-                }
-
-                if license.currentTier.isPro {
+            if license.currentTier.isPro {
+                Section {
                     VStack(alignment: .leading, spacing: 4) {
-                        Button(L10n.resetLicense, role: .destructive) {
-                            license.resetLicense()
-                        }
+                        Button(L10n.resetLicense, role: .destructive) { license.resetLicense() }
                         Text(L10n.resetLicenseNote)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                } header: {
+                    Text(L10n.licenseKey)
                 }
-            } header: {
-                Text(L10n.usageStatus)
             }
 
             // 解約（課金停止）はStripe側で行う。「このMacのライセンスを解除」との混同を防ぐため別セクションで明示。
@@ -714,14 +702,14 @@ struct SettingsView: View {
 
             Divider()
 
-            // 匿名の使用統計（オプトアウト可）。ブランド「データはローカルから出ない」との整合を明示
+            // 匿名の使用統計（既定OFF・明示オプトイン）
             VStack(spacing: 6) {
                 Toggle("匿名の使用統計を送信", isOn: $analyticsEnabled)
                     .toggleStyle(.switch)
                     .onChange(of: analyticsEnabled) { newValue in
                         AnalyticsService.shared.enabled = newValue
                     }
-                Text("どのボタン・タブを使ったか等の匿名イベントのみを送信し、改善に使います。ファイル名・メモリ内容・個人データは一切送信しません。")
+                Text("初期状態はOFFです。有効にすると、どのボタン・タブを使ったか等の匿名イベントだけを改善目的で送信します。ファイル名・メモリ内容・診断結果・個人データは送信しません。")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

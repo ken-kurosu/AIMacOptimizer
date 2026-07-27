@@ -3,8 +3,8 @@ import Foundation
 /// アプリ内の匿名使用イベント計測（GA4 Measurement Protocol）。
 ///
 /// 送るのは「どのタブ/ボタンを押したか」等の**匿名の操作イベントのみ**。
-/// ファイル名・メモリ内容・個人を特定する情報は一切送らない（ブランド「データはローカルから出ない」と両立）。
-/// 設定でいつでもオフにできる。
+/// ファイル名・メモリ内容・診断結果・個人を特定する情報は一切送らない。
+/// 初期状態はオフで、設定から明示的に有効化した場合だけ送信する。
 @MainActor
 final class AnalyticsService {
     static let shared = AnalyticsService()
@@ -18,9 +18,9 @@ final class AnalyticsService {
 
     private init() {}
 
-    /// 匿名の使用統計を送るか（既定ON・設定でオフ可）
+    /// 匿名の使用統計を送るか（既定OFF・設定でオプトイン）
     var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: enabledKey) == nil ? true : UserDefaults.standard.bool(forKey: enabledKey) }
+        get { UserDefaults.standard.bool(forKey: enabledKey) }
         set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
     }
 

@@ -2069,7 +2069,11 @@ final class PopoverViewModel: ObservableObject {
         var est = 0.0
         var hasQuit = false, hasTab = false
         for s in active {
-            est += s.estimatedSavingMB
+            // 親の全量ではなく、現在チェックされている実行対象だけを合算する。
+            // 見込み表示と同じ子項目の sizeMB を使い、未選択分を含めない。
+            est += s.detailItems.isEmpty
+                ? s.estimatedSavingMB
+                : s.detailItems.filter(\.isSelected).reduce(0.0) { $0 + $1.sizeMB }
             if s.type == .quitApp { hasQuit = true }
             if s.type == .closeTab || s.type == .closeSafariTab { hasTab = true }
             let name = Self.previewActionName(for: s)
@@ -2179,6 +2183,17 @@ final class PopoverViewModel: ObservableObject {
         let toExecute = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
         let executedTypes = Set(toExecute.map(\.type))
 
+        // 手動で選ばれたアプリを学習対象として確実に作成してから、受諾履歴を記録する。
+        // 自動実行の eligibility が timesOptimized を見るため、ここが無いと新規ユーザーは
+        // 最初の自動実行条件を永久に満たせない。
+        let manuallyOptimizedApps = Set(toExecute.flatMap { suggestion -> [String] in
+            guard suggestion.type == .quitApp || suggestion.type == .restartApp else { return [] }
+            return suggestion.detailItems.filter(\.isSelected).map {
+                $0.name.replacingOccurrences(of: " のメモリ使用量", with: "")
+            }
+        })
+        PatternLearner.shared.recordSnapshot(processes: processes)
+
         // 実況ステップを先に並べる（すべて未完了）。実行に合わせて1件ずつチェックが付く。
         steps = toExecute.map { OptStep(label: Self.stepLabel(for: $0)) }
 
@@ -2186,6 +2201,10 @@ final class PopoverViewModel: ObservableObject {
         lastResult = await optimizer.executeOptimizations(toExecute) { [weak self] index, done in
             guard let self, done, index < self.steps.count else { return }
             withAnimation(.easeInOut(duration: 0.2)) { self.steps[index].done = true }
+        }
+
+        for appName in manuallyOptimizedApps {
+            PatternLearner.shared.recordOptimized(appName: appName)
         }
 
         // Mark executed types as recently optimized

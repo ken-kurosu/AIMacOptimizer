@@ -15,6 +15,13 @@ final class MemoryOptimizer {
         let purged: Bool
     }
 
+    /// ブラウザ単位のキャッシュ情報。表示に合算した全パスを削除時にも保持する。
+    struct BrowserCacheInfo {
+        let browser: String
+        let paths: [String]
+        let sizeMB: Double
+    }
+
     // MARK: - App Management
 
     /// Quit a running application by name
@@ -268,9 +275,9 @@ final class MemoryOptimizer {
     // MARK: - Browser Cache Analysis
 
     /// Get browser cache sizes
-    func getBrowserCacheInfo() -> [(browser: String, path: String, sizeMB: Double)] {
+    func getBrowserCacheInfo() -> [BrowserCacheInfo] {
         let home = NSHomeDirectory()
-        var caches: [(browser: String, path: String, sizeMB: Double)] = []
+        var caches: [BrowserCacheInfo] = []
 
         // Chrome cache
         let chromeCachePaths = [
@@ -283,7 +290,11 @@ final class MemoryOptimizer {
             chromeTotal += getDirectorySizeMB(path)
         }
         if chromeTotal > 50 {
-            caches.append(("Google Chrome キャッシュ", chromeCachePaths[0], chromeTotal))
+            caches.append(BrowserCacheInfo(
+                browser: "Google Chrome キャッシュ",
+                paths: chromeCachePaths,
+                sizeMB: chromeTotal
+            ))
         }
 
         // Safari cache
@@ -296,36 +307,50 @@ final class MemoryOptimizer {
             safariTotal += getDirectorySizeMB(path)
         }
         if safariTotal > 30 {
-            caches.append(("Safari キャッシュ", safariCachePaths[0], safariTotal))
+            caches.append(BrowserCacheInfo(
+                browser: "Safari キャッシュ",
+                paths: safariCachePaths,
+                sizeMB: safariTotal
+            ))
         }
 
         // Firefox cache
         let firefoxCache = "\(home)/Library/Caches/Firefox/Profiles"
         let firefoxSize = getDirectorySizeMB(firefoxCache)
         if firefoxSize > 50 {
-            caches.append(("Firefox キャッシュ", firefoxCache, firefoxSize))
+            caches.append(BrowserCacheInfo(
+                browser: "Firefox キャッシュ",
+                paths: [firefoxCache],
+                sizeMB: firefoxSize
+            ))
         }
 
         // Arc cache
         let arcCache = "\(home)/Library/Caches/company.thebrowser.Browser"
         let arcSize = getDirectorySizeMB(arcCache)
         if arcSize > 50 {
-            caches.append(("Arc キャッシュ", arcCache, arcSize))
+            caches.append(BrowserCacheInfo(
+                browser: "Arc キャッシュ",
+                paths: [arcCache],
+                sizeMB: arcSize
+            ))
         }
 
         return caches.sorted { $0.sizeMB > $1.sizeMB }
     }
 
-    /// Clear a specific browser cache directory
-    func clearBrowserCache(path: String) -> Double {
-        let sizeBefore = getDirectorySizeMB(path)
-        if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
-            for file in contents {
-                try? fileManager.removeItem(atPath: "\(path)/\(file)")
+    /// 表示時に合算した全ディレクトリを削除し、実際に減った物理サイズだけを返す。
+    func clearBrowserCache(paths: [String]) -> Double {
+        let sizeBefore = paths.reduce(0.0) { $0 + getDirectorySizeMB($1) }
+        for path in paths {
+            if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
+                for file in contents {
+                    try? fileManager.removeItem(atPath: "\(path)/\(file)")
+                }
             }
         }
-        // 実際に減った分だけを返す
-        return max(0, sizeBefore - getDirectorySizeMB(path))
+        let sizeAfter = paths.reduce(0.0) { $0 + getDirectorySizeMB($1) }
+        return max(0, sizeBefore - sizeAfter)
     }
 
     // MARK: - Safari Tab Analysis
@@ -461,6 +486,7 @@ final class MemoryOptimizer {
         var quitApps: [String] = []
         var purged = false
         var freedDiskMB: Double = 0
+        var anySucceeded = false
 
         // 実際に解放されたメモリを測るため、実行前の空きを記録
         let freeBefore = currentFreeMemoryMB()
@@ -472,6 +498,7 @@ final class MemoryOptimizer {
             // キャッシュ/一時ファイル等が空けたディスク容量を実測ベースで積算
             freedDiskMB += outcome.freedDiskMB
             if outcome.succeeded {
+                anySucceeded = true
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
@@ -507,13 +534,23 @@ final class MemoryOptimizer {
         //  報告値とゲージの動きが一致する）。負やノイズは0に丸める。
         let freedMB = max(0, freeAfter - freeBefore)
 
-        return OptimizationResult(
+        let result = OptimizationResult(
             freedMB: freedMB,
             freedDiskMB: freedDiskMB,
             closedTabs: closedTabs,
             quitApps: quitApps,
             purged: purged
         )
+        if !suggestions.isEmpty {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "one_click",
+                action: suggestions.map { $0.type.rawValue }.joined(separator: " / "),
+                succeeded: anySucceeded,
+                freedDiskMB: freedDiskMB,
+                freedMemoryMB: freedMB
+            )
+        }
+        return result
     }
 
     /// 現在の空きメモリ(MB)。最適化前後の差分で実解放量を測るのに使う。
@@ -573,30 +610,11 @@ final class MemoryOptimizer {
     }
 
     func getDirectorySizeMB(_ path: String) -> Double {
-        let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(atPath: path) else { return 0 }
-        var totalSize: UInt64 = 0
-        while let file = enumerator.nextObject() as? String {
-            let fullPath = "\(path)/\(file)"
-            if let attrs = try? fileManager.attributesOfItem(atPath: fullPath),
-               let fileSize = attrs[.size] as? UInt64 {
-                totalSize += fileSize
-            }
-        }
-        return Double(totalSize) / 1024 / 1024
+        // 論理サイズ(.size)ではなく物理割当サイズで測る（削除して実際に空く量に一致させる）。
+        return DiskSize.allocatedMB(atPath: path)
     }
 
     private func getItemSizeMB(_ path: String) -> Double {
-        var isDir: ObjCBool = false
-        guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
-        if isDir.boolValue {
-            return getDirectorySizeMB(path)
-        } else {
-            if let attrs = try? fileManager.attributesOfItem(atPath: path),
-               let size = attrs[.size] as? UInt64 {
-                return Double(size) / 1024 / 1024
-            }
-            return 0
-        }
+        DiskSize.allocatedMB(atPath: path)
     }
 }

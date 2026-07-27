@@ -27,6 +27,23 @@ struct SystemMemoryInfo {
     let freeMB: Double
     let compressedMB: Double
     let swapUsedMB: Double
+    /// vm_statistics64 の回収可能ページと直近のswap入出力から算出した圧迫度。
+    let pressureLevel: MemoryPressureLevel
+    let swapInsMBPerSecond: Double
+    let swapOutsMBPerSecond: Double
+
+    init(totalMB: Double, usedMB: Double, freeMB: Double, compressedMB: Double,
+         swapUsedMB: Double, pressureLevel: MemoryPressureLevel = .green,
+         swapInsMBPerSecond: Double = 0, swapOutsMBPerSecond: Double = 0) {
+        self.totalMB = totalMB
+        self.usedMB = usedMB
+        self.freeMB = freeMB
+        self.compressedMB = compressedMB
+        self.swapUsedMB = swapUsedMB
+        self.pressureLevel = pressureLevel
+        self.swapInsMBPerSecond = swapInsMBPerSecond
+        self.swapOutsMBPerSecond = swapOutsMBPerSecond
+    }
 
     var usagePercent: Double {
         guard totalMB > 0 else { return 0 }
@@ -39,9 +56,15 @@ struct SystemMemoryInfo {
     }
 
     var severity: MemorySeverity {
-        if freePercent > 40 { return .low }
-        if freePercent > 20 { return .medium }
-        return .high
+        switch pressureLevel {
+        case .green: return .low
+        case .yellow: return .medium
+        case .red: return .high
+        }
+    }
+
+    var hasRecentSwapActivity: Bool {
+        swapInsMBPerSecond > 0.01 || swapOutsMBPerSecond > 0.01
     }
 
     var totalFormatted: String { formatMemory(totalMB) }
@@ -55,6 +78,12 @@ struct SystemMemoryInfo {
         }
         return String(format: "%.0f MB", mb)
     }
+}
+
+enum MemoryPressureLevel: String, Codable {
+    case green
+    case yellow
+    case red
 }
 
 enum MemorySeverity: String {

@@ -379,8 +379,7 @@ final class DiskGuard: ObservableObject {
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return nil }
         if !isDir.boolValue {
-            let attrs = try? fm.attributesOfItem(atPath: path)
-            return (attrs?[.size] as? NSNumber).map { $0.doubleValue / 1_000_000 }
+            return DiskSize.allocatedMB(atPath: path)
         }
         guard let en = fm.enumerator(at: URL(fileURLWithPath: path),
                                      includingPropertiesForKeys: [.totalFileAllocatedSizeKey],

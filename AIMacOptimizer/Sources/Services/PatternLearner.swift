@@ -37,6 +37,10 @@ final class PatternLearner: ObservableObject {
         if snapshots.count > maxSnapshots {
             snapshots = Array(snapshots.suffix(maxSnapshots / 2))
         }
+
+        // プロファイルを作った直後の手動最適化履歴を失わないよう、
+        // スナップショットによる更新もその場で永続化する。
+        saveProfiles()
     }
 
     /// Record that user accepted an optimization suggestion

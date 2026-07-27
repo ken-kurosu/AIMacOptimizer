@@ -12,9 +12,14 @@ final class DeepDiagnosisEngine: ObservableObject {
 
     private let processMonitor: ProcessMonitor
     private let optimizer = MemoryOptimizer()
+    private let persistedReportKey = "deepDiagnosisLastReport"
 
     init(processMonitor: ProcessMonitor) {
         self.processMonitor = processMonitor
+        if let data = UserDefaults.standard.data(forKey: persistedReportKey),
+           let report = try? JSONDecoder().decode(DiagnosisReport.self, from: data) {
+            self.lastReport = report
+        }
     }
 
     /// Run all 9 diagnosis engines and produce a report
@@ -56,6 +61,10 @@ final class DeepDiagnosisEngine: ObservableObject {
         )
 
         lastReport = report
+        if let data = try? JSONEncoder().encode(report) {
+            UserDefaults.standard.set(data, forKey: persistedReportKey)
+        }
+        OptimizationAuditStore.shared.recordDiagnosis(report)
         isRunning = false
         currentStep = ""
         return report
@@ -73,11 +82,18 @@ final class DeepDiagnosisEngine: ObservableObject {
     /// Execute a fix action for a specific finding
     /// Returns a human-readable result message
     func executeFix(for finding: DiagnosisFinding) async -> String {
+        func audited(_ message: String, succeeded: Bool, freedDiskMB: Double = 0) -> String {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "diagnosis", action: finding.title,
+                succeeded: succeeded, freedDiskMB: freedDiskMB
+            )
+            return message
+        }
         switch finding.fixAction {
         case .purgeRAM:
             // purge は管理者権限が無いと必ず失敗し、効果も空きメモリ指標にほぼ反映されないため実行しない。
             // 実測で効果の出る操作へ誘導する。
-            return "メモリタブから、使っていないアプリやタブを終了してください（解放量は実測で表示されます）。"
+            return audited("メモリタブから、使っていないアプリやタブを終了してください（解放量は実測で表示されます）。", succeeded: false)
 
         case .quitApp:
             let appName = finding.fixTarget
@@ -85,19 +101,19 @@ final class DeepDiagnosisEngine: ObservableObject {
             if let pidStr = finding.rawData["pid"], let pid = Int32(pidStr) {
                 if let app = NSRunningApplication(processIdentifier: pid) {
                     let ok = app.terminate()
-                    return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+                    return audited(ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: ok)
                 }
                 let ok = kill(pid, SIGTERM) == 0
-                return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+                return audited(ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: ok)
             }
             let success = optimizer.quitApp(name: appName)
-            return success ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+            return audited(success ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: success)
 
         case .clearCache:
             let path = finding.fixTarget
             // フォント関連のキャッシュディレクトリ自体は触らない（表示崩れ防止）
             if isFontProtected(path) {
-                return "フォント関連のため安全のためスキップしました。"
+                return audited("フォント関連のため安全のためスキップしました。", succeeded: false)
             }
             let sizeBefore = optimizer.getDirectorySizeMB(path)
             let fm = FileManager.default
@@ -111,7 +127,7 @@ final class DeepDiagnosisEngine: ObservableObject {
             let sizeAfter = optimizer.getDirectorySizeMB(path)
             let freed = max(0, sizeBefore - sizeAfter)
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
-            return "キャッシュを削除しました。約 \(freedStr) 解放。"
+            return audited("キャッシュを削除しました。約 \(freedStr) 解放。", succeeded: freed > 0, freedDiskMB: freed)
 
         case .clearDerivedData:
             let path = finding.fixTarget.isEmpty
@@ -126,32 +142,32 @@ final class DeepDiagnosisEngine: ObservableObject {
             }
             let freed = max(0, sizeBefore - optimizer.getDirectorySizeMB(path))
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
-            return "DerivedDataを削除しました。約 \(freedStr) 解放。次回ビルド時に再生成されます。"
+            return audited("DerivedDataを削除しました。約 \(freedStr) 解放。次回ビルド時に再生成されます。", succeeded: freed > 0, freedDiskMB: freed)
 
         case .clearBrowserCache:
             let caches = optimizer.getBrowserCacheInfo()
             var totalFreed: Double = 0
             for cache in caches {
-                totalFreed += optimizer.clearBrowserCache(path: cache.path)
+                totalFreed += optimizer.clearBrowserCache(paths: cache.paths)
             }
             let freedStr = totalFreed >= 1024 ? String(format: "%.1f GB", totalFreed / 1024) : String(format: "%.0f MB", totalFreed)
-            return "ブラウザキャッシュを削除しました。約 \(freedStr) 解放。"
+            return audited("ブラウザキャッシュを削除しました。約 \(freedStr) 解放。", succeeded: totalFreed > 0, freedDiskMB: totalFreed)
 
         case .flushDNS:
             let success = await optimizer.flushDNSCache()
-            return success ? "DNSキャッシュをフラッシュしました。" : "DNSフラッシュに失敗しました。"
+            return audited(success ? "DNSキャッシュをフラッシュしました。" : "DNSフラッシュに失敗しました。", succeeded: success)
 
         case .openSystemSettings:
             let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!
-            NSWorkspace.shared.open(url)
-            return "システム設定（ログイン項目）を開きました。"
+            let opened = NSWorkspace.shared.open(url)
+            return audited("システム設定（ログイン項目）を開きました。", succeeded: opened)
 
         case .openFontBook:
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Font Book.app"))
-            return "Font Bookを開きました。「すべてのフォントを復元」を実行してください。"
+            let opened = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Font Book.app"))
+            return audited("Font Bookを開きました。「すべてのフォントを復元」を実行してください。", succeeded: opened)
 
         case .none:
-            return "この項目には自動修復がありません。AIチャットで詳しい対処法を相談できます。"
+            return audited("この項目には自動修復がありません。AIチャットで詳しい対処法を相談できます。", succeeded: false)
         }
     }
 
@@ -168,7 +184,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         var messages: [String] = []
         for finding in safe {
             messages.append(await executeFix(for: finding))
-            fixed += 1
+            if OptimizationAuditStore.shared.lastExecution?.succeeded == true { fixed += 1 }
         }
         if !risky.isEmpty {
             messages.append("リスクのある操作 \(risky.count) 件（アプリ/プロセスの終了）は自動実行していません。下で内容を確認し、個別に承認してください。")
@@ -215,8 +231,8 @@ final class DeepDiagnosisEngine: ObservableObject {
             ))
         }
 
-        // Find high-CPU processes
-        let highCPU = getHighCPUProcesses()
+        // 一時的なスパイクを異常扱いしないよう、複数回で継続したプロセスだけを採用する。
+        let highCPU = await getPersistentlyHighCPUProcesses()
         for (pid, name, cpu) in highCPU {
             let exp = ProcessCatalog.explain(name: name, pid: pid)
             let suggestion = exp.quitRecommended
@@ -249,60 +265,73 @@ final class DeepDiagnosisEngine: ObservableObject {
 
     private func diagnoseMemory() async -> [DiagnosisFinding] {
         var findings: [DiagnosisFinding] = []
-        let mem = processMonitor.systemMemory
+        // 直近のswap in/out速度を得るため短い間隔で2点採る。
+        _ = processMonitor.sampleMemory()
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        let mem = processMonitor.sampleMemory()
+        let pressureHasPaging = mem.pressureLevel != .green && mem.hasRecentSwapActivity
 
-        // Memory pressure
-        if mem.freePercent < 10 {
+        if mem.pressureLevel == .red && pressureHasPaging {
             findings.append(DiagnosisFinding(
                 category: .memory, severity: .critical,
-                title: "メモリが極度に不足",
-                detail: "空きメモリ \(mem.freeFormatted) (\(String(format: "%.0f", mem.freePercent))%) — 全体 \(mem.totalFormatted)",
+                title: "メモリプレッシャーが赤",
+                detail: "直近のSwap出力 \(String(format: "%.2f", mem.swapOutsMBPerSecond)) MB/秒、使用率 \(String(format: "%.0f", mem.usagePercent))%",
                 suggestion: "メモリタブの提案から、使っていないアプリやタブを終了してメモリを解放してください。",
                 isAutoFixable: false, fixAction: .none,
                 rawData: ["used_mb": "\(Int(mem.usedMB))", "free_mb": "\(Int(mem.freeMB))",
-                          "total_mb": "\(Int(mem.totalMB))", "compressed_mb": "\(Int(mem.compressedMB))"]
+                          "total_mb": "\(Int(mem.totalMB))", "compressed_mb": "\(Int(mem.compressedMB))",
+                          "pressure": mem.pressureLevel.rawValue,
+                          "swap_in_mb_s": String(format: "%.3f", mem.swapInsMBPerSecond),
+                          "swap_out_mb_s": String(format: "%.3f", mem.swapOutsMBPerSecond)]
             ))
-        } else if mem.freePercent < 25 {
+        } else if mem.pressureLevel == .yellow && pressureHasPaging {
             findings.append(DiagnosisFinding(
                 category: .memory, severity: .warning,
-                title: "メモリ使用量が高い",
-                detail: "空きメモリ \(mem.freeFormatted) (\(String(format: "%.0f", mem.freePercent))%)",
+                title: "メモリプレッシャーが黄",
+                detail: "直近のSwap入出力 \(String(format: "%.2f", mem.swapInsMBPerSecond + mem.swapOutsMBPerSecond)) MB/秒、使用率 \(String(format: "%.0f", mem.usagePercent))%",
                 suggestion: "メモリタブの提案から、バックグラウンドアプリの終了を検討してください。",
-                isAutoFixable: false, fixAction: .none
+                isAutoFixable: false, fixAction: .none,
+                rawData: ["pressure": mem.pressureLevel.rawValue,
+                          "swap_in_mb_s": String(format: "%.3f", mem.swapInsMBPerSecond),
+                          "swap_out_mb_s": String(format: "%.3f", mem.swapOutsMBPerSecond)]
             ))
         } else {
             findings.append(DiagnosisFinding(
                 category: .memory, severity: .good,
-                title: "メモリ使用量は正常",
-                detail: "空きメモリ \(mem.freeFormatted) (\(String(format: "%.0f", mem.freePercent))%)",
-                suggestion: "特に対処は不要です。"
+                title: "メモリプレッシャーは正常（緑）",
+                detail: "使用率 \(String(format: "%.0f", mem.usagePercent))%。使用率が高くても、Swapの発生を伴わない緑状態は正常です。",
+                suggestion: "現在はメモリ不足への対処は不要です。",
+                rawData: ["pressure": mem.pressureLevel.rawValue,
+                          "swap_in_mb_s": String(format: "%.3f", mem.swapInsMBPerSecond),
+                          "swap_out_mb_s": String(format: "%.3f", mem.swapOutsMBPerSecond)]
             ))
         }
 
-        // Swap check
-        if mem.swapUsedMB > 2048 {
+        // swapの総使用量は過去の圧迫でも残るため、現在のpagingが無ければ警告にしない。
+        if mem.swapUsedMB > 2048 && !pressureHasPaging {
             findings.append(DiagnosisFinding(
-                category: .memory, severity: .warning,
-                title: "Swap使用量が高い (\(mem.swapFormatted))",
-                detail: "物理メモリが不足しディスクにSwapしています。パフォーマンスが低下します。",
-                suggestion: "メモリを大量に使っているアプリを終了してSwapを減らしてください。",
+                category: .memory, severity: .info,
+                title: "Swap使用履歴あり（現在の圧迫なし）",
+                detail: "Swap \(mem.swapFormatted) は残っていますが、直近の入出力は検出されていません。",
+                suggestion: "現在のメモリプレッシャーは緑のため、Swap量だけを理由にアプリを終了する必要はありません。",
                 rawData: ["swap_mb": "\(Int(mem.swapUsedMB))"]
             ))
         }
 
-        // Memory leak candidates
+        // 大きいRSSだけではリークと呼ばず、同一アプリが3サンプル連続で増えた場合だけ候補にする。
         let leakThreshold = max(800, mem.totalMB * 0.08)
-        for proc in processMonitor.topProcesses {
-            if proc.memoryMB > leakThreshold && !proc.isSystemProcess {
+        let growingProcesses = await getGrowingMemoryProcesses()
+        for growth in growingProcesses where growth.latest.memoryMB > leakThreshold && !growth.latest.isSystemProcess {
+            let samples = growth.samples.map { String(format: "%.0f", $0) }.joined(separator: " → ")
                 findings.append(DiagnosisFinding(
                     category: .memory, severity: .warning,
-                    title: "\(proc.name) がメモリ \(proc.memoryFormatted) 使用",
-                    detail: "全メモリの\(Int(proc.memoryMB / mem.totalMB * 100))%を占有しています。",
-                    suggestion: "長時間起動している場合、再起動でメモリリークが解消される場合があります。",
-                    isAutoFixable: true, fixAction: .quitApp, fixTarget: proc.name,
-                    rawData: ["process": proc.name, "memory_mb": "\(Int(proc.memoryMB))"]
+                    title: "\(growth.latest.name) のメモリが継続増加",
+                    detail: "3回の計測で \(samples) MB と連続して増加しました。",
+                    suggestion: "作業を保存した上で、増加が続く場合のみアプリの再起動を検討してください。",
+                    isAutoFixable: true, fixAction: .quitApp, fixTarget: growth.latest.name,
+                    rawData: ["process": growth.latest.name,
+                              "memory_samples_mb": samples]
                 ))
-            }
         }
 
         return findings
@@ -356,17 +385,37 @@ final class DeepDiagnosisEngine: ObservableObject {
             let sizeMB = optimizer.getDirectorySizeMB(path)
             if sizeMB > 500 {
                 let sizeStr = sizeMB >= 1024 ? String(format: "%.1f GB", sizeMB / 1024) : String(format: "%.0f MB", sizeMB)
+
+                // ⚠️ CoreSimulator は「単なるキャッシュ」ではない。配下には Simulator 内アプリ・
+                // ログイン状態・開発中データが含まれ、フォルダ全体を一括削除すると失われる。
+                // よって「全て修復」の自動削除対象にはせず（isAutoFixable: false）、案内のみに留める。
+                let isSimulator = path.contains("CoreSimulator")
                 findings.append(DiagnosisFinding(
                     category: .disk, severity: sizeMB > 5000 ? .warning : .info,
                     title: "\(name) が \(sizeStr) を使用",
-                    detail: "削除しても自動再生成されるため安全に削除できます。",
-                    suggestion: "ストレージタブから削除するか、「\(name)の削除」をAIチャットで相談してください。",
-                    isAutoFixable: true,
-                    fixAction: name.contains("DerivedData") ? .clearDerivedData : .clearCache,
-                    fixTarget: path,
+                    detail: isSimulator
+                        ? "Simulator内のアプリ・ログイン状態・開発中データを含むため、フォルダ全体の一括削除は行いません。"
+                        : "削除しても自動再生成されるため安全に削除できます。",
+                    suggestion: isSimulator
+                        ? "不要なシミュレータのみ Xcode か `xcrun simctl delete unavailable` で個別に削除してください。"
+                        : "ストレージタブから削除するか、「\(name)の削除」をAIチャットで相談してください。",
+                    isAutoFixable: !isSimulator,
+                    fixAction: isSimulator ? .none : (name.contains("DerivedData") ? .clearDerivedData : .clearCache),
+                    fixTarget: isSimulator ? "" : path,
                     rawData: ["path": path, "size_mb": "\(Int(sizeMB))"]
                 ))
             }
+        }
+
+        let inaccessible = inaccessibleProtectedLocations()
+        if !inaccessible.isEmpty {
+            findings.append(DiagnosisFinding(
+                category: .disk, severity: .info,
+                title: "フルディスクアクセスが必要な領域があります",
+                detail: "権限不足で走査できなかった領域: \(inaccessible.map(\.name).joined(separator: "、"))",
+                suggestion: "完全な容量診断が必要な場合は、システム設定 > プライバシーとセキュリティ > フルディスクアクセスでAI Mac Optimizerを許可してください。未走査領域は診断合計に含まれません。",
+                rawData: ["unscanned_paths": inaccessible.map(\.path).joined(separator: "\n")]
+            ))
         }
 
         return findings
@@ -714,7 +763,7 @@ final class DeepDiagnosisEngine: ObservableObject {
             switch finding.severity {
             case .critical: score -= 20
             case .warning: score -= 8
-            case .info: score -= 2
+            case .info: break
             case .good: break
             }
         }
@@ -794,6 +843,77 @@ final class DeepDiagnosisEngine: ObservableObject {
         }
 
         return Array(results.prefix(10))
+    }
+
+    /// 3回中2回以上で15%を超え、全サンプル平均でも15%を超えたプロセスだけを返す。
+    private func getPersistentlyHighCPUProcesses() async -> [(pid: Int32, name: String, cpu: Double)] {
+        let sampleCount = 3
+        var totals: [Int32: (name: String, total: Double, highHits: Int)] = [:]
+
+        for index in 0..<sampleCount {
+            for sample in getHighCPUProcesses() {
+                let previous = totals[sample.pid] ?? (sample.name, 0, 0)
+                totals[sample.pid] = (sample.name, previous.total + sample.cpu, previous.highHits + 1)
+            }
+            if index < sampleCount - 1 {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+        }
+
+        return totals.compactMap { pid, value in
+            let average = value.total / Double(sampleCount)
+            guard value.highHits >= 2, average > 15 else { return nil }
+            return (pid: pid, name: value.name, cpu: average)
+        }
+        .sorted { $0.cpu > $1.cpu }
+        .prefix(10)
+        .map { $0 }
+    }
+
+    /// 同一アプリを3点計測し、各区間で増加し、合計64MB以上かつ10%以上増えたものだけを返す。
+    private func getGrowingMemoryProcesses() async -> [(latest: ProcessMemoryInfo, samples: [Double])] {
+        var samples: [[String: ProcessMemoryInfo]] = []
+        for index in 0..<3 {
+            let current = processMonitor.fetchTopProcessesOnce()
+            samples.append(Dictionary(uniqueKeysWithValues: current.map { ($0.name, $0) }))
+            if index < 2 {
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+        }
+
+        guard samples.count == 3 else { return [] }
+        return samples[2].compactMap { name, latest in
+            guard let first = samples[0][name], let second = samples[1][name] else { return nil }
+            let values = [first.memoryMB, second.memoryMB, latest.memoryMB]
+            guard values[1] > values[0], values[2] > values[1] else { return nil }
+            let totalGrowth = values[2] - values[0]
+            guard totalGrowth >= max(64, values[0] * 0.10) else { return nil }
+            return (latest: latest, samples: values)
+        }
+    }
+
+    /// TCCで保護され、現在の権限では一覧取得できない代表領域を明示する。
+    private func inaccessibleProtectedLocations() -> [(name: String, path: String)] {
+        let home = NSHomeDirectory()
+        let locations = [
+            ("メール", "\(home)/Library/Mail"),
+            ("メッセージ", "\(home)/Library/Messages"),
+            ("Safari", "\(home)/Library/Safari"),
+        ]
+        let fm = FileManager.default
+
+        return locations.compactMap { name, path in
+            guard fm.fileExists(atPath: path) else { return nil }
+            do {
+                _ = try fm.contentsOfDirectory(atPath: path)
+                return nil
+            } catch {
+                let nsError = error as NSError
+                let permissionDenied = (nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileReadNoPermissionError)
+                    || (nsError.domain == NSPOSIXErrorDomain && (nsError.code == Int(EACCES) || nsError.code == Int(EPERM)))
+                return permissionDenied ? (name: name, path: path) : nil
+            }
+        }
     }
 
     /// Find node_modules directories in iCloud Drive（メイン外で実行可能な純関数。走査上限つき）

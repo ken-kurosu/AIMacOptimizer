@@ -54,16 +54,13 @@ struct PurchaseConfig {
     ]
 }
 
-/// Manages license state, promo codes, purchase flow, and feature gating
+/// Manages signed license state, purchase flow, and feature gating
 @MainActor
 final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
     // MARK: - Published State
     @Published var currentTier: LicenseTier = .free
-    @Published var promoCodeInput: String = ""
-    @Published var promoCodeMessage: String = ""
-    @Published var promoCodeSuccess: Bool = false
     @Published var licenseKeyInput: String = ""
     @Published var licenseKeyMessage: String = ""
     @Published var licenseKeySuccess: Bool = false
@@ -107,7 +104,6 @@ final class LicenseManager: ObservableObject {
 
     // MARK: - Persistence Keys
     private let tierKey = "license_tier"
-    private let promoCodeKey = "activated_promo_code"
     private let licenseKeyKey = "activated_license_key"
     private let weeklyCountKey = "weekly_ai_count"
     private let weekStartKey = "weekly_ai_week_start"
@@ -118,15 +114,6 @@ final class LicenseManager: ObservableObject {
     private let invalidatedSubscriptionKey = "subscription_invalidated_key"
     /// オンライン検証が成功したら付与する猶予。この期間内に再検証できれば Pro は途切れない。
     private let validationGraceSec: TimeInterval = 40 * 24 * 60 * 60
-
-    // MARK: - Valid Promo Codes
-    // In production, these would be server-validated. For now, local codes.
-    private let validPromoCodes: [String: LicenseTier] = [
-        "AIMAC-FRIENDS-2026": .proLifetime,    // 身内用：永久Pro
-        "AIMAC-TEAM-PRO": .proLifetime,         // チームメンバー用
-        "AIMAC-BETA-TESTER": .pro,              // ベータテスター用（Pro）
-        "AIMAC-LAUNCH-SPECIAL": .proLifetime,   // ローンチキャンペーン
-    ]
 
     // MARK: - Init
     private init() {
@@ -139,7 +126,7 @@ final class LicenseManager: ObservableObject {
     // MARK: - State Management
     private func loadState() {
         // tier は保存された license_tier 文字列を鵜呑みにせず、保存済みの
-        // 署名キー/プロモコードを毎回再検証して導出する。
+        // 署名キーを毎回再検証して導出する。クライアント内の固定コードでは昇格させない。
         // （tier 文字列を信用すると `defaults write <bundleID> license_tier pro_lifetime`
         //   だけで永久Pro化できてしまうため。署名検証はオフラインで偽造不可）
         let storedKey = UserDefaults.standard.string(forKey: licenseKeyKey)
@@ -152,13 +139,9 @@ final class LicenseManager: ObservableObject {
             }
         }
         if derived == .free,
-           let code = UserDefaults.standard.string(forKey: promoCodeKey),
-           let tier = validPromoCodes[code] {
-            derived = tier
-        } else if derived == .free,
-                  let key = storedKey, invalidatedKey != key,
-                  let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
-                  until > Date() {
+           let key = storedKey, invalidatedKey != key,
+           let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
+           until > Date() {
             // 署名キーはオフライン期限切れだが、オンライン検証で購読が有効と確認できている（月額の自動維持）
             derived = .pro
         }
@@ -376,49 +359,10 @@ final class LicenseManager: ObservableObject {
         Task { await refreshSubscriptionValidationIfNeeded(force: true) }
     }
 
-    // MARK: - Promo Code Activation
-    func activatePromoCode() {
-        let code = promoCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-
-        guard !code.isEmpty else {
-            promoCodeMessage = "コードを入力してください"
-            promoCodeSuccess = false
-            return
-        }
-
-        // Check if already activated
-        if let existingCode = UserDefaults.standard.string(forKey: promoCodeKey),
-           existingCode == code {
-            promoCodeMessage = "このコードは既に適用済みです"
-            promoCodeSuccess = false
-            return
-        }
-
-        // Validate code
-        if let tier = validPromoCodes[code] {
-            currentTier = tier
-            UserDefaults.standard.set(code, forKey: promoCodeKey)
-            saveState()
-            promoCodeMessage = "\(tier.displayName) にアップグレードしました！"
-            promoCodeSuccess = true
-            promoCodeInput = ""
-        } else {
-            promoCodeMessage = "無効なプロモコードです"
-            promoCodeSuccess = false
-        }
-    }
-
-    // MARK: - Manual Tier Override (for testing)
-    func setTier(_ tier: LicenseTier) {
-        currentTier = tier
-        saveState()
-    }
-
     /// Reset to free tier
     func resetLicense() {
         currentTier = .free
         weeklyAISuggestionsUsed = 0
-        UserDefaults.standard.removeObject(forKey: promoCodeKey)
         UserDefaults.standard.removeObject(forKey: licenseKeyKey)
         UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
         UserDefaults.standard.removeObject(forKey: lastValidatedKey)

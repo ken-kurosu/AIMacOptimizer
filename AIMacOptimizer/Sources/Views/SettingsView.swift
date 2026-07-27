@@ -183,40 +183,6 @@ struct SettingsView: View {
                 Text(L10n.planInfo)
             }
 
-            // Promo code section
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.havePromoCode)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 8) {
-                        TextField(L10n.enterPromoCode, text: $license.promoCodeInput)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(.body, design: .monospaced))
-
-                        Button(L10n.apply) {
-                            license.activatePromoCode()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(license.promoCodeInput.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-
-                    if !license.promoCodeMessage.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: license.promoCodeSuccess ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(license.promoCodeSuccess ? .green : .red)
-                            Text(license.promoCodeMessage)
-                                .font(.caption)
-                                .foregroundColor(license.promoCodeSuccess ? .green : .red)
-                        }
-                    }
-                }
-            } header: {
-                Text(L10n.promoCode)
-            }
-
             // Upgrade options (for free users)
             if !license.currentTier.isPro {
                 Section {

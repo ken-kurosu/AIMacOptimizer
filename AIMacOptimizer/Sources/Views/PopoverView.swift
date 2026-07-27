@@ -2069,7 +2069,11 @@ final class PopoverViewModel: ObservableObject {
         var est = 0.0
         var hasQuit = false, hasTab = false
         for s in active {
-            est += s.estimatedSavingMB
+            // 親の全量ではなく、現在チェックされている実行対象だけを合算する。
+            // 見込み表示と同じ子項目の sizeMB を使い、未選択分を含めない。
+            est += s.detailItems.isEmpty
+                ? s.estimatedSavingMB
+                : s.detailItems.filter(\.isSelected).reduce(0.0) { $0 + $1.sizeMB }
             if s.type == .quitApp { hasQuit = true }
             if s.type == .closeTab || s.type == .closeSafariTab { hasTab = true }
             let name = Self.previewActionName(for: s)

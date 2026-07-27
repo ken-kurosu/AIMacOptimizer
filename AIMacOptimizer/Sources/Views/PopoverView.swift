@@ -883,21 +883,6 @@ struct StorageTabView: View {
                     .foregroundColor(.secondary)
             }
 
-            // 緊急時は、確実に空く安全コマンド（再生成される項目のみ）もワンタップでコピーできる
-            if emergency {
-                Button {
-                    let joined = DiskGuard.emergencyTerminalCommands.joined(separator: "\n")
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(joined, forType: .string)
-                    cleanupMessage = "安全コマンドをコピーしました。ターミナルに貼り付けて実行できます。"
-                } label: {
-                    Label("緊急時の安全コマンドをコピー", systemImage: "doc.on.clipboard")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-
             Text(L10n.safeCleanupAvailable(plan.totalFormatted))
                 .font(.system(size: 11))
                 .foregroundColor(.primary)

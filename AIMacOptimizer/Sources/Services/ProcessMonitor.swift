@@ -10,6 +10,8 @@ final class ProcessMonitor: ObservableObject {
     @Published var topProcesses: [ProcessMemoryInfo] = []
 
     private var timer: Timer?
+    private let vmSampleLock = NSLock()
+    private var previousVMSample: (date: Date, swapIns: UInt64, swapOuts: UInt64)?
     // パネル表示中はプロセス一覧も更新。非表示中はメニューバーの%に必要な systemMemory だけを
     // 低頻度で更新し、高コストな全プロセス列挙を行わない（常時稼働の電力消費を抑える）。
     private let activeInterval: TimeInterval = 2.0
@@ -74,6 +76,16 @@ final class ProcessMonitor: ObservableObject {
         (getSystemMemory(), getAllProcesses())
     }
 
+    /// 診断用の即時メモリサンプル。連続呼び出しでswap in/outの速度を算出する。
+    func sampleMemory() -> SystemMemoryInfo {
+        getSystemMemory()
+    }
+
+    /// 診断用のアプリ単位メモリサンプル。
+    func fetchTopProcessesOnce() -> [ProcessMemoryInfo] {
+        aggregateByApp(getAllProcesses())
+    }
+
     /// パネル表示用：systemMemory ＋ 全プロセス列挙
     func refreshFull() {
         let mem = getSystemMemory()
@@ -114,12 +126,51 @@ final class ProcessMonitor: ObservableObject {
         // Get swap info via sysctl
         let swapMB = getSwapUsage()
 
+        let now = Date()
+        let swapRates: (ins: Double, outs: Double) = vmSampleLock.withLock {
+            defer {
+                previousVMSample = (now, UInt64(stats.swapins), UInt64(stats.swapouts))
+            }
+            guard let previous = previousVMSample else { return (0, 0) }
+            let elapsed = now.timeIntervalSince(previous.date)
+            guard elapsed > 0.05 else { return (0, 0) }
+            let insPages = UInt64(stats.swapins) >= previous.swapIns
+                ? UInt64(stats.swapins) - previous.swapIns : 0
+            let outPages = UInt64(stats.swapouts) >= previous.swapOuts
+                ? UInt64(stats.swapouts) - previous.swapOuts : 0
+            let mbPerPage = pageSize / 1024 / 1024
+            return (Double(insPages) * mbPerPage / elapsed,
+                    Double(outPages) * mbPerPage / elapsed)
+        }
+
+        // macOSの非公開アルゴリズムを装わず、回収可能ページ・圧縮率・直近のpagingを
+        // 組み合わせた保守的な「相当値」。高使用率だけでは黄/赤にしない。
+        let totalPages = max(1, totalMB * 1024 * 1024 / pageSize)
+        let reclaimablePages = Double(stats.free_count)
+            + Double(stats.inactive_count)
+            + Double(stats.speculative_count)
+            + Double(stats.purgeable_count)
+        let reclaimableRatio = reclaimablePages / totalPages
+        let compressedRatio = Double(stats.compressor_page_count) / totalPages
+        let pagingActive = swapRates.ins > 0.01 || swapRates.outs > 0.01
+        let pressure: MemoryPressureLevel
+        if pagingActive && reclaimableRatio < 0.04 && swapRates.outs > 0.10 {
+            pressure = .red
+        } else if pagingActive && (reclaimableRatio < 0.12 || compressedRatio > 0.25) {
+            pressure = .yellow
+        } else {
+            pressure = .green
+        }
+
         return SystemMemoryInfo(
             totalMB: totalMB,
             usedMB: usedMB,
             freeMB: totalMB - usedMB,
             compressedMB: compressedMB,
-            swapUsedMB: swapMB
+            swapUsedMB: swapMB,
+            pressureLevel: pressure,
+            swapInsMBPerSecond: swapRates.ins,
+            swapOutsMBPerSecond: swapRates.outs
         )
     }
 

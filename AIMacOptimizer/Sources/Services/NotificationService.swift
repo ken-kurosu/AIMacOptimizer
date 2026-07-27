@@ -82,25 +82,28 @@ class NotificationService {
         }
     }
 
-    func checkAndNotify(memoryPercent: Double, diskFreeGB: Double) {
+    func checkAndNotify(memory: SystemMemoryInfo, diskFreeGB: Double) {
         let notificationsEnabled = defaults.bool(forKey: enableNotificationsKey)
         guard notificationsEnabled else { return }
         
         let threshold = defaults.double(forKey: notifyThresholdKey)
         let actualThreshold = threshold > 0 ? threshold : 80
         
-        checkMemoryAlert(memoryPercent: memoryPercent, threshold: actualThreshold)
+        checkMemoryAlert(memory: memory, threshold: actualThreshold)
         checkDiskAlert(diskFreeGB: diskFreeGB)
     }
     
     // MARK: - Private Methods
     
-    private func checkMemoryAlert(memoryPercent: Double, threshold: Double) {
-        guard memoryPercent >= threshold else { return }
+    private func checkMemoryAlert(memory: SystemMemoryInfo, threshold: Double) {
+        // 高使用率だけでは通知しない。黄/赤の圧迫と直近のswap入出力が揃った場合だけ通知する。
+        guard memory.usagePercent >= threshold,
+              memory.pressureLevel != .green,
+              memory.hasRecentSwapActivity else { return }
         
         if shouldSendNotification(type: "memory") {
             let title = L10n.notifyMemoryTitle
-            let body = L10n.notifyMemoryBody(percent: Int(memoryPercent))
+            let body = L10n.notifyMemoryBody(percent: Int(memory.usagePercent))
             let suggestion = L10n.notifyMemorySuggestion
             
             sendNotification(title: title, body: body, suggestion: suggestion)

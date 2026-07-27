@@ -399,16 +399,6 @@ final class DiskGuard: ObservableObject {
         return total / 1_000_000
     }
 
-    /// 緊急時の最終手段：アプリ経由でなく手動で確実に空けられる、安全な（再生成される）コマンド一覧。
-    /// 万一アプリ操作もままならない極限状態のためのフォールバック（コピーして外部ターミナルで実行）。
-    static let emergencyTerminalCommands: [String] = [
-        "rm -rf ~/Library/Developer/Xcode/DerivedData/*",
-        "rm -rf ~/Library/Caches/* ~/.cache/*",
-        "npm cache clean --force; brew cleanup -s",
-        "xcrun simctl delete unavailable",
-        "sudo tmutil thinlocalsnapshots / 999999999999 4"
-    ]
-
     // MARK: - 候補生成
 
     private func buildCandidates() -> [CleanupCandidate] {

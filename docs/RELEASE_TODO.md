@@ -1,8 +1,8 @@
 # AIMacOptimizer リリース残作業と手順
 
-最終更新: 2026-07-26 / 対象ブランチ: `main`（build15 / v2.1.12）
+最終更新: 2026-07-27 / 次回配布: build16 / v2.1.13
 
-現状: 一般販売前の必須作業は完了。Mac版アプリは**署名・Apple公証済みDMGをGitHub Releasesで配布中**。
+現状: build15 / v2.1.12は署名・Apple公証済みDMGをGitHub Releasesで配布中。P0修正を含むbuild16 / v2.1.13は、署名・公証・公開前の最終検証中。
 LPは `https://aimacoptimizer.com/` でHTTPS公開済み。課金WebhookはCloudflare Workersで本番稼働し、購入・メール到達・Pro化・解約後のFree化まで実地確認済み。
 
 ---
@@ -90,6 +90,7 @@ npx wrangler deploy                             # → https://aimac-license-webh
 - ✅ Google Search ConsoleのドメインプロパティをDNS検証し、サイトマップ3ページを正常送信
 - ✅ 旧 `ken-kurosu.github.io/AIMacOptimizer/` の転送スタブも新ドメインへ更新
 - オウンドメディアは `https://aimacoptimizer.com/blog/` 前提でソースURLを統一済み。デザイン・コンテンツ完成後にLPリポへ統合して公開する
+- build16公開時の機能文言・安全説明・ダウンロードリンク修正は `docs/BUILD16_LP_HANDOFF.md` に従う
 
 ---
 
@@ -106,10 +107,16 @@ npx wrangler deploy                             # → https://aimac-license-webh
 
 ## 現在の到達点（済み）
 - ✅ v2.1.12 / build15の署名・Apple公証・ステープル済みDMGをGitHub Releasesで公開
-- ✅ 課金モデル確定（Free=最適化/診断/AI相談 無制限、Pro=ストレージ削除＋スケジュール）
+- ✅ 課金モデル確定（Free=現在の実測/手動整理/診断/ローカルAI相談、Pro=自動化＋履歴/詳細レポート）
 - ✅ 署名ライセンス(v2・有効期限対応)＋鍵ローテーション
 - ✅ 解放量の表示=実測（過大表示の撲滅）／通知の抑制修正／日英中i18n
 - ✅ Webhook本番稼働・購入からメール到達まで実地確認済み
 - ✅ 重複処理防止・メール失敗時再試行・順不同イベント・解約反映を実装し、自動テスト5件成功・本番再デプロイ済み
 - ✅ 本番購入、キーのメール到達、Pro化、解約・返金、build15でのFree復帰を実地確認済み
 - ✅ LPを `https://aimacoptimizer.com/` で公開し、独自ドメイン・HTTPS・SEO移行を完了
+
+## build16公開時に実行
+
+- `scripts/build_dmg.sh` でbuild16を署名・公証・stapleし、`latest.json`を生成
+- GitHub Releaseの `AIMacOptimizer-latest.dmg` と `latest.json` を同時にbuild16へ更新
+- `docs/BUILD16_LP_HANDOFF.md` のLP修正を適用後、3言語とダウンロードを確認

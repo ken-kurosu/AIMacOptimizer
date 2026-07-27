@@ -1430,17 +1430,17 @@ struct L10n {
 
     static var featureDiagnosisAI: String {
         switch current {
-        case .japanese: return "診断・AI相談（ローカル/無料）"
-        case .english: return "Diagnosis & AI chat (local/free)"
-        case .chinese: return "诊断・AI 咨询（本地/免费）"
+        case .japanese: return "詳細診断・ローカルAI相談"
+        case .english: return "Detailed diagnosis & local AI chat"
+        case .chinese: return "详细诊断・本地 AI 咨询"
         }
     }
 
     static var featureStorageScan: String {
         switch current {
-        case .japanese: return "ストレージスキャン（表示）"
-        case .english: return "Storage scan (view only)"
-        case .chinese: return "存储扫描（仅查看）"
+        case .japanese: return "ストレージ分析・手動クリーンアップ"
+        case .english: return "Storage analysis & manual cleanup"
+        case .chinese: return "存储分析・手动清理"
         }
     }
 
@@ -1465,6 +1465,14 @@ struct L10n {
         case .japanese: return "スケジュール自動最適化"
         case .english: return "Scheduled auto optimization"
         case .chinese: return "定时自动优化"
+        }
+    }
+
+    static var featureAutoGuardReport: String {
+        switch current {
+        case .japanese: return "自動ディスクガード・詳細履歴レポート"
+        case .english: return "Automatic disk guard & full history reports"
+        case .chinese: return "自动磁盘保护・完整历史报告"
         }
     }
 

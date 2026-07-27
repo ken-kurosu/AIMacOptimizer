@@ -152,15 +152,12 @@ final class ProcessMonitor: ObservableObject {
             + Double(stats.purgeable_count)
         let reclaimableRatio = reclaimablePages / totalPages
         let compressedRatio = Double(stats.compressor_page_count) / totalPages
-        let pagingActive = swapRates.ins > 0.01 || swapRates.outs > 0.01
-        let pressure: MemoryPressureLevel
-        if pagingActive && reclaimableRatio < 0.04 && swapRates.outs > 0.10 {
-            pressure = .red
-        } else if pagingActive && (reclaimableRatio < 0.12 || compressedRatio > 0.25) {
-            pressure = .yellow
-        } else {
-            pressure = .green
-        }
+        let pressure = MemoryPressurePolicy.classify(
+            reclaimableRatio: reclaimableRatio,
+            compressedRatio: compressedRatio,
+            swapInsMBPerSecond: swapRates.ins,
+            swapOutsMBPerSecond: swapRates.outs
+        )
 
         return SystemMemoryInfo(
             totalMB: totalMB,

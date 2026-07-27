@@ -55,7 +55,7 @@ struct OnboardingView: View {
                 bullet("memorychip", "ワンクリックで使われていないメモリを解放（実測表示）")
                 bullet("internaldrive", "ストレージを分析し、安全に消せるものをワンボタンで整理")
                 bullet("bell.badge", "空き容量が減る前や不調の兆しを、通知でお知らせ")
-                bullet("lock.shield", "データはMacの外に出ません。削除はゴミ箱経由で復元可能")
+                bullet("lock.shield", "ファイル内容と診断結果はローカル処理。削除方法と復元可否を実行前に明示")
             }
             Text("常にメニューバーに常駐し、必要な時だけ静かに働きます。")
                 .font(.system(size: 12))

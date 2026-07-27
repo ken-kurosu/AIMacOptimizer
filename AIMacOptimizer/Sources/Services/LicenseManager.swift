@@ -54,28 +54,21 @@ struct PurchaseConfig {
     ]
 }
 
-/// Manages license state, promo codes, purchase flow, and feature gating
+/// Manages signed license state, purchase flow, and feature gating
 @MainActor
 final class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
     // MARK: - Published State
     @Published var currentTier: LicenseTier = .free
-    @Published var promoCodeInput: String = ""
-    @Published var promoCodeMessage: String = ""
-    @Published var promoCodeSuccess: Bool = false
     @Published var licenseKeyInput: String = ""
     @Published var licenseKeyMessage: String = ""
     @Published var licenseKeySuccess: Bool = false
 
-    // MARK: - Feature Gating
-    /// AI suggestions used this week (Free: max 3/week)
-    @Published var weeklyAISuggestionsUsed: Int = 0
-
     // MARK: - Feature Gating（v1方針）
-    // Pro の価値は「ストレージのファイル削除」と「スケジュール自動最適化」に集約。
-    // それ以外（メモリ最適化提案・診断・ローカルAI相談・言語切替）は全て Free で無制限。
-    // （有料APIモードは廃止済み。以前の「AI提案 週3回」制限は funnel を損ねるため撤廃）
+    // Free は「現在の実測・手動整理・ローカルAI」を無制限で提供する。
+    // Pro の価値は「自動化（スケジュール/自動ガード）」と
+    // 「時間軸（履歴・トレンド・詳細レポート）」に集約する。
 
     /// ストレージのファイル削除は Free でも可能（Finderで手動でもできる＝壁にする意味が薄く funnel を損ねる）。
     /// Pro の価値は「自動化（スケジュール/自動ガード）」と「時間軸（履歴・トレンド・詳細レポート）」に集約。
@@ -96,8 +89,8 @@ final class LicenseManager: ObservableObject {
     /// 基本診断（9項目の健康チェック・スコア・事実）は全ユーザー無制限＝無料の入口
     var canUseDiagnosis: Bool { true }
 
-    /// AIで原因を深掘り・相談する = Pro（"助言価値"。基本診断の事実は無料、AIの解釈・対話はPro）
-    var canUseAIChat: Bool { currentTier.isPro }
+    /// ローカル/オンデバイスAI相談は全ユーザー無制限（外部API課金なし）
+    var canUseAIChat: Bool { true }
 
     /// メモリ最適化提案は全ユーザー無制限（実測ベースの提案は無料の主役）
     var canUseAISuggestions: Bool { true }
@@ -107,10 +100,7 @@ final class LicenseManager: ObservableObject {
 
     // MARK: - Persistence Keys
     private let tierKey = "license_tier"
-    private let promoCodeKey = "activated_promo_code"
     private let licenseKeyKey = "activated_license_key"
-    private let weeklyCountKey = "weekly_ai_count"
-    private let weekStartKey = "weekly_ai_week_start"
     // オンライン購読検証（月額の「毎月キー貼り直し」を不要にするための猶予管理）
     private let subscriptionValidUntilKey = "subscription_valid_until"
     private let lastValidatedKey = "subscription_last_validated"
@@ -119,19 +109,9 @@ final class LicenseManager: ObservableObject {
     /// オンライン検証が成功したら付与する猶予。この期間内に再検証できれば Pro は途切れない。
     private let validationGraceSec: TimeInterval = 40 * 24 * 60 * 60
 
-    // MARK: - Valid Promo Codes
-    // In production, these would be server-validated. For now, local codes.
-    private let validPromoCodes: [String: LicenseTier] = [
-        "AIMAC-FRIENDS-2026": .proLifetime,    // 身内用：永久Pro
-        "AIMAC-TEAM-PRO": .proLifetime,         // チームメンバー用
-        "AIMAC-BETA-TESTER": .pro,              // ベータテスター用（Pro）
-        "AIMAC-LAUNCH-SPECIAL": .proLifetime,   // ローンチキャンペーン
-    ]
-
     // MARK: - Init
     private init() {
         loadState()
-        resetWeeklyCountIfNeeded()
         // 起動時に購読状態をオンライン確認（月額を自動維持）。URL 未設定なら即 return で無コスト。
         Task { await refreshSubscriptionValidationIfNeeded() }
     }
@@ -139,7 +119,7 @@ final class LicenseManager: ObservableObject {
     // MARK: - State Management
     private func loadState() {
         // tier は保存された license_tier 文字列を鵜呑みにせず、保存済みの
-        // 署名キー/プロモコードを毎回再検証して導出する。
+        // 署名キーを毎回再検証して導出する。クライアント内の固定コードでは昇格させない。
         // （tier 文字列を信用すると `defaults write <bundleID> license_tier pro_lifetime`
         //   だけで永久Pro化できてしまうため。署名検証はオフラインで偽造不可）
         let storedKey = UserDefaults.standard.string(forKey: licenseKeyKey)
@@ -152,18 +132,13 @@ final class LicenseManager: ObservableObject {
             }
         }
         if derived == .free,
-           let code = UserDefaults.standard.string(forKey: promoCodeKey),
-           let tier = validPromoCodes[code] {
-            derived = tier
-        } else if derived == .free,
-                  let key = storedKey, invalidatedKey != key,
-                  let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
-                  until > Date() {
+           let key = storedKey, invalidatedKey != key,
+           let until = UserDefaults.standard.object(forKey: subscriptionValidUntilKey) as? Date,
+           until > Date() {
             // 署名キーはオフライン期限切れだが、オンライン検証で購読が有効と確認できている（月額の自動維持）
             derived = .pro
         }
         currentTier = derived
-        weeklyAISuggestionsUsed = UserDefaults.standard.integer(forKey: weeklyCountKey)
     }
 
     // MARK: - Online Subscription Validation
@@ -216,32 +191,6 @@ final class LicenseManager: ObservableObject {
 
     private func saveState() {
         UserDefaults.standard.set(currentTier.rawValue, forKey: tierKey)
-        UserDefaults.standard.set(weeklyAISuggestionsUsed, forKey: weeklyCountKey)
-    }
-
-    /// Reset weekly counter if a new week has started
-    private func resetWeeklyCountIfNeeded() {
-        let calendar = Calendar.current
-        let now = Date()
-        if let weekStartData = UserDefaults.standard.object(forKey: weekStartKey) as? Date {
-            let weekStart = calendar.dateInterval(of: .weekOfYear, for: weekStartData)?.start ?? weekStartData
-            let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
-            if currentWeekStart > weekStart {
-                weeklyAISuggestionsUsed = 0
-                UserDefaults.standard.set(now, forKey: weekStartKey)
-                saveState()
-            }
-        } else {
-            UserDefaults.standard.set(now, forKey: weekStartKey)
-        }
-    }
-
-    // MARK: - AI Suggestion Tracking
-    /// Record that the user used an AI suggestion session
-    func recordAISuggestionUse() {
-        guard !currentTier.isPro else { return }
-        weeklyAISuggestionsUsed += 1
-        saveState()
     }
 
     // MARK: - Purchase Flow
@@ -376,49 +325,9 @@ final class LicenseManager: ObservableObject {
         Task { await refreshSubscriptionValidationIfNeeded(force: true) }
     }
 
-    // MARK: - Promo Code Activation
-    func activatePromoCode() {
-        let code = promoCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-
-        guard !code.isEmpty else {
-            promoCodeMessage = "コードを入力してください"
-            promoCodeSuccess = false
-            return
-        }
-
-        // Check if already activated
-        if let existingCode = UserDefaults.standard.string(forKey: promoCodeKey),
-           existingCode == code {
-            promoCodeMessage = "このコードは既に適用済みです"
-            promoCodeSuccess = false
-            return
-        }
-
-        // Validate code
-        if let tier = validPromoCodes[code] {
-            currentTier = tier
-            UserDefaults.standard.set(code, forKey: promoCodeKey)
-            saveState()
-            promoCodeMessage = "\(tier.displayName) にアップグレードしました！"
-            promoCodeSuccess = true
-            promoCodeInput = ""
-        } else {
-            promoCodeMessage = "無効なプロモコードです"
-            promoCodeSuccess = false
-        }
-    }
-
-    // MARK: - Manual Tier Override (for testing)
-    func setTier(_ tier: LicenseTier) {
-        currentTier = tier
-        saveState()
-    }
-
     /// Reset to free tier
     func resetLicense() {
         currentTier = .free
-        weeklyAISuggestionsUsed = 0
-        UserDefaults.standard.removeObject(forKey: promoCodeKey)
         UserDefaults.standard.removeObject(forKey: licenseKeyKey)
         UserDefaults.standard.removeObject(forKey: subscriptionValidUntilKey)
         UserDefaults.standard.removeObject(forKey: lastValidatedKey)

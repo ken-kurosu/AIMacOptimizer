@@ -389,7 +389,7 @@ final class DeepDiagnosisEngine: ObservableObject {
                 // ⚠️ CoreSimulator は「単なるキャッシュ」ではない。配下には Simulator 内アプリ・
                 // ログイン状態・開発中データが含まれ、フォルダ全体を一括削除すると失われる。
                 // よって「全て修復」の自動削除対象にはせず（isAutoFixable: false）、案内のみに留める。
-                let isSimulator = path.contains("CoreSimulator")
+                let isSimulator = DiagnosisBulkRepairPolicy.requiresManualHandling(path: path)
                 findings.append(DiagnosisFinding(
                     category: .disk, severity: sizeMB > 5000 ? .warning : .info,
                     title: "\(name) が \(sizeStr) を使用",

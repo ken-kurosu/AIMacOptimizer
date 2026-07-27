@@ -486,6 +486,7 @@ final class MemoryOptimizer {
         var quitApps: [String] = []
         var purged = false
         var freedDiskMB: Double = 0
+        var anySucceeded = false
 
         // 実際に解放されたメモリを測るため、実行前の空きを記録
         let freeBefore = currentFreeMemoryMB()
@@ -497,6 +498,7 @@ final class MemoryOptimizer {
             // キャッシュ/一時ファイル等が空けたディスク容量を実測ベースで積算
             freedDiskMB += outcome.freedDiskMB
             if outcome.succeeded {
+                anySucceeded = true
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
@@ -532,13 +534,23 @@ final class MemoryOptimizer {
         //  報告値とゲージの動きが一致する）。負やノイズは0に丸める。
         let freedMB = max(0, freeAfter - freeBefore)
 
-        return OptimizationResult(
+        let result = OptimizationResult(
             freedMB: freedMB,
             freedDiskMB: freedDiskMB,
             closedTabs: closedTabs,
             quitApps: quitApps,
             purged: purged
         )
+        if !suggestions.isEmpty {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "one_click",
+                action: suggestions.map { $0.type.rawValue }.joined(separator: " / "),
+                succeeded: anySucceeded,
+                freedDiskMB: freedDiskMB,
+                freedMemoryMB: freedMB
+            )
+        }
+        return result
     }
 
     /// 現在の空きメモリ(MB)。最適化前後の差分で実解放量を測るのに使う。

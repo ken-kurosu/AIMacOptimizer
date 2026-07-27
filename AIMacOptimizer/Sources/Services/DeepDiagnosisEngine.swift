@@ -12,9 +12,14 @@ final class DeepDiagnosisEngine: ObservableObject {
 
     private let processMonitor: ProcessMonitor
     private let optimizer = MemoryOptimizer()
+    private let persistedReportKey = "deepDiagnosisLastReport"
 
     init(processMonitor: ProcessMonitor) {
         self.processMonitor = processMonitor
+        if let data = UserDefaults.standard.data(forKey: persistedReportKey),
+           let report = try? JSONDecoder().decode(DiagnosisReport.self, from: data) {
+            self.lastReport = report
+        }
     }
 
     /// Run all 9 diagnosis engines and produce a report
@@ -56,6 +61,10 @@ final class DeepDiagnosisEngine: ObservableObject {
         )
 
         lastReport = report
+        if let data = try? JSONEncoder().encode(report) {
+            UserDefaults.standard.set(data, forKey: persistedReportKey)
+        }
+        OptimizationAuditStore.shared.recordDiagnosis(report)
         isRunning = false
         currentStep = ""
         return report
@@ -73,11 +82,18 @@ final class DeepDiagnosisEngine: ObservableObject {
     /// Execute a fix action for a specific finding
     /// Returns a human-readable result message
     func executeFix(for finding: DiagnosisFinding) async -> String {
+        func audited(_ message: String, succeeded: Bool, freedDiskMB: Double = 0) -> String {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "diagnosis", action: finding.title,
+                succeeded: succeeded, freedDiskMB: freedDiskMB
+            )
+            return message
+        }
         switch finding.fixAction {
         case .purgeRAM:
             // purge は管理者権限が無いと必ず失敗し、効果も空きメモリ指標にほぼ反映されないため実行しない。
             // 実測で効果の出る操作へ誘導する。
-            return "メモリタブから、使っていないアプリやタブを終了してください（解放量は実測で表示されます）。"
+            return audited("メモリタブから、使っていないアプリやタブを終了してください（解放量は実測で表示されます）。", succeeded: false)
 
         case .quitApp:
             let appName = finding.fixTarget
@@ -85,19 +101,19 @@ final class DeepDiagnosisEngine: ObservableObject {
             if let pidStr = finding.rawData["pid"], let pid = Int32(pidStr) {
                 if let app = NSRunningApplication(processIdentifier: pid) {
                     let ok = app.terminate()
-                    return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+                    return audited(ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: ok)
                 }
                 let ok = kill(pid, SIGTERM) == 0
-                return ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+                return audited(ok ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: ok)
             }
             let success = optimizer.quitApp(name: appName)
-            return success ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。"
+            return audited(success ? "\(appName) を終了しました。" : "\(appName) の終了に失敗しました。手動で終了してください。", succeeded: success)
 
         case .clearCache:
             let path = finding.fixTarget
             // フォント関連のキャッシュディレクトリ自体は触らない（表示崩れ防止）
             if isFontProtected(path) {
-                return "フォント関連のため安全のためスキップしました。"
+                return audited("フォント関連のため安全のためスキップしました。", succeeded: false)
             }
             let sizeBefore = optimizer.getDirectorySizeMB(path)
             let fm = FileManager.default
@@ -111,7 +127,7 @@ final class DeepDiagnosisEngine: ObservableObject {
             let sizeAfter = optimizer.getDirectorySizeMB(path)
             let freed = max(0, sizeBefore - sizeAfter)
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
-            return "キャッシュを削除しました。約 \(freedStr) 解放。"
+            return audited("キャッシュを削除しました。約 \(freedStr) 解放。", succeeded: freed > 0, freedDiskMB: freed)
 
         case .clearDerivedData:
             let path = finding.fixTarget.isEmpty
@@ -126,7 +142,7 @@ final class DeepDiagnosisEngine: ObservableObject {
             }
             let freed = max(0, sizeBefore - optimizer.getDirectorySizeMB(path))
             let freedStr = freed >= 1024 ? String(format: "%.1f GB", freed / 1024) : String(format: "%.0f MB", freed)
-            return "DerivedDataを削除しました。約 \(freedStr) 解放。次回ビルド時に再生成されます。"
+            return audited("DerivedDataを削除しました。約 \(freedStr) 解放。次回ビルド時に再生成されます。", succeeded: freed > 0, freedDiskMB: freed)
 
         case .clearBrowserCache:
             let caches = optimizer.getBrowserCacheInfo()
@@ -135,23 +151,23 @@ final class DeepDiagnosisEngine: ObservableObject {
                 totalFreed += optimizer.clearBrowserCache(paths: cache.paths)
             }
             let freedStr = totalFreed >= 1024 ? String(format: "%.1f GB", totalFreed / 1024) : String(format: "%.0f MB", totalFreed)
-            return "ブラウザキャッシュを削除しました。約 \(freedStr) 解放。"
+            return audited("ブラウザキャッシュを削除しました。約 \(freedStr) 解放。", succeeded: totalFreed > 0, freedDiskMB: totalFreed)
 
         case .flushDNS:
             let success = await optimizer.flushDNSCache()
-            return success ? "DNSキャッシュをフラッシュしました。" : "DNSフラッシュに失敗しました。"
+            return audited(success ? "DNSキャッシュをフラッシュしました。" : "DNSフラッシュに失敗しました。", succeeded: success)
 
         case .openSystemSettings:
             let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!
-            NSWorkspace.shared.open(url)
-            return "システム設定（ログイン項目）を開きました。"
+            let opened = NSWorkspace.shared.open(url)
+            return audited("システム設定（ログイン項目）を開きました。", succeeded: opened)
 
         case .openFontBook:
-            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Font Book.app"))
-            return "Font Bookを開きました。「すべてのフォントを復元」を実行してください。"
+            let opened = NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Font Book.app"))
+            return audited("Font Bookを開きました。「すべてのフォントを復元」を実行してください。", succeeded: opened)
 
         case .none:
-            return "この項目には自動修復がありません。AIチャットで詳しい対処法を相談できます。"
+            return audited("この項目には自動修復がありません。AIチャットで詳しい対処法を相談できます。", succeeded: false)
         }
     }
 
@@ -168,7 +184,7 @@ final class DeepDiagnosisEngine: ObservableObject {
         var messages: [String] = []
         for finding in safe {
             messages.append(await executeFix(for: finding))
-            fixed += 1
+            if OptimizationAuditStore.shared.lastExecution?.succeeded == true { fixed += 1 }
         }
         if !risky.isEmpty {
             messages.append("リスクのある操作 \(risky.count) 件（アプリ/プロセスの終了）は自動実行していません。下で内容を確認し、個別に承認してください。")

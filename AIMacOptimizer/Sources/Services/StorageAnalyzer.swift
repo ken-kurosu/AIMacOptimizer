@@ -72,6 +72,15 @@ final class StorageAnalyzer: ObservableObject {
             .sorted(by: >)
     }
 
+    /// 週次レポート用。キャッシュ限定ではなく、通常スキャンと同じ範囲の大物を返す。
+    func findReportItems() -> [StorageItem] {
+        let scanned = scanCaches() + scanLogs() + scanInstallers() + scanLargeFiles()
+            + scanDeveloperBigConsumers() + scanNodeModules()
+        var uniqueByPath: [String: StorageItem] = [:]
+        for item in scanned { uniqueByPath[item.path] = item }
+        return uniqueByPath.values.sorted(by: >)
+    }
+
     // MARK: - Cache Scanning
 
     private func scanCaches() -> [StorageItem] {
@@ -334,15 +343,26 @@ final class StorageAnalyzer: ObservableObject {
     func clearCacheMeasuringFreed(_ item: StorageItem) -> Double {
         let freeBefore = DiskSize.volumeFreeBytes()
         let sizeBefore = DiskSize.allocatedMB(atPath: item.path)
-        guard clearCache(item) else { return 0 }
+        guard clearCache(item) else {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "storage", action: item.name, succeeded: false
+            )
+            return 0
+        }
         let freeAfter = DiskSize.volumeFreeBytes()
         let freedByVolumeMB = Double(freeAfter - freeBefore) / (1024 * 1024)
+        let freed: Double
         if freedByVolumeMB > 0 {
-            return freedByVolumeMB
+            freed = freedByVolumeMB
+        } else {
+            // フォールバック: 削除前後の物理占有量の差（スナップショット等で空きが即増えない場合）
+            let sizeAfter = DiskSize.allocatedMB(atPath: item.path)
+            freed = max(0, sizeBefore - sizeAfter)
         }
-        // フォールバック: 削除前後の物理占有量の差（スナップショット等で空きが即増えない場合）
-        let sizeAfter = DiskSize.allocatedMB(atPath: item.path)
-        return max(0, sizeBefore - sizeAfter)
+        OptimizationAuditStore.shared.recordExecution(
+            source: "storage", action: item.name, succeeded: freed > 0, freedDiskMB: freed
+        )
+        return freed
     }
 
     /// Move an item to Trash (requires user confirmation)
@@ -421,7 +441,9 @@ final class StorageAnalyzer: ObservableObject {
 
     /// Clear only selected sub-items within a cache/log directory
     /// ⚠️ Skips font-related files to prevent browser font rendering issues
-    func clearSelectedSubItems(_ subItems: [StorageSubItem]) -> (success: Int, failed: Int) {
+    func clearSelectedSubItems(_ subItems: [StorageSubItem]) -> (success: Int, failed: Int, freedMB: Double) {
+        let freeBefore = DiskSize.volumeFreeBytes()
+        let sizeBefore = subItems.reduce(0.0) { $0 + DiskSize.allocatedMB(atPath: $1.path) }
         var success = 0
         var failed = 0
         for subItem in subItems {
@@ -455,7 +477,17 @@ final class StorageAnalyzer: ObservableObject {
                 }
             }
         }
-        return (success, failed)
+        let freeAfter = DiskSize.volumeFreeBytes()
+        let volumeDelta = Double(freeAfter - freeBefore) / (1024 * 1024)
+        let sizeAfter = subItems.reduce(0.0) { $0 + DiskSize.allocatedMB(atPath: $1.path) }
+        let freed = volumeDelta > 0 ? volumeDelta : max(0, sizeBefore - sizeAfter)
+        OptimizationAuditStore.shared.recordExecution(
+            source: "storage",
+            action: subItems.map(\.name).joined(separator: " / "),
+            succeeded: success > 0,
+            freedDiskMB: freed
+        )
+        return (success, failed, freed)
     }
 
     // MARK: - iCloud Drive のローカル退避（evict：クラウドに残しローカルだけ空ける・安全）
@@ -474,9 +506,19 @@ final class StorageAnalyzer: ObservableObject {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/brctl")
         p.arguments = ["evict", path]
-        do { try p.run(); p.waitUntilExit() } catch { return 0 }
+        do { try p.run(); p.waitUntilExit() } catch {
+            OptimizationAuditStore.shared.recordExecution(
+                source: "storage", action: "iCloudローカル退避", succeeded: false
+            )
+            return 0
+        }
         let after = getStorageInfo().freeGB
-        return max(0, (after - before) * 1000) // GB差→MB概算
+        let freed = max(0, (after - before) * 1000) // GB差→MB概算
+        OptimizationAuditStore.shared.recordExecution(
+            source: "storage", action: "iCloudローカル退避",
+            succeeded: p.terminationStatus == 0, freedDiskMB: freed
+        )
+        return freed
     }
 
     // MARK: - node_modules 横断検出（再生成可・満杯の主犯になりがち。削除は無料）

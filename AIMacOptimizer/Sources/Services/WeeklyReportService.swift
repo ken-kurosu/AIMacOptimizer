@@ -11,7 +11,7 @@ final class WeeklyReportService {
     static let shared = WeeklyReportService()
 
     /// 生成済みレポート（アプリ内表示・通知の両方に使う）
-    struct Summary: Sendable {
+    struct Summary: Sendable, Codable {
         var title: String
         var subtitle: String
         var notificationBody: String
@@ -22,6 +22,7 @@ final class WeeklyReportService {
     private let defaults = UserDefaults.standard
     private let enabledKey = "weeklyReportEnabled"
     private let lastSentKey = "weeklyReportLastSent"
+    private let persistedReportKey = "weeklyReportLastSummary"
     private let intervalSec: TimeInterval = 7 * 24 * 60 * 60
 
     private(set) var lastReport: Summary?
@@ -30,6 +31,10 @@ final class WeeklyReportService {
     private init() {
         if defaults.object(forKey: enabledKey) == nil {
             defaults.set(true, forKey: enabledKey)
+        }
+        if let data = defaults.data(forKey: persistedReportKey),
+           let report = try? JSONDecoder().decode(Summary.self, from: data) {
+            lastReport = report
         }
     }
 
@@ -55,6 +60,7 @@ final class WeeklyReportService {
     func generateNow() async -> Summary {
         let s = await buildReport()
         lastReport = s
+        persist(s)
         NotificationService.shared.sendReport(title: s.title, body: s.notificationBody, subtitle: s.subtitle)
         return s
     }
@@ -65,6 +71,7 @@ final class WeeklyReportService {
         defer { isBuilding = false }
         let s = await buildReport()
         lastReport = s
+        persist(s)
         defaults.set(Date(), forKey: lastSentKey)
         NotificationService.shared.sendReport(title: s.title, body: s.notificationBody, subtitle: s.subtitle)
     }
@@ -72,9 +79,9 @@ final class WeeklyReportService {
     // MARK: - Report building
 
     private func buildReport() async -> Summary {
-        // 大きい整理候補 Top3（安全に整理できるキャッシュ/ログのみ）。ファイル I/O はバックグラウンドへ。
+        // 通常のストレージ診断と同じ範囲から大物Top3を抽出（キャッシュ限定ではない）。
         let top: [(name: String, sizeMB: Double)] = await Task.detached(priority: .utility) {
-            StorageAnalyzer().findSafeCleanupItems()
+            StorageAnalyzer().findReportItems()
                 .prefix(3)
                 .map { (name: $0.name, sizeMB: $0.sizeMB) }
         }.value
@@ -82,19 +89,27 @@ final class WeeklyReportService {
         // 現在の空き容量（10進・Finder 準拠）
         let storage = StorageAnalyzer().getStorageInfo()
 
-        // 直近7日のトレンド（HealthHistory を再利用）
-        let recent = HealthHistory.shared.recent(hours: 24 * 7)
-        let avgMem = recent.isEmpty ? 0 : recent.map { $0.memUsedPercent }.reduce(0, +) / Double(recent.count)
-        let avgSwap = recent.isEmpty ? 0 : recent.map { $0.swapMB }.reduce(0, +) / Double(recent.count)
+        // 当週(-7〜0日)と実際の前週(-14〜-7日)を分離して比較する。
+        let now = Date()
+        let currentStart = now.addingTimeInterval(-7 * 86400)
+        let previousStart = now.addingTimeInterval(-14 * 86400)
+        let history = HealthHistory.shared.snapshots
+        let recent = history.filter { $0.date >= currentStart && $0.date <= now }
+        let previous = history.filter { $0.date >= previousStart && $0.date < currentStart }
+        let avgMem = average(recent.map(\.memUsedPercent))
+        let avgSwap = average(recent.map(\.swapMB))
 
         // ① 方向性（先週比 良化/悪化）と ② 予測（このままだと何日で危険域か）
-        var direction = "横ばい"
+        var direction = "比較データ不足"
         var freeDeltaPt = 0.0
         var predictionText: String?
-        if recent.count >= 2, let first = recent.first, let last = recent.last {
-            freeDeltaPt = last.diskFreePercent - first.diskFreePercent
+        if !recent.isEmpty, !previous.isEmpty {
+            freeDeltaPt = average(recent.map(\.diskFreePercent)) - average(previous.map(\.diskFreePercent))
+            direction = "横ばい"
             if freeDeltaPt >= 1 { direction = String(format: "改善（空き +%.0fpt）", freeDeltaPt) }
             else if freeDeltaPt <= -1 { direction = String(format: "悪化（空き −%.0fpt）", -freeDeltaPt) }
+        }
+        if recent.count >= 2, let first = recent.first, let last = recent.last {
             let daysSpan = last.date.timeIntervalSince(first.date) / 86400
             let dailyDrop = daysSpan >= 1.5 ? (first.diskFreePercent - last.diskFreePercent) / daysSpan : 0
             if dailyDrop > 0.05 {
@@ -123,19 +138,24 @@ final class WeeklyReportService {
         lines.append(String(format: "空き: %@ / %@（使用 %.0f%%）",
                             storage.freeFormatted, storage.totalFormatted, storage.usagePercent))
         if let pred = predictionText { lines.append("⚠️ " + pred) }
-        if let t = top.first { lines.append("最も容量を食っている: \(t.name)（\(fmt(t.sizeMB))）") }
+        if let t = top.first { lines.append("診断範囲で最大: \(t.name)（\(fmt(t.sizeMB))）") }
         if top.count > 1 {
             lines.append("次点: " + top.dropFirst().map { "\($0.name) \(fmt($0.sizeMB))" }.joined(separator: " / "))
         }
         if !recent.isEmpty {
             lines.append(String(format: "負荷の傾向: メモリ平均 %.0f%% ・ Swap平均 %@", avgMem, fmt(avgSwap)))
         }
+        let cumulative = OptimizationAuditStore.shared.cumulativeFreedDiskMB
+        lines.append("これまでの実測解放: \(fmt(cumulative))")
+        if let recurrence = OptimizationAuditStore.shared.recentRecurrences.first {
+            lines.append("再発: \(recurrence.title)（前回から\(recurrence.days)日）")
+        }
         lines.append("今週の一手: \(advice)")
 
         // 通知は要点だけに凝縮。Free は「予告編」（犯人＋予測＋助言＋Pro誘導）、Pro は推移も含むフル。
         let isPro = LicenseManager.shared.canViewFullReport
         var body = ""
-        if let t = top.first { body = "最も容量を食っているのは \(t.name)（\(fmt(t.sizeMB))）。" }
+        if let t = top.first { body = "今回の診断範囲で最大なのは \(t.name)（\(fmt(t.sizeMB))）。" }
         if isPro {
             if let pred = predictionText { body += pred + "。" }
             else if freeDeltaPt != 0 { body += "先週比 \(direction)。" }
@@ -174,5 +194,14 @@ final class WeeklyReportService {
 
     private func fmt(_ mb: Double) -> String {
         mb >= 1024 ? String(format: "%.1fGB", mb / 1024) : String(format: "%.0fMB", mb)
+    }
+
+    private func average(_ values: [Double]) -> Double {
+        values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
+    }
+
+    private func persist(_ report: Summary) {
+        guard let data = try? JSONEncoder().encode(report) else { return }
+        defaults.set(data, forKey: persistedReportKey)
     }
 }

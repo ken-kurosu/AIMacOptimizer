@@ -116,7 +116,7 @@ final class ScheduleManager: ObservableObject {
             print("Skipping auto-optimization: memory usage \(Int(snap.memory.usagePercent))% < threshold \(Int(configuredThreshold))%")
             return
         }
-        guard snap.memory.pressureLevel != .green, snap.memory.hasRecentSwapActivity else {
+        guard MemoryPressurePolicy.shouldAct(memory: snap.memory, usageThreshold: configuredThreshold) else {
             print("Skipping auto-optimization: memory pressure is green or no current swap activity")
             return
         }

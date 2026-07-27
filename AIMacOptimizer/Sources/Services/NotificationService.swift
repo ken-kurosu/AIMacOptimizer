@@ -97,9 +97,7 @@ class NotificationService {
     
     private func checkMemoryAlert(memory: SystemMemoryInfo, threshold: Double) {
         // 高使用率だけでは通知しない。黄/赤の圧迫と直近のswap入出力が揃った場合だけ通知する。
-        guard memory.usagePercent >= threshold,
-              memory.pressureLevel != .green,
-              memory.hasRecentSwapActivity else { return }
+        guard MemoryPressurePolicy.shouldAct(memory: memory, usageThreshold: threshold) else { return }
         
         if shouldSendNotification(type: "memory") {
             let title = L10n.notifyMemoryTitle

@@ -2183,6 +2183,17 @@ final class PopoverViewModel: ObservableObject {
         let toExecute = suggestions.filter { $0.detailItems.isEmpty || $0.detailItems.contains(where: \.isSelected) }
         let executedTypes = Set(toExecute.map(\.type))
 
+        // 手動で選ばれたアプリを学習対象として確実に作成してから、受諾履歴を記録する。
+        // 自動実行の eligibility が timesOptimized を見るため、ここが無いと新規ユーザーは
+        // 最初の自動実行条件を永久に満たせない。
+        let manuallyOptimizedApps = Set(toExecute.flatMap { suggestion -> [String] in
+            guard suggestion.type == .quitApp || suggestion.type == .restartApp else { return [] }
+            return suggestion.detailItems.filter(\.isSelected).map {
+                $0.name.replacingOccurrences(of: " のメモリ使用量", with: "")
+            }
+        })
+        PatternLearner.shared.recordSnapshot(processes: processes)
+
         // 実況ステップを先に並べる（すべて未完了）。実行に合わせて1件ずつチェックが付く。
         steps = toExecute.map { OptStep(label: Self.stepLabel(for: $0)) }
 
@@ -2190,6 +2201,10 @@ final class PopoverViewModel: ObservableObject {
         lastResult = await optimizer.executeOptimizations(toExecute) { [weak self] index, done in
             guard let self, done, index < self.steps.count else { return }
             withAnimation(.easeInOut(duration: 0.2)) { self.steps[index].done = true }
+        }
+
+        for appName in manuallyOptimizedApps {
+            PatternLearner.shared.recordOptimized(appName: appName)
         }
 
         // Mark executed types as recently optimized

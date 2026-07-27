@@ -16,6 +16,7 @@ final class ScheduleManager: ObservableObject {
     private let procSource = ProcessMonitor()
     private let optimizer = MemoryOptimizer()
     private let scheduleKey = "ai_mac_optimizer_schedule"
+    private let autoOptimizeThresholdKey = "autoOptimizeThreshold"
 
     private init() {
         // Load saved schedule
@@ -104,10 +105,20 @@ final class ScheduleManager: ObservableObject {
             }
         }
 
-        await MainActor.run { isAutoRunning = true }
-
         // ワンショットで現在のプロセス/メモリを取得（パネル非表示中でも動くよう監視ループには依存しない）
         let snap = procSource.fetchOnce()
+
+        // 設定画面のしきい値を実際の発火条件として使用する。
+        // AppStorage の既定値と同じ90%を、未保存時のフォールバックにする。
+        let configuredThreshold = UserDefaults.standard.object(forKey: autoOptimizeThresholdKey)
+            .map { ($0 as? NSNumber)?.doubleValue ?? 90 } ?? 90
+        guard snap.memory.usagePercent >= configuredThreshold else {
+            print("Skipping auto-optimization: memory usage \(Int(snap.memory.usagePercent))% < threshold \(Int(configuredThreshold))%")
+            return
+        }
+
+        await MainActor.run { isAutoRunning = true }
+
         // 学習ベースの提案（profiles 読み取りはメインで、データ競合を避ける）
         let suggestions = await MainActor.run {
             learner.getSmartSuggestions(processes: snap.processes, systemMemory: snap.memory)

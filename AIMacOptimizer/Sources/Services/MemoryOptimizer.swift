@@ -15,6 +15,13 @@ final class MemoryOptimizer {
         let purged: Bool
     }
 
+    /// ブラウザ単位のキャッシュ情報。表示に合算した全パスを削除時にも保持する。
+    struct BrowserCacheInfo {
+        let browser: String
+        let paths: [String]
+        let sizeMB: Double
+    }
+
     // MARK: - App Management
 
     /// Quit a running application by name
@@ -268,9 +275,9 @@ final class MemoryOptimizer {
     // MARK: - Browser Cache Analysis
 
     /// Get browser cache sizes
-    func getBrowserCacheInfo() -> [(browser: String, path: String, sizeMB: Double)] {
+    func getBrowserCacheInfo() -> [BrowserCacheInfo] {
         let home = NSHomeDirectory()
-        var caches: [(browser: String, path: String, sizeMB: Double)] = []
+        var caches: [BrowserCacheInfo] = []
 
         // Chrome cache
         let chromeCachePaths = [
@@ -283,7 +290,11 @@ final class MemoryOptimizer {
             chromeTotal += getDirectorySizeMB(path)
         }
         if chromeTotal > 50 {
-            caches.append(("Google Chrome キャッシュ", chromeCachePaths[0], chromeTotal))
+            caches.append(BrowserCacheInfo(
+                browser: "Google Chrome キャッシュ",
+                paths: chromeCachePaths,
+                sizeMB: chromeTotal
+            ))
         }
 
         // Safari cache
@@ -296,36 +307,50 @@ final class MemoryOptimizer {
             safariTotal += getDirectorySizeMB(path)
         }
         if safariTotal > 30 {
-            caches.append(("Safari キャッシュ", safariCachePaths[0], safariTotal))
+            caches.append(BrowserCacheInfo(
+                browser: "Safari キャッシュ",
+                paths: safariCachePaths,
+                sizeMB: safariTotal
+            ))
         }
 
         // Firefox cache
         let firefoxCache = "\(home)/Library/Caches/Firefox/Profiles"
         let firefoxSize = getDirectorySizeMB(firefoxCache)
         if firefoxSize > 50 {
-            caches.append(("Firefox キャッシュ", firefoxCache, firefoxSize))
+            caches.append(BrowserCacheInfo(
+                browser: "Firefox キャッシュ",
+                paths: [firefoxCache],
+                sizeMB: firefoxSize
+            ))
         }
 
         // Arc cache
         let arcCache = "\(home)/Library/Caches/company.thebrowser.Browser"
         let arcSize = getDirectorySizeMB(arcCache)
         if arcSize > 50 {
-            caches.append(("Arc キャッシュ", arcCache, arcSize))
+            caches.append(BrowserCacheInfo(
+                browser: "Arc キャッシュ",
+                paths: [arcCache],
+                sizeMB: arcSize
+            ))
         }
 
         return caches.sorted { $0.sizeMB > $1.sizeMB }
     }
 
-    /// Clear a specific browser cache directory
-    func clearBrowserCache(path: String) -> Double {
-        let sizeBefore = getDirectorySizeMB(path)
-        if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
-            for file in contents {
-                try? fileManager.removeItem(atPath: "\(path)/\(file)")
+    /// 表示時に合算した全ディレクトリを削除し、実際に減った物理サイズだけを返す。
+    func clearBrowserCache(paths: [String]) -> Double {
+        let sizeBefore = paths.reduce(0.0) { $0 + getDirectorySizeMB($1) }
+        for path in paths {
+            if let contents = try? fileManager.contentsOfDirectory(atPath: path) {
+                for file in contents {
+                    try? fileManager.removeItem(atPath: "\(path)/\(file)")
+                }
             }
         }
-        // 実際に減った分だけを返す
-        return max(0, sizeBefore - getDirectorySizeMB(path))
+        let sizeAfter = paths.reduce(0.0) { $0 + getDirectorySizeMB($1) }
+        return max(0, sizeBefore - sizeAfter)
     }
 
     // MARK: - Safari Tab Analysis

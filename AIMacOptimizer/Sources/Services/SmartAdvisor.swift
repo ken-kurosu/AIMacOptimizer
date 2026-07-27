@@ -176,9 +176,9 @@ final class SmartAdvisor {
             let cacheDetails = browserCaches.map { cache -> SuggestionDetailItem in
                 SuggestionDetailItem(
                     name: cache.browser,
-                    detail: "キャッシュ \(String(format: "%.0f MB", cache.sizeMB))。削除してもブックマーク・パスワード・履歴には影響しません。安全に削除できます",
+                    detail: "キャッシュ \(String(format: "%.0f MB", cache.sizeMB))。削除は取り消せませんが自動再構築され、ブックマーク・パスワード・履歴には影響しません",
                     sizeMB: cache.sizeMB,
-                    isSelected: cache.sizeMB > 200,
+                    isSelected: false,
                     isRecommended: cache.sizeMB > 200
                 )
             }
@@ -194,7 +194,7 @@ final class SmartAdvisor {
                     let targets = zip(browserCaches, selected).filter { $0.1.isSelected }.map { $0.0 }
                     var totalFreed: Double = 0
                     for cache in targets {
-                        totalFreed += self.optimizer.clearBrowserCache(path: cache.path)
+                        totalFreed += self.optimizer.clearBrowserCache(paths: cache.paths)
                     }
                     // キャッシュ削除はディスクを空ける（RAMではない）
                     return ActionOutcome(succeeded: totalFreed > 0, freedDiskMB: totalFreed)

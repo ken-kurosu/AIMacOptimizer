@@ -132,7 +132,7 @@ final class DeepDiagnosisEngine: ObservableObject {
             let caches = optimizer.getBrowserCacheInfo()
             var totalFreed: Double = 0
             for cache in caches {
-                totalFreed += optimizer.clearBrowserCache(path: cache.path)
+                totalFreed += optimizer.clearBrowserCache(paths: cache.paths)
             }
             let freedStr = totalFreed >= 1024 ? String(format: "%.1f GB", totalFreed / 1024) : String(format: "%.0f MB", totalFreed)
             return "ブラウザキャッシュを削除しました。約 \(freedStr) 解放。"

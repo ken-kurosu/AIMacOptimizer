@@ -578,16 +578,6 @@ final class MemoryOptimizer {
     }
 
     private func getItemSizeMB(_ path: String) -> Double {
-        var isDir: ObjCBool = false
-        guard fileManager.fileExists(atPath: path, isDirectory: &isDir) else { return 0 }
-        if isDir.boolValue {
-            return getDirectorySizeMB(path)
-        } else {
-            if let attrs = try? fileManager.attributesOfItem(atPath: path),
-               let size = attrs[.size] as? UInt64 {
-                return Double(size) / 1024 / 1024
-            }
-            return 0
-        }
+        DiskSize.allocatedMB(atPath: path)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// ディスクの「実占有量（物理割当サイズ）」を測る共通ユーティリティ。
 ///
@@ -53,6 +54,12 @@ enum DiskSize {
     /// ボリュームの空き容量（bytes）。削除の前後で差を取ると「実際に増えた空き容量」を測れる。
     /// APFSローカルスナップショットが残っている場合など、削除しても即座には増えないことがある点に注意。
     static func volumeFreeBytes(forPath path: String = NSHomeDirectory()) -> Int64 {
+        // URLResourceValues は同じ URL の容量値を短時間キャッシュし、削除直後でも
+        // 古い空き容量を返すことがある。前後差の実測では同期的な statfs を優先する。
+        var fileSystem = statfs()
+        if statfs(path, &fileSystem) == 0 {
+            return Int64(fileSystem.f_bavail) * Int64(fileSystem.f_bsize)
+        }
         let url = URL(fileURLWithPath: path)
         if let v = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
            let free = v.volumeAvailableCapacityForImportantUsage {

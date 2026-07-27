@@ -1,7 +1,7 @@
 # build16 LP・配布整合ハンドオフ
 
-確認日: 2026-07-27  
-対象LP: `aimacoptimizer/aimacoptimizer.github.io` の `index.html`  
+確認日: 2026-07-27
+対象LP: `aimacoptimizer/aimacoptimizer.github.io` の `index.html`
 対象アプリ: build16（2.1.13）
 
 ## 課金境界の正本

@@ -3,6 +3,12 @@
 macOS メニューバーから、メモリとストレージをAIで賢く最適化するアプリ。
 11種類のAI最適化エンジンが、あなたのMacをリアルタイムで分析・最適化します。
 
+## 公式サイト・ダウンロード
+
+- 🌐 公式サイト: https://aimacoptimizer.com
+- ⬇️ 無料ダウンロード（Apple公証済みDMG・警告なしで開けます / macOS 13+）: https://aimacoptimizer.com
+- 📝 お役立ちブログ「Mac相談室」: https://aimacoptimizer.com/blog/
+
 ## 機能（v2.0）
 
 **メモリ最適化（11種類のAI分析）**

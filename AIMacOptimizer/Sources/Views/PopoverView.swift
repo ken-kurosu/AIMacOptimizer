@@ -507,15 +507,24 @@ struct MemoryTabView: View {
             }
 
             if let result = viewModel.lastResult {
-                Text("✅ " + optimizeResultMessage(result))
-                    .font(.caption)
-                    .foregroundColor(.green)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                            withAnimation { viewModel.lastResult = nil }
-                        }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("✅ " + optimizeResultMessage(result))
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // 解放MBだけだと効果が見えにくいので「何が起きたか」を実測で併記
+                    if let detail = optimizeResultDetail(result) {
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                        withAnimation { viewModel.lastResult = nil }
+                    }
+                }
             }
 
             HStack {
@@ -563,10 +572,32 @@ struct MemoryTabView: View {
         if result.freedMB >= 1 { parts.append(L10n.memoryAmount(fmt(result.freedMB))) }
         if result.freedDiskMB >= 1 { parts.append(L10n.diskAmount(fmt(result.freedDiskMB))) }
         if parts.isEmpty {
+            // 何も解放・終了されず、圧迫もしていないなら「失敗」ではなく「良好」と正直に伝える
+            let nothingDone = result.quitAppCount == 0 && result.closedTabCount == 0
+            if nothingDone && monitor.systemMemory.pressureLevel == .green {
+                return L10n.optimizeHealthy
+            }
             // 実測の増分が誤差レベル（例: パージのみ）の場合は数値を断定しない
             return L10n.optimizeDone
         }
         return L10n.optimizeResult(parts.joined(separator: " ／ "))
+    }
+
+    /// 実行前後の実測から「何が起きたか」を1行にまとめる（意味のある項目だけ）。
+    private func optimizeResultDetail(_ result: MemoryOptimizer.OptimizationResult) -> String? {
+        func fmt(_ mb: Double) -> String {
+            mb >= 1024 ? String(format: "%.1f GB", mb / 1024) : String(format: "%.0f MB", mb)
+        }
+        var parts: [String] = []
+        let before = Int(result.usedPercentBefore.rounded())
+        let after = Int(result.usedPercentAfter.rounded())
+        if result.usedPercentBefore > 0, before > after {
+            parts.append(L10n.usedPercentChange(before, after))
+        }
+        if result.compressedFreedMB >= 1 { parts.append(L10n.compressedReduced(fmt(result.compressedFreedMB))) }
+        if result.quitAppCount > 0 { parts.append(L10n.appsQuitCount(result.quitAppCount)) }
+        if result.closedTabCount > 0 { parts.append(L10n.tabsClosedCount(result.closedTabCount)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " ・ ")
     }
 }
 

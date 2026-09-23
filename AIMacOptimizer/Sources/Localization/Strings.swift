@@ -483,6 +483,47 @@ struct L10n {
         }
     }
 
+    // 最適化結果の「何が起きたか」詳細（解放MBだけでは効果が見えにくいため）
+    static var optimizeHealthy: String {
+        switch current {
+        case .japanese: return "メモリは良好です。今は最適化の必要はありません"
+        case .english: return "Memory is healthy — no optimization needed right now"
+        case .chinese: return "内存状态良好，目前无需优化"
+        }
+    }
+
+    static func usedPercentChange(_ before: Int, _ after: Int) -> String {
+        switch current {
+        case .japanese: return "使用率 \(before)% → \(after)%"
+        case .english: return "Usage \(before)% → \(after)%"
+        case .chinese: return "使用率 \(before)% → \(after)%"
+        }
+    }
+
+    static func compressedReduced(_ formatted: String) -> String {
+        switch current {
+        case .japanese: return "圧縮メモリ −\(formatted)"
+        case .english: return "Compressed −\(formatted)"
+        case .chinese: return "压缩内存 −\(formatted)"
+        }
+    }
+
+    static func appsQuitCount(_ n: Int) -> String {
+        switch current {
+        case .japanese: return "アプリ\(n)件を終了"
+        case .english: return n == 1 ? "Quit 1 app" : "Quit \(n) apps"
+        case .chinese: return "已退出\(n)个应用"
+        }
+    }
+
+    static func tabsClosedCount(_ n: Int) -> String {
+        switch current {
+        case .japanese: return "タブ\(n)件を閉じました"
+        case .english: return n == 1 ? "Closed 1 tab" : "Closed \(n) tabs"
+        case .chinese: return "已关闭\(n)个标签页"
+        }
+    }
+
     // MARK: - Storage Tab
     static var storageAutoCleanEnabled: String {
         switch current {

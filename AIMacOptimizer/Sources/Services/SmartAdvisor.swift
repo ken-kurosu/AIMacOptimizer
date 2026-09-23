@@ -162,7 +162,10 @@ final class SmartAdvisor {
         if !topApps.isEmpty {
             let appDetails = topApps.map { app -> SuggestionDetailItem in
                 var lastUsed = ""
-                if let bundle = app.bundleIdentifier,
+                // プロセス情報側にbundleIDが無いアプリ(例: Chrome)はpidから補完する
+                let bundle = app.bundleIdentifier
+                    ?? NSRunningApplication(processIdentifier: app.id)?.bundleIdentifier
+                if let bundle,
                    let minutes = AppActivityTracker.shared.minutesSinceActive(bundle) {
                     lastUsed = "最終使用: 約\(Int(minutes))分前。"
                 }
@@ -471,7 +474,8 @@ final class SmartAdvisor {
     /// メモリ使用量の多いアプリを「選択式の終了候補」として返す（RSS降順・上位5件）。
     /// 自動終了はしない前提。Dockに出る通常アプリ(.regular)に限定し、最前面/直近10分アクティブ/
     /// 自分自身/システム/ターミナル・VM/既存26リスト該当を除外する。
-    private func findTopMemoryApps(_ processes: [ProcessMemoryInfo]) -> [ProcessMemoryInfo] {
+    /// （検証スクリプト scripts/verify_heavy_app_candidates.sh から呼ぶため internal）
+    func findTopMemoryApps(_ processes: [ProcessMemoryInfo]) -> [ProcessMemoryInfo] {
         // Dockに出る通常アプリの pid→NSRunningApplication。
         // これで daemon / メニューバー常駐(.accessory) / Helper・Renderer・GPU子プロセスは自然に落ちる
         // （子プロセス単体killはタブ消失や親クラッシュの原因になるため候補にしない）。

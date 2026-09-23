@@ -95,6 +95,7 @@ enum SuggestionType: String {
     case closeTab = "タブを閉じる"
     case closeSafariTab = "Safariタブを閉じる"
     case quitApp = "アプリを終了"
+    case quitHeavyApp = "メモリの多いアプリを終了"
     case restartApp = "アプリを再起動"
     case purgeRAM = "RAMキャッシュをパージ"
     case clearCache = "キャッシュを削除"

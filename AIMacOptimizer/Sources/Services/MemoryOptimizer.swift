@@ -502,7 +502,7 @@ final class MemoryOptimizer {
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
-                case .quitApp:
+                case .quitApp, .quitHeavyApp:
                     quitApps.append(suggestion.title)
                 case .purgeRAM:
                     purged = true

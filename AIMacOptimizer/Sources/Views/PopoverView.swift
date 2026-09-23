@@ -2059,7 +2059,7 @@ final class PopoverViewModel: ObservableObject {
             est += s.detailItems.isEmpty
                 ? s.estimatedSavingMB
                 : s.detailItems.filter(\.isSelected).reduce(0.0) { $0 + $1.sizeMB }
-            if s.type == .quitApp { hasQuit = true }
+            if s.type == .quitApp || s.type == .quitHeavyApp { hasQuit = true }
             if s.type == .closeTab || s.type == .closeSafariTab { hasTab = true }
             let name = Self.previewActionName(for: s)
             if !labels.contains(name) { labels.append(name) }
@@ -2093,6 +2093,7 @@ final class PopoverViewModel: ObservableObject {
         switch s.type {
         case .closeTab, .closeSafariTab: return "使っていないタブを閉じる"
         case .quitApp: return "使っていないアプリを終了"
+        case .quitHeavyApp: return "選んだアプリを終了"
         case .purgeRAM: return "メモリのキャッシュを解放"
         case .clearCache, .clearBrowserCache: return "キャッシュを削除"
         case .clearTmpFiles: return "一時ファイルを削除"
@@ -2108,6 +2109,7 @@ final class PopoverViewModel: ObservableObject {
         case .closeTab: return "使っていないタブを閉じる"
         case .closeSafariTab: return "Safariの重いタブを閉じる"
         case .quitApp: return "\(s.title) を終了"
+        case .quitHeavyApp: return "選んだアプリを終了"
         case .purgeRAM: return "RAMキャッシュをパージ"
         case .clearCache, .clearBrowserCache: return "キャッシュを削除"
         case .flushDNS: return "DNSキャッシュをフラッシュ"

@@ -37,6 +37,11 @@ struct PopoverView: View {
                 // Pro badge or Free tier indicator
                 tierBadge
 
+                // 既定ONにした匿名統計を、既存ユーザーへ一度だけ正直に伝える
+                if showAnalyticsNotice {
+                    analyticsNoticeBanner
+                }
+
                 // Tab Selector（上部セグメント）
                 Picker("", selection: $selectedTab) {
                     Text(L10n.memoryUsage).tag(0)
@@ -93,6 +98,39 @@ struct PopoverView: View {
                 popNav.requestedTab = nil
             }
         }
+    }
+
+    @State private var showAnalyticsNotice = AnalyticsService.shared.needsNotice
+        && UserDefaults.standard.bool(forKey: "onboardingCompleted")
+
+    private var analyticsNoticeBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("匿名の利用統計を送るようになりました")
+                .font(.caption).bold()
+            Text("改善のため、起動回数・使ったタブ・バージョン等の匿名イベントだけを送ります。ファイル名・メモリ内容・診断結果・個人データは送りません。")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("OFFにする") {
+                    AnalyticsService.shared.enabled = false
+                    AnalyticsService.shared.acknowledgeNotice()
+                    withAnimation { showAnalyticsNotice = false }
+                }
+                Spacer()
+                Button("OK") {
+                    AnalyticsService.shared.acknowledgeNotice()
+                    withAnimation { showAnalyticsNotice = false }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(Color.blue.opacity(0.06))
+        .cornerRadius(8)
+        .padding(.horizontal)
+        .padding(.bottom, 6)
     }
 
     private var tierBadge: some View {

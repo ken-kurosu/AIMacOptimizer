@@ -306,6 +306,8 @@ final class LicenseManager: ObservableObject {
         licenseKeyMessage = "\(tier.displayName) にアップグレードしました！"
         licenseKeySuccess = true
         licenseKeyInput = ""
+        // 有効化の匿名イベント（キー自体は送らない。どのプランになったかだけ）
+        Task { @MainActor in AnalyticsService.shared.track("license_activated", ["new_tier": tier.displayName]) }
         if tier == .pro {
             Task { await refreshSubscriptionValidationIfNeeded(force: true) }
         }

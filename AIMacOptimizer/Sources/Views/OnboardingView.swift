@@ -13,6 +13,7 @@ struct OnboardingView: View {
 
     @State private var phase: Phase = .intro
     @State private var notifGranted: Bool?
+    @AppStorage("analyticsEnabled") private var analyticsEnabled = true  // 既定ON（AnalyticsService と揃える）
 
     enum Phase { case intro, permissions, done }
 
@@ -144,7 +145,19 @@ struct OnboardingView: View {
             }
             .foregroundColor(.secondary)
 
-            Button(action: onFinish) {
+            // 匿名の利用統計（既定ON）をここで正直に伝え、その場でOFFにもできるようにする
+            Toggle(isOn: $analyticsEnabled) {
+                Text("改善のため匿名の利用統計を送る（起動回数・使ったタブ等。ファイルや診断結果は送りません）")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .toggleStyle(.checkbox)
+
+            Button(action: {
+                AnalyticsService.shared.acknowledgeNotice()
+                onFinish()
+            }) {
                 Text("メニューバーで始める")
                     .font(.system(size: 14, weight: .semibold))
                     .frame(maxWidth: .infinity)

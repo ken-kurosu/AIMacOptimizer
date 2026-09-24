@@ -17,7 +17,7 @@ struct SettingsView: View {
     @ObservedObject private var diskGuard = DiskGuard.shared
     @ObservedObject private var updateService = UpdateService.shared
     @AppStorage("autoUpdateEnabled") private var autoUpdateEnabled = true
-    @AppStorage("analyticsEnabled") private var analyticsEnabled = false
+    @AppStorage("analyticsEnabled") private var analyticsEnabled = true  // 既定ON（AnalyticsService.enabled と揃える）
     @ObservedObject private var nav = SettingsNavigation.shared
     @ObservedObject private var scheduleManager = ScheduleManager.shared
     @State private var notifyAuthStatus: UNAuthorizationStatus = .notDetermined
@@ -702,14 +702,14 @@ struct SettingsView: View {
 
             Divider()
 
-            // 匿名の使用統計（既定OFF・明示オプトイン）
+            // 匿名の使用統計（既定ON・いつでもOFF可）
             VStack(spacing: 6) {
                 Toggle("匿名の使用統計を送信", isOn: $analyticsEnabled)
                     .toggleStyle(.switch)
                     .onChange(of: analyticsEnabled) { newValue in
                         AnalyticsService.shared.enabled = newValue
                     }
-                Text("初期状態はOFFです。有効にすると、どのボタン・タブを使ったか等の匿名イベントだけを改善目的で送信します。ファイル名・メモリ内容・診断結果・個人データは送信しません。")
+                Text("改善のため、起動回数・どのタブを使ったか・アプリのバージョン等の匿名イベントだけを送信します（初期状態はON）。ファイル名・メモリ内容・診断結果・個人データは送信しません。OFFにすると一切送信しません。")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)

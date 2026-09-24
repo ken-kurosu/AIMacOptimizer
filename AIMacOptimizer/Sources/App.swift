@@ -82,8 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
             showOnboarding()
         }
 
-        // 匿名の使用イベント（起動）。設定でオフ可・個人データは送らない
-        AnalyticsService.shared.track("app_open")
+        // 匿名の利用イベント（初回起動/起動/1日1回の利用）。設定でオフ可・個人データは送らない
+        AnalyticsService.shared.trackLaunch()
 
         print("=== AI Mac Optimizer started ===")
     }
@@ -368,6 +368,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
 
             // 毎日1回、メモリ/ディスクの数値を通知（Free・24時間未満なら即return で無コスト）
             self.maybeSendDailyStatus()
+
+            // 常駐中の稼働数を数えるため、日付が変わったら匿名の daily_active を1回送る
+            Task { @MainActor in AnalyticsService.shared.trackDailyActiveIfNeeded() }
 
             // 週次の最適化レポート（7日経過時のみ生成・通知。それ以外は即return で無コスト）
             Task { @MainActor in WeeklyReportService.shared.checkAndSendIfDue() }

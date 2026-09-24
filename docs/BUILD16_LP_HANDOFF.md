@@ -30,8 +30,10 @@
 ## 公開順序
 
 1. build16の署名・公証・stapleを完了する。
-2. GitHub Releaseへ `AIMacOptimizer-latest.dmg` と、build16を示す `latest.json` を同時にアップロードする。
-3. `/releases/latest/download/...` がbuild16を返すことを確認する。
+2. GitHub Releaseへ `AIMacOptimizer-latest.dmg`（LPからの新規DL用）・`AIMacOptimizer-update.dmg`（自動更新用・中身は同一）・`latest.json` の3つを同時にアップロードする。
+   - DL数はアセット名単位で数えられるため、latest.dmg＝新規DL数、update.dmg＝自動更新数として分けて見られる。
+   - update.dmg を上げ忘れると自動更新が404で止まる（`build_dmg.sh` の最後に出る `gh release upload` コマンドをそのまま使う）。
+3. `/releases/latest/download/...` がbuild16を返すこと、`latest.json` の url が `AIMacOptimizer-update.dmg` を指し実際にダウンロードできることを確認する。
 4. 上記LP修正をpushし、3言語表示、構造化データ、ダウンロードリンクを確認する。
 
 LPだけを先に `2.1.13` 表示へ変えると、表示と配布物が再び食い違うため、必ずこの順序で行う。

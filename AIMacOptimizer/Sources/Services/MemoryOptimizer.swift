@@ -13,6 +13,15 @@ final class MemoryOptimizer {
         let closedTabs: Int
         let quitApps: [String]
         let purged: Bool
+        // 「解放MBだけだと効果が見えにくい」ため、実行前後の実測で"何が起きたか"も返す。
+        /// 実行前後のメモリ使用率(%)。使用 = active + wired + compressed（空き指標と同一式）
+        var usedPercentBefore: Double = 0
+        var usedPercentAfter: Double = 0
+        /// 圧縮メモリの減少量(MB)。終了したアプリの圧縮ページが返った分
+        var compressedFreedMB: Double = 0
+        /// 実際に終了したアプリ数／閉じたタブ数（選択されて成功した項目数）
+        var quitAppCount: Int = 0
+        var closedTabCount: Int = 0
     }
 
     /// ブラウザ単位のキャッシュ情報。表示に合算した全パスを削除時にも保持する。
@@ -487,8 +496,11 @@ final class MemoryOptimizer {
         var purged = false
         var freedDiskMB: Double = 0
         var anySucceeded = false
+        var quitAppCount = 0
+        var closedTabCount = 0
 
-        // 実際に解放されたメモリを測るため、実行前の空きを記録
+        // 実際に解放されたメモリを測るため、実行前の空き・使用率・圧縮量を記録
+        let snapshotBefore = memorySnapshot()
         let freeBefore = currentFreeMemoryMB()
 
         for (index, suggestion) in suggestions.enumerated() {
@@ -499,11 +511,16 @@ final class MemoryOptimizer {
             freedDiskMB += outcome.freedDiskMB
             if outcome.succeeded {
                 anySucceeded = true
+                // 選択されて実行対象になった子項目数（子項目が無い提案は1件扱い）
+                let selectedCount = suggestion.detailItems.isEmpty
+                    ? 1 : suggestion.detailItems.filter(\.isSelected).count
                 switch suggestion.type {
                 case .closeTab, .closeSafariTab:
                     closedTabs += 1
-                case .quitApp:
+                    closedTabCount += selectedCount
+                case .quitApp, .quitHeavyApp:
                     quitApps.append(suggestion.title)
+                    quitAppCount += selectedCount
                 case .purgeRAM:
                     purged = true
                 default:
@@ -533,13 +550,20 @@ final class MemoryOptimizer {
         // 「実際に増えた空きメモリ」を報告（この指標はメニューバー/ゲージの空き表示と同一式なので、
         //  報告値とゲージの動きが一致する）。負やノイズは0に丸める。
         let freedMB = max(0, freeAfter - freeBefore)
+        let snapshotAfter = memorySnapshot()
+        let compressedFreedMB = max(0, (snapshotBefore?.compressedMB ?? 0) - (snapshotAfter?.compressedMB ?? 0))
 
         let result = OptimizationResult(
             freedMB: freedMB,
             freedDiskMB: freedDiskMB,
             closedTabs: closedTabs,
             quitApps: quitApps,
-            purged: purged
+            purged: purged,
+            usedPercentBefore: usedPercent(snapshotBefore),
+            usedPercentAfter: usedPercent(snapshotAfter),
+            compressedFreedMB: compressedFreedMB,
+            quitAppCount: quitAppCount,
+            closedTabCount: closedTabCount
         )
         if !suggestions.isEmpty {
             OptimizationAuditStore.shared.recordExecution(
@@ -555,6 +579,12 @@ final class MemoryOptimizer {
 
     /// 現在の空きメモリ(MB)。最適化前後の差分で実解放量を測るのに使う。
     func currentFreeMemoryMB() -> Double {
+        guard let s = memorySnapshot() else { return 0 }
+        return max(0, s.totalMB - s.usedMB)
+    }
+
+    /// 空き指標と同一式（used = active + wired + compressed）のスナップショット。
+    private func memorySnapshot() -> (totalMB: Double, usedMB: Double, compressedMB: Double)? {
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
         let host = mach_host_self()
@@ -563,11 +593,17 @@ final class MemoryOptimizer {
                 host_statistics64(host, HOST_VM_INFO64, $0, &count)
             }
         }
-        guard result == KERN_SUCCESS else { return 0 }
-        let pageSize = Double(vm_kernel_page_size)
-        let total = Double(ProcessInfo.processInfo.physicalMemory)
-        let used = (Double(stats.active_count) + Double(stats.wire_count) + Double(stats.compressor_page_count)) * pageSize
-        return max(0, (total - used) / 1024 / 1024)
+        guard result == KERN_SUCCESS else { return nil }
+        let mbPerPage = Double(vm_kernel_page_size) / 1024 / 1024
+        let totalMB = Double(ProcessInfo.processInfo.physicalMemory) / 1024 / 1024
+        let compressedMB = Double(stats.compressor_page_count) * mbPerPage
+        let usedMB = (Double(stats.active_count) + Double(stats.wire_count)) * mbPerPage + compressedMB
+        return (totalMB, usedMB, compressedMB)
+    }
+
+    private func usedPercent(_ s: (totalMB: Double, usedMB: Double, compressedMB: Double)?) -> Double {
+        guard let s, s.totalMB > 0 else { return 0 }
+        return s.usedMB / s.totalMB * 100
     }
 
     // MARK: - Helpers

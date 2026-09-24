@@ -17,3 +17,6 @@ DerivedData/
 # secrets
 .env
 .env.local
+
+# Cloudflare wrangler local cache (account info)
+.wrangler/

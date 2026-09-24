@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject, UNUs
         // Start monitoring
         monitor.startMonitoring()
 
+        // アプリのアクティブ化履歴の記録を開始（「メモリの多いアプリ」終了候補で
+        // 直近使用中のアプリを候補から外すために使う）
+        AppActivityTracker.shared.start()
+
         // Add Edit menu for ⌘C/⌘V/⌘X/⌘A in text fields
         setupEditMenu()
 

@@ -1,10 +1,29 @@
 import Foundation
+import AppKit
 
 /// Rule-based AI advisor that generates optimization suggestions
 final class SmartAdvisor {
 
     private let chromeAnalyzer = ChromeTabAnalyzer()
     private let optimizer = MemoryOptimizer()
+
+    /// 自動推奨(isRecommended)で終了候補に出す既知の背面アプリ名（部分一致）。
+    /// 「メモリの多いアプリ」枠では二重掲載を避けるためここに含まれるものを除外する。
+    private let knownBackgroundApps: Set<String> = [
+        "Adobe Creative Cloud", "Creative Cloud Helper",
+        "Spotify", "Spotify Helper",
+        "Discord", "Discord Helper",
+        "Amazon Music",
+        "LINE", "LINE Helper",
+        "Docker Desktop", "Docker",
+        "Dropbox", "OneDrive", "Google Drive",
+        "Todoist", "Fantastical",
+        "Zoom", "zoom.us",
+        "Microsoft Teams", "Teams",
+        "Notion", "Notion Helper",
+        "Steam", "Steam Helper",
+        "Epic Games", "Battle.net",
+    ]
 
     /// Analyze the current system state and generate suggestions
     func analyze(
@@ -128,6 +147,50 @@ final class SmartAdvisor {
                     let targets = zip(backgroundApps, selected).filter { $0.1.isSelected }.map { $0.0 }
                     var success = false
                     for app in targets {
+                        if self.optimizer.quitApp(name: app.name) { success = true }
+                    }
+                    return ActionOutcome(succeeded: success)
+                }
+            ))
+        }
+
+        // 3.5 メモリ使用量の多いアプリ（選択式・自動終了しない）
+        //   固定26リストに無い実際のRAM大食いアプリを、ユーザーが自分で選んで終了できる枠。
+        //   全件デフォルト未チェック・isRecommended=false のため、ワンクリック実行では
+        //   （detailItems.contains(where: isSelected) が false になり）自動実行されない。
+        let topApps = findTopMemoryApps(processes)
+        if !topApps.isEmpty {
+            let appDetails = topApps.map { app -> SuggestionDetailItem in
+                var lastUsed = ""
+                // プロセス情報側にbundleIDが無いアプリ(例: Chrome)はpidから補完する
+                let bundle = app.bundleIdentifier
+                    ?? NSRunningApplication(processIdentifier: app.id)?.bundleIdentifier
+                if let bundle,
+                   let minutes = AppActivityTracker.shared.minutesSinceActive(bundle) {
+                    lastUsed = "最終使用: 約\(Int(minutes))分前。"
+                }
+                return SuggestionDetailItem(
+                    name: app.name,
+                    detail: "\(app.memoryFormatted) 使用中。\(lastUsed)未保存の作業があれば先に保存してください。通常の「終了」と同じ動作です",
+                    sizeMB: app.memoryMB,
+                    isSelected: false,      // 自動終了しない：既定は未チェック
+                    isRecommended: false    // 推奨マークは付けない（推奨枠は既存26リストに一本化）
+                )
+            }
+
+            suggestions.append(OptimizationSuggestion(
+                type: .quitHeavyApp,
+                title: "メモリ使用量の多いアプリ（\(topApps.count)件）",
+                description: "終了するものを選んでください。自動では終了しません",
+                estimatedSavingMB: topApps.reduce(0.0) { $0 + $1.memoryMB },  // 並び替え用（表示はしない）
+                detailItems: appDetails,
+                action: { [weak self] selected in
+                    guard let self else { return ActionOutcome(succeeded: false) }
+                    let targets = zip(topApps, selected).filter { $0.1.isSelected }.map { $0.0 }
+                    guard !targets.isEmpty else { return ActionOutcome(succeeded: false) }
+                    var success = false
+                    for app in targets {
+                        // terminate()相当（通常の終了）。未保存なら各アプリが保存ダイアログを出す
                         if self.optimizer.quitApp(name: app.name) { success = true }
                     }
                     return ActionOutcome(succeeded: success)
@@ -389,27 +452,58 @@ final class SmartAdvisor {
 
     /// Find apps that are likely running in the background and not actively used
     private func findBackgroundApps(_ processes: [ProcessMemoryInfo]) -> [ProcessMemoryInfo] {
-        let knownBackgroundApps: Set<String> = [
-            "Adobe Creative Cloud", "Creative Cloud Helper",
-            "Spotify", "Spotify Helper",
-            "Discord", "Discord Helper",
-            "Amazon Music",
-            "LINE", "LINE Helper",
-            "Docker Desktop", "Docker",
-            "Dropbox", "OneDrive", "Google Drive",
-            "Todoist", "Fantastical",
-            "Zoom", "zoom.us",
-            "Microsoft Teams", "Teams",
-            "Notion", "Notion Helper",
-            "Steam", "Steam Helper",
-            "Epic Games", "Battle.net",
-        ]
-
         return processes.filter { proc in
             !proc.isSystemProcess &&
             proc.memoryMB > 50 &&
             knownBackgroundApps.contains(where: { proc.name.contains($0) })
         }
+    }
+
+    // MARK: - Heavy Memory Apps (選択式・自動終了しない)
+
+    /// 終了しても安全確認なしにデータが飛ぶため候補から除外する bundle ID（小文字比較）。
+    /// ターミナル系（実行中プロセスが消える）と仮想マシン（保存前のVMが飛ぶ）。
+    private static let neverAutoQuitBundleIDs: Set<String> = [
+        "com.apple.finder", "com.apple.dock", "com.apple.loginwindow",
+        "com.apple.systemuiserver", "com.apple.controlcenter",
+        "com.apple.terminal", "com.googlecode.iterm2", "dev.warp.warp-stable",
+        "com.mitchellh.ghostty", "com.parallels.desktop.console",
+        "com.vmware.fusion", "com.utmapp.utm",
+    ]
+
+    /// メモリ使用量の多いアプリを「選択式の終了候補」として返す（RSS降順・上位5件）。
+    /// 自動終了はしない前提。Dockに出る通常アプリ(.regular)に限定し、最前面/直近10分アクティブ/
+    /// 自分自身/システム/ターミナル・VM/既存26リスト該当を除外する。
+    /// （検証スクリプト scripts/verify_heavy_app_candidates.sh から呼ぶため internal）
+    func findTopMemoryApps(_ processes: [ProcessMemoryInfo]) -> [ProcessMemoryInfo] {
+        // Dockに出る通常アプリの pid→NSRunningApplication。
+        // これで daemon / メニューバー常駐(.accessory) / Helper・Renderer・GPU子プロセスは自然に落ちる
+        // （子プロセス単体killはタブ消失や親クラッシュの原因になるため候補にしない）。
+        let regularByPid = Dictionary(
+            NSWorkspace.shared.runningApplications
+                .filter { $0.activationPolicy == .regular }
+                .map { ($0.processIdentifier, $0) },
+            uniquingKeysWith: { a, _ in a }
+        )
+        let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let selfBundle = Bundle.main.bundleIdentifier
+
+        let candidates = processes.filter { proc -> Bool in
+            guard proc.memoryMB >= 200, !proc.isSystemProcess else { return false }
+            guard let app = regularByPid[proc.id] else { return false }  // Dockアプリのみ
+            let bundle = app.bundleIdentifier ?? proc.bundleIdentifier
+            if let bundle {
+                if bundle == frontBundle { return false }           // 最前面
+                if bundle == selfBundle { return false }            // 自分自身
+                if Self.neverAutoQuitBundleIDs.contains(bundle.lowercased()) { return false }
+                if AppActivityTracker.shared.wasActiveWithin(minutes: 10, bundleID: bundle) { return false }  // 直近使用
+            }
+            // 26リスト該当は自動推奨枠で別掲されるため二重掲載しない
+            if knownBackgroundApps.contains(where: { proc.name.contains($0) }) { return false }
+            return true
+        }
+
+        return Array(candidates.sorted { $0.memoryMB > $1.memoryMB }.prefix(5))
     }
 
     // MARK: - Tab Classification

@@ -68,7 +68,10 @@ echo "▶ 8/8 自動更新マニフェスト (latest.json) 生成"
 # GitHub のダウンロード数はアセット名単位なので、LP 経由の AIMacOptimizer-latest.dmg が
 # 「新規ダウンロード数」、AIMacOptimizer-update.dmg が「自動更新の数」として分けて数えられる。
 # （署名・公証チケットはファイル内に含まれるため、コピーしても有効）
+# アセット名はLPと自動更新が参照する固定名にする（バージョン名のDMGをそのまま上げるとLPのリンクが404になる）
+LATEST_DMG="$OUT/AIMacOptimizer-latest.dmg"
 UPDATE_DMG="$OUT/AIMacOptimizer-update.dmg"
+cp "$DMG" "$LATEST_DMG"
 cp "$DMG" "$UPDATE_DMG"
 cat > "$OUT/latest.json" <<EOF
 {"build": ${BUILD}, "version": "${VERSION}", "url": "https://github.com/ken-kurosu/AIMacOptimizer/releases/latest/download/AIMacOptimizer-update.dmg", "notes": ""}
@@ -79,4 +82,4 @@ echo ""
 echo "✅ 完成: $DMG"
 echo "   配布: このDMGを配布すれば、Gatekeeper警告なしで起動できます。"
 echo "   リリースには次の3つを必ず同時にアップロードすること（update.dmg を忘れると自動更新が404で止まる）:"
-echo "     gh release upload <tag> \"$DMG\" \"$UPDATE_DMG\" \"$OUT/latest.json\""
+echo "     gh release upload <tag> \"$LATEST_DMG\" \"$UPDATE_DMG\" \"$OUT/latest.json\""

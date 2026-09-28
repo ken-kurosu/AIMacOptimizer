@@ -29,7 +29,8 @@ final class SmartAdvisor {
     func analyze(
         systemMemory: SystemMemoryInfo,
         processes: [ProcessMemoryInfo],
-        chromeTabs: [ChromeTab]? = nil
+        chromeTabs: [ChromeTab]? = nil,
+        includeBrowserTabs: Bool = true   // false: Safariのタブを読まない（検証スクリプト用。AppleScriptの権限ダイアログ・閲覧内容の読み取りを避ける）
     ) async -> [OptimizationSuggestion] {
         var suggestions: [OptimizationSuggestion] = []
 
@@ -72,7 +73,7 @@ final class SmartAdvisor {
         }
 
         // 2. Safari tabs
-        let safariTabs = await optimizer.fetchSafariTabs()
+        let safariTabs = includeBrowserTabs ? await optimizer.fetchSafariTabs() : []
         if safariTabs.count > 5 {
             let closeableSafari = safariTabs.filter { tab in
                 let url = tab.url.lowercased()
@@ -200,8 +201,12 @@ final class SmartAdvisor {
 
         // 4. Memory leak candidates (apps using excessive memory)
         let leakThreshold = max(500, systemMemory.totalMB * 0.05)
+        // 再起動は既定でチェックが入るため、実際に終了・再起動できる通常アプリだけに絞り、
+        // 今使っているアプリ（最前面・直近10分）も外す。CLI/ヘルパー(例: "2.1.283"=Claude Code, "node")は
+        // quitApp の対象にならず失敗するだけなので、一覧に出さない。
         let leakCandidates = processes.filter {
             $0.memoryMB > leakThreshold && !$0.isSystemProcess
+                && isQuittableApp($0, excludeInUse: true)
         }
         for app in leakCandidates {
             let essentialApps = ["Google Chrome", "Cursor", "Xcode", "Safari"]
@@ -400,7 +405,8 @@ final class SmartAdvisor {
         let swapInfo = optimizer.getSwapInfo(systemMemory: systemMemory, processes: processes)
         if swapInfo.isExcessive {
             // 高メモリアプリを実メモリ付きで提示し、選択したものを実際に終了できるようにする
-            let swappers = swapInfo.topSwappers
+            // 終了できない CLI/ヘルパー(例: "Codex (Renderer)")は出さない
+            let swappers = swapInfo.topSwappers.filter { isQuittableApp($0, excludeInUse: false) }
             let swapDetails = swappers.map { proc -> SuggestionDetailItem in
                 SuggestionDetailItem(
                     name: proc.name,
@@ -457,6 +463,21 @@ final class SmartAdvisor {
             proc.memoryMB > 50 &&
             knownBackgroundApps.contains(where: { proc.name.contains($0) })
         }
+    }
+
+    /// quitApp(name:) で実際に終了できる通常アプリか。
+    /// quitApp は NSRunningApplication の localizedName で探すため、同名の Dock アプリ(.regular)が無いものは
+    /// 「提案に出ても実行すると必ず失敗する」ので候補から外す。
+    /// excludeInUse: 最前面・直近10分にアクティブ・自分自身も外す（既定チェックで実行される提案向け）
+    private func isQuittableApp(_ proc: ProcessMemoryInfo, excludeInUse: Bool) -> Bool {
+        guard let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.activationPolicy == .regular && $0.localizedName == proc.name
+        }) else { return false }
+        guard excludeInUse, let bundle = app.bundleIdentifier else { return true }
+        if bundle == Bundle.main.bundleIdentifier { return false }
+        if bundle == NSWorkspace.shared.frontmostApplication?.bundleIdentifier { return false }
+        if AppActivityTracker.shared.wasActiveWithin(minutes: 10, bundleID: bundle) { return false }
+        return true
     }
 
     // MARK: - Heavy Memory Apps (選択式・自動終了しない)

@@ -373,6 +373,14 @@ struct MemoryTabView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
+            // 行ごとの実行ボタンは無く、下の「ワンクリック最適化」がチェック済みの項目をまとめて実行する。
+            // それが画面上で分からなかったため、使い方を1行で示す。
+            Text("▶で中身を開いてチェックを付け外し → 下の「ワンクリック最適化」でチェック済みの項目をまとめて実行します")
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal)
+
             // メモリ最適化提案は全ユーザー無制限（回数制限は撤廃）
             ForEach(Array(viewModel.suggestions.prefix(8).enumerated()), id: \.element.id) { index, suggestion in
                 SuggestionExpandableRow(
@@ -465,10 +473,22 @@ struct MemoryTabView: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 10))
                             .foregroundColor(.blue)
-                        Text("\(preview.actionText)（約\(preview.estimatedFormatted)）")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("このボタンで実行する内容（\(preview.count)件）")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.primary)
+                            ForEach(preview.lines, id: \.self) { line in
+                                Text("・\(line)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if preview.estimatedMB >= 1 {
+                                Text("見込み 約\(preview.estimatedFormatted)（実際に空いた分は実行後に表示）")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                         Spacer(minLength: 0)
                     }
                     HStack(alignment: .top, spacing: 6) {
@@ -2105,6 +2125,7 @@ final class PopoverViewModel: ObservableObject {
     struct OptimizePreview {
         let count: Int
         let actionText: String   // 何をするか（例: "キャッシュを削除・一時ファイルを整理"）
+        let lines: [String]      // 実行内容を1件1行で（例: "使っていないアプリを終了：Adobe Creative Cloud"）
         let riskNote: String     // リスクがないことの一言（不安を取り除く）
         let estimatedMB: Double
         var estimatedFormatted: String {
@@ -2120,15 +2141,20 @@ final class PopoverViewModel: ObservableObject {
         guard !active.isEmpty else { return nil }
 
         var labels: [String] = []
+        var lines: [String] = []
         var est = 0.0
         var hasQuit = false, hasTab = false
         for s in active {
             // 親の全量ではなく、現在チェックされている実行対象だけを合算する。
             // 見込み表示と同じ子項目の sizeMB を使い、未選択分を含めない。
-            est += s.detailItems.isEmpty
-                ? s.estimatedSavingMB
-                : s.detailItems.filter(\.isSelected).reduce(0.0) { $0 + $1.sizeMB }
-            if s.type == .quitApp || s.type == .quitHeavyApp { hasQuit = true }
+            // 再起動（すぐ使い直すので空きとして残らない）・DNS/フォント・ログイン項目は空き容量にならないので含めない。
+            if Self.contributesToEstimate(s) {
+                est += s.detailItems.isEmpty
+                    ? s.estimatedSavingMB
+                    : s.detailItems.filter(\.isSelected).reduce(0.0) { $0 + $1.sizeMB }
+            }
+            lines.append(Self.previewLine(for: s))
+            if s.type == .quitApp || s.type == .quitHeavyApp || s.type == .swapWarning || s.type == .restartApp { hasQuit = true }
             if s.type == .closeTab || s.type == .closeSafariTab { hasTab = true }
             let name = Self.previewActionName(for: s)
             if !labels.contains(name) { labels.append(name) }
@@ -2154,7 +2180,7 @@ final class PopoverViewModel: ObservableObject {
             riskNote = "キャッシュ等は使う時に自動で作り直されます。写真・書類・アプリは対象外です。"
         }
 
-        return OptimizePreview(count: active.count, actionText: actionText, riskNote: riskNote, estimatedMB: est)
+        return OptimizePreview(count: active.count, actionText: actionText, lines: lines, riskNote: riskNote, estimatedMB: est)
     }
 
     /// 予告に出す、人が読める動作名（短い動詞句）。
@@ -2163,12 +2189,36 @@ final class PopoverViewModel: ObservableObject {
         case .closeTab, .closeSafariTab: return "使っていないタブを閉じる"
         case .quitApp: return "使っていないアプリを終了"
         case .quitHeavyApp: return "選んだアプリを終了"
+        case .restartApp: return "メモリが膨らんだアプリを再起動"
+        case .swapWarning: return "選んだアプリを終了"
+        case .disableLoginItem: return "ログイン項目を見直し"
         case .purgeRAM: return "メモリのキャッシュを解放"
         case .clearCache, .clearBrowserCache: return "キャッシュを削除"
         case .clearTmpFiles: return "一時ファイルを削除"
         case .flushDNS: return "DNSキャッシュを更新"
         case .flushFontCache: return "フォントキャッシュを再構築"
         default: return "不要データを整理"
+        }
+    }
+
+    /// 予告の1行：「動作：対象」（対象はチェックされた子項目の名前。多い時は2件＋ほかN件）
+    static func previewLine(for s: OptimizationSuggestion) -> String {
+        let action = previewActionName(for: s)
+        // DNS/フォントは子項目名が動作名の言い換えなので対象名を付けない
+        if s.type == .flushDNS || s.type == .flushFontCache { return action }
+        let names = s.detailItems.filter(\.isSelected).map {
+            $0.name.replacingOccurrences(of: " のメモリ使用量", with: "")
+        }
+        guard !names.isEmpty else { return action }
+        let shown = names.prefix(2).joined(separator: "、")
+        return names.count > 2 ? "\(action)：\(shown) ほか\(names.count - 2)件" : "\(action)：\(shown)"
+    }
+
+    /// 見込み量に含めるか。実際に空きとして残る操作だけを数える（盛らない）。
+    static func contributesToEstimate(_ s: OptimizationSuggestion) -> Bool {
+        switch s.type {
+        case .restartApp, .flushDNS, .flushFontCache, .disableLoginItem, .purgeRAM: return false
+        default: return true
         }
     }
 

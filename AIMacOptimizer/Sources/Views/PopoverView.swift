@@ -373,14 +373,6 @@ struct MemoryTabView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
-            // 行ごとの実行ボタンは無く、下の「ワンクリック最適化」がチェック済みの項目をまとめて実行する。
-            // それが画面上で分からなかったため、使い方を1行で示す。
-            Text("▶で中身を開いてチェックを付け外し → 下の「ワンクリック最適化」でチェック済みの項目をまとめて実行します")
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal)
-
             // メモリ最適化提案は全ユーザー無制限（回数制限は撤廃）
             ForEach(Array(viewModel.suggestions.prefix(8).enumerated()), id: \.element.id) { index, suggestion in
                 SuggestionExpandableRow(
@@ -474,9 +466,6 @@ struct MemoryTabView: View {
                             .font(.system(size: 10))
                             .foregroundColor(.blue)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("このボタンで実行する内容（\(preview.count)件）")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.primary)
                             ForEach(preview.lines, id: \.self) { line in
                                 Text("・\(line)")
                                     .font(.system(size: 10))
@@ -2180,7 +2169,8 @@ final class PopoverViewModel: ObservableObject {
             riskNote = "キャッシュ等は使う時に自動で作り直されます。写真・書類・アプリは対象外です。"
         }
 
-        return OptimizePreview(count: active.count, actionText: actionText, lines: lines, riskNote: riskNote, estimatedMB: est)
+        let checkedCount = active.reduce(0) { $0 + ($1.detailItems.isEmpty ? 1 : $1.detailItems.filter(\.isSelected).count) }
+        return OptimizePreview(count: checkedCount, actionText: actionText, lines: lines, riskNote: riskNote, estimatedMB: est)
     }
 
     /// 予告に出す、人が読める動作名（短い動詞句）。

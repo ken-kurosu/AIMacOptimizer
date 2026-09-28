@@ -32,12 +32,25 @@ func run() async {
     print("\n=== ワンクリック最適化ボタンの表示 ===")
     if let p = vm.optimizePreview {
         print("ボタン: 「ワンクリック最適化（\(p.count)件）」")
-        print("予告: このボタンで実行する内容（\(p.count)件）")
         for line in p.lines { print("   ・\(line)") }
         print("   見込み 約\(p.estimatedFormatted)")
         print("注記:   \(p.riskNote)")
     } else {
         print("（実行対象なし）")
+    }
+
+    // 件数がチェックに追従するか（未チェックの項目を1つ付ける→+1、外す→元に戻る）
+    let before = vm.optimizePreview?.count ?? 0
+    if let si = vm.suggestions.firstIndex(where: { $0.detailItems.contains { !$0.isSelected } }),
+       let di = vm.suggestions[si].detailItems.firstIndex(where: { !$0.isSelected }) {
+        vm.suggestions[si].detailItems[di].isSelected = true
+        let checked = vm.optimizePreview?.count ?? 0
+        vm.suggestions[si].detailItems[di].isSelected = false
+        let restored = vm.optimizePreview?.count ?? 0
+        print("\n=== 件数の追従チェック（\(vm.suggestions[si].detailItems[di].name) を付け外し）===")
+        print("\(before)件 → チェック \(checked)件 → 外す \(restored)件")
+        precondition(checked == before + 1 && restored == before, "件数がチェックに追従していない")
+        print("PASS: 件数はチェックの数どおりに増減する")
     }
 }
 
